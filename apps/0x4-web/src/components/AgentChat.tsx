@@ -61,6 +61,80 @@ interface Msg {
 /** Wei (18 decimals) to a short display string */
 const fmtWei = (wei: bigint, digits = 4) => fmtAmount(Number(formatEther(wei)), digits)
 
+/**
+ * Typewriter reveal for the latest agent message — feels alive like a real assistant.
+ */
+function StreamText({ text, done }: { text: string; done: boolean }) {
+  const [shown, setShown] = useState(done ? text.length : 0)
+  useEffect(() => {
+    if (done) { setShown(text.length); return }
+    setShown(0)
+    const t = setInterval(() => {
+      setShown((n) => {
+        if (n >= text.length) { clearInterval(t); return n }
+        return n + 3
+      })
+    }, 12)
+    return () => clearInterval(t)
+  }, [text, done])
+  const partial = text.slice(0, shown)
+  return (
+    <span>
+      {renderRich(partial)}
+      {!done && shown < text.length && <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-primary align-middle" />}
+    </span>
+  )
+}
+
+/**
+ * Minimal rich-text renderer for agent messages (no deps):
+ * **bold**, `code`, and •/- bullet lists. Everything else is escaped plain text.
+ */
+function renderRich(text: string): React.ReactNode[] {
+  const lines = text.split('\n')
+  const out: React.ReactNode[] = []
+  let list: string[] = []
+  const flushList = () => {
+    if (list.length) {
+      out.push(
+        <ul key={`ul-${out.length}`} className="my-1 space-y-0.5">
+          {list.map((item, i) => (
+            <li key={i} className="flex gap-1.5"><span className="text-primary">•</span><span>{renderInline(item)}</span></li>
+          ))}
+        </ul>,
+      )
+      list = []
+    }
+  }
+  lines.forEach((line) => {
+    const m = line.match(/^\s*[•\-]\s+(.*)$/)
+    if (m) { list.push(m[1]); return }
+    flushList()
+    if (line.trim() === '') { out.push(<div key={`sp-${out.length}`} className="h-1.5" />); return }
+    out.push(<p key={`p-${out.length}`}>{renderInline(line)}</p>)
+  })
+  flushList()
+  return out
+}
+
+/** **bold** and `code` within one line */
+function renderInline(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = []
+  const re = /(\*\*[^*]+\*\*|`[^`]+`)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let k = 0
+  while ((m = re.exec(text))) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    const tok = m[0]
+    if (tok.startsWith('**')) parts.push(<strong key={k++} className="font-semibold">{tok.slice(2, -2)}</strong>)
+    else parts.push(<code key={k++} className="rounded bg-primary/10 px-1 py-0.5 font-mono text-[13px]">{tok.slice(1, -1)}</code>)
+    last = m.index + tok.length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
+}
+
 const EXAMPLES = ['price SPRITE', 'buy 0.1 MON of SPRITE', 'portfolio']
 
 export default function AgentChat({ zalienCount }: { zalienCount: number }) {
@@ -122,16 +196,16 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
           push({
             from: 'agent',
             text:
-              `You've got ${monStr} MON in the wallet and no launcher tokens yet. ` +
-              `Want me to check a price, or shall we grab some SPRITE to start? Try "price SPRITE".`,
+              `You've got **${monStr} MON** in the wallet and no launcher tokens yet.\n\n` +
+              `Want me to check a price, or shall we grab some \`SPRITE\` to start? Try **"price SPRITE"**.`,
           })
         } else {
-          const lines = holdings.map((h) => `• ${fmtWei(h.bal, 2)} ${h.token.symbol}`).join('\n')
+          const lines = holdings.map((h) => `• **${fmtWei(h.bal, 2)}** ${h.token.symbol}`).join('\n')
           push({
             from: 'agent',
             text:
-              `Here's what I see:\n${lines}\n• ${monStr} MON ready to trade\n\n` +
-              `Say "portfolio" anytime for a refresh, or tell me what to buy.`,
+              `Here's what I see:\n${lines}\n• **${monStr} MON** ready to trade\n\n` +
+              `Say **"portfolio"** anytime for a refresh, or tell me what to buy.`,
           })
         }
       } catch {
@@ -180,10 +254,10 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
           } catch { /* skip */ }
         }
         if (!holdings.length) {
-          return reply(`Your wallet holds ${fmtWei(monBal)} MON and no launcher tokens yet. Say "price SPRITE" and let's change that.`)
+          return reply(`Your wallet holds **${fmtWei(monBal)} MON** and no launcher tokens yet.\n\nSay **"price SPRITE"** and let's change that.`)
         }
-        const lines = holdings.map((h) => `• ${fmtWei(h.bal, 2)} ${h.token.symbol} (${h.token.name})`).join('\n')
-        return reply(`Here's your Monad testnet portfolio:\n${lines}\n• ${fmtWei(monBal)} MON\n\nWant to buy more of something, or cash out?`)
+        const lines = holdings.map((h) => `• **${fmtWei(h.bal, 2)}** ${h.token.symbol} (${h.token.name})`).join('\n')
+        return reply(`Here's your Monad testnet portfolio:\n${lines}\n• **${fmtWei(monBal)} MON**\n\nWant to buy more of something, or cash out?`)
       }
 
       const found = await resolveLauncherToken(intent.token)
@@ -194,8 +268,8 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
       if (intent.kind === 'price') {
         const price = await getLauncherPrice(token.address)
         return reply(
-          `${token.symbol} (${token.name}) is going for ${fmtWei(price, 8)} MON per token right now, straight off the bonding curve. ` +
-            `There's ${fmtWei(token.reserve)} MON in reserve backing ${fmtWei(token.supply, 0)} tokens.${dupNote} Want some?`,
+          `**${token.symbol}** (${token.name}) is going for **${fmtWei(price, 8)} MON** per token right now, straight off the bonding curve.\n\n` +
+            `• Reserve: **${fmtWei(token.reserve)} MON**\n• Supply: **${fmtWei(token.supply, 0)}** tokens${dupNote}\n\nWant some?`,
         )
       }
 
@@ -209,12 +283,12 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
         ])
         if (balance < intent.monWei) {
           return reply(
-            `That'd cost ${intent.amount} MON plus gas, but you've only got ${fmtWei(balance)} MON. ` +
-              `Top up at ${FAUCET_URL} and we'll try again.`,
+            `That'd cost **${intent.amount} MON** plus gas, but you've only got **${fmtWei(balance)} MON**.\n\n` +
+              `Top up at \`${FAUCET_URL}\` and we'll try again.`,
             'error',
           )
         }
-        return proposeTx(`Got it — ${intent.amount} MON into ${token.symbol}, which should get you around ${fmtWei(quote, 2)} tokens at the current curve. Take a look and confirm if you're happy.${dupNote}`, {
+        return proposeTx(`Got it — **${intent.amount} MON** into **${token.symbol}**, about **${fmtWei(quote, 2)}** tokens at the current curve. Take a look and confirm if you're happy.${dupNote}`, {
           side: 'buy', token, amountWei: intent.monWei, quoteWei: quote,
         })
       }
@@ -225,9 +299,9 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
         quoteLauncherSell(token.address, intent.tokenWei),
       ])
       if (balance < intent.tokenWei) {
-        return reply(`You only hold ${fmtWei(balance)} ${token.symbol}, so selling ${intent.amount} won't work. Want to sell what you've got?`, 'error')
+        return reply(`You only hold **${fmtWei(balance)} ${token.symbol}**, so selling ${intent.amount} won't work.\n\nWant to sell what you've got instead?`, 'error')
       }
-      return proposeTx(`Selling ${intent.amount} ${token.symbol} should get you back about ${fmtWei(quote, 6)} MON. Confirm and I'll send it.${dupNote}`, {
+      return proposeTx(`Selling **${intent.amount} ${token.symbol}** should get you back about **${fmtWei(quote, 6)} MON**. Confirm and I'll send it.${dupNote}`, {
         side: 'sell', token, amountWei: intent.tokenWei, quoteWei: quote,
       })
     } catch (e) {
@@ -273,13 +347,17 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
                 </span>
               )}
               <div className="min-w-0 space-y-2">
-                <p
-                  className={`whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                <div
+                  className={`break-words rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm ${
                     m.from === 'user' ? 'bg-primary/15 text-fg' : m.tone === 'error' ? 'bg-down/10 text-down' : 'bg-background text-fg'
                   }`}
                 >
-                  {m.text}
-                </p>
+                  {m.from === 'agent' && !m.tx ? (
+                    <StreamText text={m.text} done={m.id !== msgs[msgs.length - 1]?.id || !thinking} />
+                  ) : (
+                    <span className="whitespace-pre-wrap">{m.text}</span>
+                  )}
+                </div>
                 {m.tx && <TxCard tx={m.tx} explorer={explorer} onConfirm={() => confirm(m.id, m.tx!)} onCancel={() => patchTx(m.id, { status: 'cancelled' })} />}
               </div>
             </div>

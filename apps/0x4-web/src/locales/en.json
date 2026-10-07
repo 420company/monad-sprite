@@ -3886,5 +3886,18 @@
  "预览": "Preview",
  "你的币名": "Your coin name",
  "Bonding Curve": "Bonding Curve",
- "买入推高价格，卖出沿曲线赎回": "Buys push the price up, sells redeem along the curve"
+ "买入推高价格，卖出沿曲线赎回": "Buys push the price up, sells redeem along the curve",
+ "你的 NFT 就是你的交易员。Zalien（BSC）或 Sprite Pass（Monad）任一持有即解锁——一句话下单，全程你做主。": "Your NFT is your trader. Hold a Zalien (BSC) or a Sprite Pass (Monad) to unlock — one sentence to trade, you're always in control.",
+ "Sprite Pass": "Sprite Pass",
+ "连接后自动检查你的 Zalien（BSC）或 Sprite Pass（Monad）持有": "Holdings (Zalien on BSC / Sprite Pass on Monad) are checked automatically after connecting",
+ "正在查询 {addr} 的凭证…": "Checking credentials for {addr}…",
+ "验证凭证": "Verify credential",
+ "Zalien（BSC）或 Sprite Pass（Monad）": "Zalien (BSC) or Sprite Pass (Monad)",
+ "解锁你的 AI 交易员": "Unlock your AI trader",
+ "{addr} 还没有解锁凭证。任选其一：": "{addr} has no unlock credential yet. Pick one:",
+ "免费领取 Sprite Pass（Monad 测试网）": "Claim a free Sprite Pass (Monad testnet)",
+ "铸造中…": "Minting…",
+ "或": "or",
+ "去 zalien.io 铸造 Zalien · 0.1 BNB": "Mint a Zalien at zalien.io · 0.1 BNB",
+ "持有数据从链上实时读取": "Holdings are read live from chain"
 }

@@ -51,5 +51,17 @@ ok("malformed address throws", threw);
 const lower = await checkZalienHolder(KNOWN_HOLDER.toLowerCase());
 ok("lowercase input normalized", lower.holder === true && lower.wallet === KNOWN_HOLDER);
 
+// 7. SpritePass: deployer minted one -> checkAgentAccess via spritepass
+import { checkAgentAccess, checkSpritePassHolder } from "./zalienGate.ts";
+const DEPLOYER = "0x68265d87d328Ee9358a2a2b646edF278422AFEF2"; // minted SpritePass #1
+const passBal = await checkSpritePassHolder(DEPLOYER);
+ok("deployer holds SpritePass", passBal >= 1, ` (balance=${passBal})`);
+const acc = await checkAgentAccess(DEPLOYER);
+ok("deployer unlocked via spritepass", acc.holder === true && acc.via === "spritepass", ` (via=${acc.via})`);
+const acc2 = await checkAgentAccess(KNOWN_HOLDER);
+ok("zalien holder still unlocked via zalien", acc2.holder === true && acc2.via === "zalien", ` (via=${acc2.via})`);
+const acc3 = await checkAgentAccess(KNOWN_EMPTY);
+ok("empty wallet stays locked", acc3.holder === false && acc3.via === null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
