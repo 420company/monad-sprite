@@ -24,14 +24,13 @@ const LAUNCHER_ABI = [
     name: 'tokens',
     type: 'function',
     stateMutability: 'view',
-    inputs: [{ name: '', type: 'uint256' }],
+    inputs: [{ name: '', type: 'address' }],
     outputs: [
-      { name: 'token', type: 'address' },
+      { name: 'exists', type: 'bool' },
+      { name: 'supply', type: 'uint256' },
+      { name: 'reserve', type: 'uint256' },
       { name: 'name', type: 'string' },
       { name: 'symbol', type: 'string' },
-      { name: 'reserveMON', type: 'uint256' },
-      { name: 'reserveToken', type: 'uint256' },
-      { name: 'exists', type: 'bool' },
     ],
   },
   {
@@ -42,22 +41,36 @@ const LAUNCHER_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'getBuyQuote',
+    name: 'allTokens',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
+    name: 'getPrice',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'token', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'quoteBuy',
     type: 'function',
     stateMutability: 'view',
     inputs: [
-      { name: 'tokenId', type: 'uint256' },
+      { name: 'token', type: 'address' },
       { name: 'monIn', type: 'uint256' },
     ],
     outputs: [{ name: '', type: 'uint256' }],
   },
   {
-    name: 'getSellQuote',
+    name: 'quoteSell',
     type: 'function',
     stateMutability: 'view',
     inputs: [
-      { name: 'tokenId', type: 'uint256' },
-      { name: 'tokenIn', type: 'uint256' },
+      { name: 'token', type: 'address' },
+      { name: 'tokenAmount', type: 'uint256' },
     ],
     outputs: [{ name: '', type: 'uint256' }],
   },
@@ -84,33 +97,9 @@ export interface TokenInfo {
 
 /** Find a token by symbol (case-insensitive) or address. */
 export async function findToken(query: string): Promise<TokenInfo | null> {
-  const count = (await client.readContract({
-    address: LAUNCHER,
-    abi: LAUNCHER_ABI as any,
-    functionName: 'tokenCount',
-  })) as bigint;
+  const tokens = await listTokens(50);
   const q = query.toLowerCase();
-  for (let i = 1n; i <= count; i++) {
-    const r = (await client.readContract({
-      address: LAUNCHER,
-      abi: LAUNCHER_ABI as any,
-      functionName: 'tokens',
-      args: [i],
-    })) as unknown as [Address, string, string, bigint, bigint, boolean];
-    const [token, name, symbol, reserveMON, reserveToken, exists] = r;
-    if (!exists) continue;
-    if (symbol.toLowerCase() === q || token.toLowerCase() === q || name.toLowerCase() === q) {
-      return {
-        id: Number(i),
-        address: token,
-        name,
-        symbol,
-        reserveMON: formatEther(reserveMON),
-        reserveToken: formatEther(reserveToken),
-      };
-    }
-  }
-  return null;
+  return tokens.find((t) => t.symbol.toLowerCase() === q || t.address.toLowerCase() === q || t.name.toLowerCase() === q) ?? null;
 }
 
 export async function listTokens(limit = 20): Promise<TokenInfo[]> {
@@ -120,23 +109,42 @@ export async function listTokens(limit = 20): Promise<TokenInfo[]> {
     functionName: 'tokenCount',
   })) as bigint;
   const out: TokenInfo[] = [];
-  const start = count > BigInt(limit) ? count - BigInt(limit) + 1n : 1n;
-  for (let i = count; i >= start && i >= 1n; i--) {
+  const start = count > BigInt(limit) ? count - BigInt(limit) : 0n;
+  for (let i = count - 1n; i >= start && i >= 0n; i--) {
+    const tokenAddr = (await client.readContract({
+      address: LAUNCHER,
+      abi: LAUNCHER_ABI as any,
+      functionName: 'allTokens',
+      args: [i],
+    })) as Address;
     const r = (await client.readContract({
       address: LAUNCHER,
       abi: LAUNCHER_ABI as any,
       functionName: 'tokens',
-      args: [i],
-    })) as unknown as [Address, string, string, bigint, bigint, boolean];
-    const [token, name, symbol, reserveMON, reserveToken, exists] = r;
+      args: [tokenAddr],
+    })) as unknown as [boolean, bigint, bigint, string, string];
+    const [exists, supply, reserve, name, symbol] = r;
     if (!exists) continue;
+    // Get price directly from the contract
+    let priceStr = '0';
+    try {
+      const price = (await client.readContract({
+        address: LAUNCHER,
+        abi: LAUNCHER_ABI as any,
+        functionName: 'getPrice',
+        args: [tokenAddr],
+      })) as bigint;
+      priceStr = formatEther(price);
+    } catch {
+      /* price unavailable */
+    }
     out.push({
       id: Number(i),
-      address: token,
+      address: tokenAddr,
       name,
       symbol,
-      reserveMON: formatEther(reserveMON),
-      reserveToken: formatEther(reserveToken),
+      reserveMON: formatEther(reserve),
+      reserveToken: formatEther(supply),
     });
   }
   return out;
