@@ -65,7 +65,7 @@ cd contracts && forge test   # 9 个测试
 ### Pre-existing 组件（作者自研，赛前已存在，README 标识）
 - `apps/0x4-web/`：0x4 多链自托管交易钱包前端（钱包/行情/闪兑/社交 UI）——
   作者 2026 年 9 月起自研。本次提交为**比赛分支快照**，与线上产品隔离；
-  敏感配置已脱敏（见仓库内 SCRUB-REPORT.md），密钥全部走环境变量
+  敏感配置已脱敏：无硬编码密钥，配置全部走 `VITE_*` 环境变量（模板见 `apps/0x4-web/.env.example`，仅占位符）
 - `packages/engine/signals/`：zalien 量化信号引擎（`analyze.js` 多因子打分、
   `screener.js`、`picks.js`、`sectors.js`、`economy.js`、`memory.js`、`crypto.js`）——
   作者 2026 年 9~10 月自研，纯公开数据源，零密钥，可选的 6551 消息面已降级为 stub
