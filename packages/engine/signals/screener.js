@@ -1,7 +1,7 @@
 'use strict';
 /**
- * 全市场甄选(OKX /market/tickers 只读):涨幅榜 / 成交量榜 / 跌幅榜。
- * 过滤:只留 -USDT 现货、剔除杠杆代币(3L/3S/5L/5S/UP/DOWN)与稳定币基;涨幅榜设最低成交额门槛防"插针小币"。
+ * Full-market screener (OKX /market/tickers, read-only): gainers / volume / losers.
+ * Filters: -USDT spot only, drop leveraged tokens (3L/3S/5L/5S/UP/DOWN) and stablecoin bases; gainers need a min-volume floor against "wick microcaps".
  */
 const OKX = process.env.OKX_BASE || 'https://www.okx.com';
 const j = async (u, ms = 8000) => { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); try { const r = await fetch(u, { signal: ac.signal }); if (!r.ok) throw new Error('HTTP ' + r.status); const d = await r.json(); if (d.code && d.code !== '0') throw new Error('OKX ' + d.code); return d; } finally { clearTimeout(t); } };
@@ -17,7 +17,7 @@ async function rows() {
   }).filter((x) => x.sym && !isLev(x.sym) && !STABLE.has(x.sym) && isFinite(x.chg));
 }
 
-// 全市场甄选:涨幅/量/跌幅榜。min_vol_usdt=涨跌幅榜最低24h成交额(默认300万,滤掉插针小币)
+// Full-market screener: gainers/volume/losers boards. min_vol_usdt = min 24h volume for the mover boards (default 3M, filters wick microcaps)
 async function get_top_movers(limit = 8, min_vol_usdt = 3e6) {
   const all = await rows();
   const liquid = all.filter((x) => x.vol_usdt >= (Number(min_vol_usdt) || 3e6));

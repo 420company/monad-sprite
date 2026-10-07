@@ -1,10 +1,11 @@
 'use strict';
 /**
- * paper.js —— 纸交易账本（本地 bonding curve 仿真）
+ * paper.js — paper-trading ledger (local bonding-curve simulation)
  *
- * 关键：paper 买卖不改变链上 supply，所以账本自己维护"虚拟 supply"，
- * 用与合约完全一致的数学（MemeLauncher._quoteBuy/_quoteSell/_getPrice）在本地算成交。
- * 初始虚拟 supply = 链上真实 supply（getTokenInfo）。
+ * Key point: paper buys/sells don't change on-chain supply, so the ledger keeps its own
+ * "virtual supply" and settles trades locally with the exact same math as the contract
+ * (MemeLauncher._quoteBuy / _quoteSell / _getPrice).
+ * Initial virtual supply = real on-chain supply (getTokenInfo).
  */
 const { formatEther } = require('viem');
 
@@ -14,7 +15,7 @@ const SUPPLY_SCALE = 10n ** 18n;
 const TOKEN_UNIT = 10n ** 18n;
 
 function sqrtBig(n) {
-  if (n < 0n) throw new Error('sqrt 负数');
+  if (n < 0n) throw new Error('sqrt of negative');
   if (n < 2n) return n;
   let x = n, y = (x + 1n) >> 1n;
   while (y < x) { x = y; y = (x + n / x) >> 1n; }
@@ -55,7 +56,7 @@ class PaperLedger {
     const monInWei = BigInt(Math.floor((usdIn / this.monPriceUsd) * 1e18));
     const vSupply = await this._vSupply(token);
     const tokensOut = quoteBuyJS(vSupply, monInWei);
-    if (tokensOut === 0n) throw new Error('买入数量为零');
+    if (tokensOut === 0n) throw new Error('buy amount is zero');
     const p = this.positions.get(token) || { tokenWei: 0n, usdIn: 0, vSupply };
     p.tokenWei += tokensOut; p.usdIn += usdIn; p.vSupply = vSupply + tokensOut;
     this.positions.set(token, p);
@@ -67,10 +68,10 @@ class PaperLedger {
 
   async sell(token, fraction = 1) {
     const p = this.positions.get(token);
-    if (!p || p.tokenWei === 0n) throw new Error('无持仓');
+    if (!p || p.tokenWei === 0n) throw new Error('no position');
     const amt = (p.tokenWei * BigInt(Math.floor(fraction * 1e6))) / 1000000n;
     const vSupply = await this._vSupply(token);
-    if (amt > vSupply) throw new Error('卖出超过虚拟 supply');
+    if (amt > vSupply) throw new Error('sell exceeds virtual supply');
     const payoutWei = quoteSellJS(vSupply, amt);
     const usdOut = this._toUsd(payoutWei);
     const costBasis = p.usdIn * Number(amt) / Number(p.tokenWei);
@@ -83,7 +84,7 @@ class PaperLedger {
     return t;
   }
 
-  /** 权益：已实现 + 持仓按当前虚拟曲线 mark-to-market */
+  /** Equity: realized P&L + open positions marked to market on the virtual curve */
   async equityUsd() {
     let eq = this.realizedUsd;
     for (const [token, p] of this.positions) {

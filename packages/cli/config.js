@@ -1,5 +1,5 @@
 'use strict';
-/** config.js —— config.yaml + 环境变量覆盖 */
+/** config.js — config.yaml + environment variable overrides */
 const fs = require('fs');
 const path = require('path');
 
@@ -7,10 +7,10 @@ function loadConfig() {
   const cfgPath = process.env.SPRITE_CONFIG || path.join(__dirname, 'config.yaml');
   let file = {};
   if (fs.existsSync(cfgPath)) {
-    // 极简 YAML 解析（只支持 key: value 两级缩进）
+    // Minimal YAML parser (supports key: value with two-level indent only)
     let section = null;
     for (const rawLine of fs.readFileSync(cfgPath, 'utf8').split('\n')) {
-      const line = rawLine.replace(/\s+#.*$/, ''); // 去行尾注释
+      const line = rawLine.replace(/\s+#.*$/, ''); // strip trailing comments
       if (!line.trim() || line.trim().startsWith('#')) continue;
       const m = line.match(/^(\w+):\s*(.*)$/);
       if (m) { section = m[1]; file[section] = file[section] || {}; if (m[2]) file[section] = cast(m[2]); continue; }
@@ -37,7 +37,7 @@ function loadConfig() {
 function cast(v) {
   v = String(v).trim();
   if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-    return v.slice(1, -1); // 去 YAML 引号
+    return v.slice(1, -1); // strip YAML quotes
   }
   if (/^-?\d+$/.test(v)) return parseInt(v, 10);
   if (/^-?\d*\.\d+$/.test(v)) return parseFloat(v);

@@ -1,0 +1,14 @@
+{
+  "name": "@monad-sprite/agent-gate",
+  "version": "0.1.0",
+  "description": "Zalien NFT holder gate: BSC on-chain check -> unlock personal AI agent",
+  "type": "module",
+  "main": "zalienGate.ts",
+  "scripts": {
+    "test": "node zalienGate.test.ts"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "dependencies": {
+    "viem": "^2.57.3"
+  }
+}

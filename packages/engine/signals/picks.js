@@ -1,6 +1,6 @@
 'use strict';
 /**
- * 每日甄选历史与 24 小时复盘。只保存公开行情分析快照,不执行交易。
+ * Daily pick history + 24h review. Saves public market-analysis snapshots only — never trades.
  */
 const fs = require('fs');
 const path = require('path');

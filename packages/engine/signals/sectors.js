@@ -1,13 +1,13 @@
 'use strict';
 /**
- * 板块轮动(CoinGecko /coins/categories 免费只读):哪些板块在涨/在跌 + 代表币。
- * 过滤最低市值门槛,剔除 "Trading Bots +581%" 这类噪声小板块。美国 GCE 可直连。
+ * Sector rotation (CoinGecko /coins/categories, free read-only): which sectors rise/fall + representative coins.
+ * Filters a minimum market-cap floor, dropping noisy micro-sectors like "Trading Bots +581%". Reachable from US GCE.
  */
 const CG = process.env.CG_BASE || 'https://api.coingecko.com';
 const j = async (u, ms = 10000) => { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); try { const r = await fetch(u, { signal: ac.signal, headers: { accept: 'application/json' } }); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } finally { clearTimeout(t); } };
 const r2 = (x, n = 2) => (x == null || !isFinite(x)) ? null : +Number(x).toFixed(n);
 
-// 板块轮动:按 24h 市值变化排序,过滤最低市值(默认1亿美元)防噪声
+// Sector rotation: sort by 24h market-cap change, filter min market cap (default $100M) against noise
 async function get_sector_rotation(limit = 8, min_mcap_usd = 5e8) {
   const d = await j(`${CG}/api/v3/coins/categories?order=market_cap_change_24h_desc`);
   if (!Array.isArray(d)) throw new Error('CoinGecko 返回异常');

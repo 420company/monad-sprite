@@ -1,27 +1,27 @@
 'use strict';
 /**
- * test/backtest3way.js —— 三向对比回测：多巴胺奖赏学习到底有没有用？
+ * test/backtest3way.js — three-way backtest: does dopamine reward learning actually help?
  *
- * 同一段 320 tick 合成价格序列（趋势+震荡+假突破），三种策略同场跑：
- *   (a) 纯 zalien 信号 + 退出引擎
- *   (b) 无学习果蝇 mock + zalien 融合 + 退出引擎
- *   (c) 带多巴胺奖赏学习的果蝇 + zalien 融合 + 退出引擎
+ * Same 320-tick synthetic price series (trend + chop + fake breakouts), three strategies head-to-head:
+ *   (a) pure zalien signals + exit engine
+ *   (b) non-learning fly mock + zalien fusion + exit engine
+ *   (c) dopamine-reward-learning fly + zalien fusion + exit engine
  *
- * 指标：总盈亏、胜率、最大回撤、交易次数。
+ * Metrics: total P&L, win rate, max drawdown, trade count.
  *
- * ★ 诚实声明（必读）：
- *   果蝇 mock 的"神经原始信号"是用未来 6 tick 真实方向按设定准确率采样的
- *   （趋势市 65%、震荡市 45%、假突破反杀段 40%），模拟的是
- *   "假设神经网络有一定、且随市场状态变化的预测力"。
- *   这个回测验证的是：多巴胺学习能不能发现"哪种状态下该信果蝇"，
- *   不能证明真实果蝇能预测市场。
+ * ★ Honesty notice (must read):
+ *   The fly mock's "raw neural signal" is sampled from the true direction of the next 6 ticks at a set accuracy
+ *   (65% in trends, 45% in chop, 40% in fake-breakout traps) — simulating
+ *   "a neural net with some, regime-dependent predictive power".
+ *   What this backtest validates: whether dopamine learning can discover "in which regimes to trust the fly" —
+ *   it does NOT prove the real fly can predict markets.
  */
 
 const { checkExit, applyExit } = require('./legacy/exitEngine');
 const { fuse } = require('./legacy/fusion');
 const { LearningFly, stateIndex } = require('./legacy/fly-reward/learningFly');
 
-// ---------- 确定性 PRNG（结果可复现） ----------
+// ---------- deterministic PRNG (reproducible results) ----------
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -38,12 +38,12 @@ function gauss(rng) {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
-// ---------- 数据生成过程 ----------
+// ---------- data generation ----------
 const SEED = Number(process.env.BT_SEED) || 20261007;
-const CYCLE = 320;              // 一个市场周期（趋势+震荡+假突破）
-const REPEATS = 3;              // 重复跑 3 个周期，给学习系统足够的样本
+const CYCLE = 320;              // one market cycle (trend + chop + fake breakouts)
+const REPEATS = 3;              // repeat 3 cycles — enough samples for the learner
 const N = CYCLE * REPEATS;
-const TICK_HOURS = 0.25; // 每 tick = 15 分钟
+const TICK_HOURS = 0.25; // each tick = 15 minutes
 const REGIMES = [
   { from: 0, to: 59, drift: 0.0012, vol: 0.004, flyAcc: 0.65, name: '趋势上' },
   { from: 60, to: 119, drift: 0.0, vol: 0.006, flyAcc: 0.45, name: '震荡' },
@@ -64,25 +64,25 @@ function genMarket() {
   }
   const rets = prices.map((p, i) => (i === 0 ? 0 : (p - prices[i - 1]) / prices[i - 1]));
 
-  // ATR%：近 14 tick 平均 |r|
+  // ATR%: mean |r| over last 14 ticks
   const atrPct = rets.map((_, i) => {
     const w = rets.slice(Math.max(0, i - 13), i + 1);
     return w.reduce((a, r) => a + Math.abs(r), 0) / w.length;
   });
-  // 滚动波动率：近 24 tick 标准差（给 zalien 打分归一化用）
+  // Rolling volatility: 24-tick stddev (for zalien score normalization)
   const rollVol = rets.map((_, i) => {
     const w = rets.slice(Math.max(0, i - 23), i + 1);
     const m = w.reduce((a, r) => a + r, 0) / w.length;
     return Math.sqrt(w.reduce((a, r) => a + (r - m) * (r - m), 0) / w.length) || 1e-6;
   });
-  // zalien 方向分：24 tick 动量 / 波动率归一化 + 噪声（趋势市准、震荡市被甩）
+  // zalien direction score: 24-tick momentum / volatility-normalized + noise (accurate in trends, whipsawed in chop)
   const scores = rets.map((_, i) => {
     const w = rets.slice(Math.max(0, i - 23), i + 1);
     const mom = w.reduce((a, r) => a + r, 0);
     const raw = (55 * mom) / (rollVol[i] * Math.sqrt(24)) + gauss(rng) * 10;
     return Math.max(-100, Math.min(100, Math.round(raw)));
   });
-  // 果蝇神经原始信号：未来 6 tick 真实方向，按该 regime 准确率采样
+  // Fly raw neural signal: true direction of next 6 ticks, sampled at the regime's accuracy
   const flyRaws = rets.map((_, i) => {
     if (i > N - 8) return { direction: 'flat', strength: 0 };
     const fut = rets.slice(i + 1, i + 7).reduce((a, r) => a + r, 0);
@@ -100,7 +100,7 @@ function genMarket() {
 
 const confidenceOf = (s) => (Math.abs(s) >= 70 ? '高' : Math.abs(s) >= 50 ? '中' : '低');
 
-// (a) 纯 zalien 决策：|score|>40 开仓（对齐 fuse 的强度门槛）
+// (a) Pure zalien decision: |score|>40 opens (aligned with fuse's strength threshold)
 function zalienDecision(z, price) {
   const side = z.score > 40 ? 'long' : z.score < -40 ? 'short' : null;
   if (!side) return { action: 'skip' };
@@ -115,7 +115,7 @@ function zalienDecision(z, price) {
 }
 
 const START_EQUITY = 10000;
-const NOTIONAL = 1000; // 每笔固定名义本金（三种策略一致，保证可比）
+const NOTIONAL = 1000; // fixed notional per trade (same for all 3 strategies, keeps it comparable)
 
 function runBacktest(strategy, mkt) {
   const { prices, atrPct, scores, flyRaws } = mkt;
@@ -143,7 +143,7 @@ function runBacktest(strategy, mkt) {
       const action = checkExit(p, price, nowMs);
       applyExit(pos.st, action, price);
       const upnl = ((price - p.entryPrice) / p.entryPrice) * (p.side === 'long' ? 1 : -1);
-      // 持仓中的弱反馈（只给 learning）
+      // Weak in-position feedback (learning only)
       if (fly && pos.flyDir !== 'flat') fly.tickUpdate(pos.flyState, pos.flyDir, upnl, atr);
       if (!pos.st.position) {
         const pnl = pos.st.realizedUsd;
@@ -192,7 +192,7 @@ function runBacktest(strategy, mkt) {
       curve.push(equity);
     }
   }
-  // 收尾：强制平掉未平仓位
+  // Wind-down: force-close any open positions
   if (pos) {
     const p = pos.st.position;
     applyExit(pos.st, { type: 'stop_out', reason: '回测结束强制平仓' }, prices[N - 1]);
@@ -225,7 +225,7 @@ function runBacktest(strategy, mkt) {
   };
 }
 
-// ---------- 跑 ----------
+// ---------- run ----------
 const mkt = genMarket();
 const results = ['zalien', 'static', 'learning'].map((s) => runBacktest(s, mkt));
 
@@ -248,7 +248,7 @@ if (lc) {
   for (const row of lc.trust) console.log(`  ${row.state.padEnd(16)} ${row.trust.toFixed(3)}`);
 }
 
-// 给报告用的机器可读结果
+// Machine-readable results for the report
 if (process.argv.includes('--json')) {
   console.log('\n__JSON__' + JSON.stringify(results.map(({ fly, ...r }) => ({
     ...r, flyTrust: fly ? fly.trust : null, flyUpdates: fly?.updates, flyAbstentions: fly?.abstentions,

@@ -63,8 +63,8 @@ import PcLogin from '@/pages/PcLogin'
 import PostDetail from '@/pages/PostDetail'
 import Official from '@/pages/Official'
 import Spot from '@/pages/Spot'
-import Launch from '@/pages/Launch' // Monad testnet 一键发币（2026-10-07 黑客松新增）
-import { TokenRouter } from '@/pages/MonadToken' // monad-testnet 走 bonding curve 视图（2026-10-07 黑客松新增）
+import Launch from '@/pages/Launch' // Monad testnet one-click launch (added 2026-10-07 for hackathon)
+import { TokenRouter } from '@/pages/MonadToken' // monad-testnet renders the bonding-curve view (added 2026-10-07 for hackathon)
 
 // 会议室带整个音视频库，按需加载，不进首屏包
 const MeetingRoom = lazy(() => import('@/pages/MeetingRoom'))
@@ -207,7 +207,7 @@ export default function App() {
             <Route path="/swap" element={<Need><Swap /></Need>} />
             {/* 网页版「现货」：持仓 / 自选 + 闪兑跨链（手机 App 没有入口，直接打开也能用） */}
             <Route path="/spot" element={desk(<DeskSpot />, <Spot />)} />
-            {/* Monad testnet 一键发币（2026-10-07 黑客松新增） */}
+            {/* Monad testnet one-click launch (added 2026-10-07 for hackathon) */}
             <Route path="/launch" element={<Launch />} />
             {/* 合约交易、私信是 0x4 Wallet 专属（2026-09-30 goat）：网页版连外部钱包时换成「0x4 Wallet 专属」卡（desktop/Ox4Only） */}
             {/* iOS 上架版不带合约（lib/features PERP_ENABLED）：进这个地址就回首页 */}

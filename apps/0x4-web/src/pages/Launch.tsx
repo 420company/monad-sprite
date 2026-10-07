@@ -1,5 +1,5 @@
-// Monad testnet 一键发币（2026-10-07 黑客松新增）
-// 经 MemeLauncher 合约（0x8ca1990c…45f，chain 10143）发行 bonding curve meme 币
+// One-click token launch — Monad testnet (added 2026-10-07 for hackathon)
+// Issues bonding-curve meme coins via the MemeLauncher contract (0x8ca1990c…45f, chain 10143)
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Rocket, ExternalLink } from 'lucide-react'

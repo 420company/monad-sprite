@@ -1,18 +1,18 @@
 'use strict';
 /**
- * analyze_market —— 代码驱动的行情分析引擎(GPT/Grok 双审方案落地)。
- * 核心原则:代码负责取数/计算/编排/打分/质检,Gemini 只把结构化 market_state 写成人话。
+ * analyze_market — code-driven market analysis engine (GPT/Grok dual-review design, implemented).
+ * Core principle: code handles fetching/compute/orchestration/scoring/QC; Gemini only renders structured market_state into prose.
  *
- * 一次调用内部完成:
- *  · 并行拉 日线/4H/1H(各 300 根,只用已收盘)+ 现货 ticker + 期货历史序列(资金费率/OI/多空比/主动买卖量)+ 6551 消息面
- *  · 每周期算 EMA7/25/99、RSI14、MACD、ATR14、RVOL20、趋势(EMA排列)、市场结构(HH-HL/LH-LL)
- *  · 期货算"变化率"而非快照:OI 1H/4H/24H Δ、资金费率现值/近3日均/7日分位、多空比现值/24h变化/分位、主动买卖失衡
- *  · 支撑阻力工具化:Fib+EMA99+swing+前高低 候选点,按 0.5×ATR(4H) 聚类成"区间"(带 confluence/touches/strength)
- *  · 方向分(-100~100)与置信度(低/中/高)分离,给证据清单;数据质量门(asOf/completedCandlesOnly/missing/quality)
- * 全部只读、带超时;任一非关键源失败降级不阻断(现货价拿不到才停)。
+ * One call completes internally:
+ *  · Parallel fetch: daily/4H/1H (300 candles each, closed only) + spot ticker + futures history (funding/OI/long-short/taker flow) + 6551 news
+ *  · Per timeframe: EMA7/25/99, RSI14, MACD, ATR14, RVOL20, trend (EMA stack), market structure (HH-HL/LH-LL)
+ *  · Futures use "change rates" not snapshots: OI 1H/4H/24H deltas, funding current/3d-avg/7d-quantile, long-short current/24h-change/quantile, taker imbalance
+ *  · Support/resistance as tooling: Fib + EMA99 + swings + prior highs/lows as candidates, clustered into "zones" by 0.5xATR(4H) (with confluence/touches/strength)
+ *  · Direction score (-100~100) separated from confidence (low/med/high), with evidence list; data-quality gates (asOf/completedCandlesOnly/missing/quality)
+ * All read-only with timeouts; any non-critical source failure degrades gracefully (only halts if spot price is unavailable).
  */
 const OKX = process.env.OKX_BASE || 'https://www.okx.com';
-// sixfive（6551 消息面）可选懒加载：无 token/无文件时降级为 null，不影响主流程
+// sixfive (6551 news) lazy-loads optionally: degrades to null without token/file, main flow unaffected
 let sixfive = null;
 try { sixfive = require('./sixfive'); } catch { sixfive = null; }
 const getCoinNews = (s, n) => {
@@ -20,7 +20,7 @@ const getCoinNews = (s, n) => {
     if (sixfive && sixfive.impl && typeof sixfive.impl.get_coin_news === 'function') {
       return sixfive.impl.get_coin_news(s, n).catch(() => null);
     }
-  } catch { /* 降级 */ }
+  } catch { /* degrade */ }
   return Promise.resolve(null);
 };
 
@@ -32,7 +32,7 @@ const swapId = (s) => base(s) + '-USDT-SWAP';
 const r2 = (x, n = 2) => (x == null || !isFinite(x)) ? null : +Number(x).toFixed(n);
 const pct = (a, b) => (b ? +(((a - b) / b) * 100).toFixed(2) : null);
 
-// ---------- 指标 ----------
+// ---------- indicators ----------
 function emaLast(v, p) { const k = 2 / (p + 1); let e = v[0]; for (let i = 1; i < v.length; i++) e = v[i] * k + e * (1 - k); return e; }
 function emaSeries(v, p) { const k = 2 / (p + 1); const out = [v[0]]; for (let i = 1; i < v.length; i++) out.push(v[i] * k + out[i - 1] * (1 - k)); return out; }
 function smaSeries(v, p) { let sum = 0; return v.map((x, i) => { sum += x; if (i >= p) sum -= v[i - p]; return i >= p - 1 ? sum / p : null; }); }
@@ -40,16 +40,16 @@ function rsi(c, p = 14) { if (c.length < p + 1) return null; let g = 0, l = 0; f
 function macd(c) { if (c.length < 35) return null; const e = (arr, p) => { const k = 2 / (p + 1); const o = [arr[0]]; for (let i = 1; i < arr.length; i++) o.push(arr[i] * k + o[i - 1] * (1 - k)); return o; }; const e12 = e(c, 12), e26 = e(c, 26); const dif = c.map((_, i) => e12[i] - e26[i]); const dea = e(dif.slice(26), 9); const d = dif[dif.length - 1], s = dea[dea.length - 1]; return { dif: r2(d, 1), dea: r2(s, 1), hist: r2((d - s) * 2, 1) }; }
 function atr(h, l, c, p = 14) { if (c.length < p + 1) return null; const tr = []; for (let i = 1; i < c.length; i++) tr.push(Math.max(h[i] - l[i], Math.abs(h[i] - c[i - 1]), Math.abs(l[i] - c[i - 1]))); let a = tr.slice(0, p).reduce((x, y) => x + y, 0) / p; for (let i = p; i < tr.length; i++) a = (a * (p - 1) + tr[i]) / p; return a; }
 function rvol(vol, p = 20) { if (vol.length < p + 1) return null; const avg = vol.slice(-p - 1, -1).reduce((x, y) => x + y, 0) / p; return avg ? +(vol[vol.length - 1] / avg).toFixed(2) : null; }
-// 摆动点(分形,宽度 w):返回最近的高点/低点序列(旧→新)
+// Swing points (fractal, width w): returns recent high/low sequence (old→new)
 function swings(h, l, w = 2) { const hi = [], lo = []; for (let i = w; i < h.length - w; i++) { let ph = true, pl = true; for (let k = 1; k <= w; k++) { if (h[i] <= h[i - k] || h[i] <= h[i + k]) ph = false; if (l[i] >= l[i - k] || l[i] >= l[i + k]) pl = false; } if (ph) hi.push({ i, p: h[i] }); if (pl) lo.push({ i, p: l[i] }); } return { hi, lo }; }
 function structureOf(sw) { const H = sw.hi.slice(-2), L = sw.lo.slice(-2); if (H.length < 2 || L.length < 2) return 'range'; const hh = H[1].p > H[0].p, hl = L[1].p > L[0].p, lh = H[1].p < H[0].p, ll = L[1].p < L[0].p; if (hh && hl) return 'up'; if (lh && ll) return 'down'; return 'range'; }
 
-// ---------- 单周期 ----------
+// ---------- single timeframe ----------
 async function analyzeTF(s, bar) {
   const d = await j(`${OKX}/api/v5/market/candles?instId=${spotId(s)}&bar=${bar}&limit=300`);
   const raw = (d.data || []).slice().reverse();
   const k = raw.filter((c) => c[8] === '1'); // 只用已收盘
-  if (k.length < 40) throw new Error(`${bar} 已收盘K线不足`);
+  if (k.length < 40) throw new Error(`${bar}: not enough closed candles`);
   const c = k.map((x) => +x[4]), h = k.map((x) => +x[2]), l = k.map((x) => +x[3]), v = k.map((x) => +x[5]);
   const o = k.map((x) => +x[1]), ts = k.map((x) => +x[0]);
   const e7 = emaLast(c, 7), e25 = emaLast(c, 25), e99 = emaLast(c, 99);
@@ -63,11 +63,11 @@ async function analyzeTF(s, bar) {
     atr14: r2(A, 2), atr_pct: r2(A / last * 100, 2), rvol20: rvol(v, 20),
     trend, structure: structureOf(sw), above_ema99: last > e99,
     period_high: r2(Math.max(...h), 2), period_low: r2(Math.min(...l), 2),
-    _c: c, _h: h, _l: l, _o: o, _v: v, _t: ts, _sw: sw, _atr: A, // 内部用(不返回给模型,主函数删)
+    _c: c, _h: h, _l: l, _o: o, _v: v, _t: ts, _sw: sw, _atr: A, // internal (not returned to model; stripped by main)
   };
 }
 
-// ---------- T-144 4H 防线(仅用已收盘 K 线,最多修正原方向分 10 分)----------
+// ---------- T-144 4H guardrail (closed candles only, adjusts original direction score by at most 10) ----------
 function calculateT144(h4) {
   const c = h4 && h4._c; const h = h4 && h4._h; const l = h4 && h4._l;
   const o = h4 && h4._o; const v = h4 && h4._v; const ts = h4 && h4._t;
@@ -117,38 +117,38 @@ function calculateT144(h4) {
   };
 }
 
-// ---------- 期货历史(变化率而非快照)----------
+// ---------- futures history (change rates, not snapshots) ----------
 async function futures(s) {
   const inst = swapId(s), ccy = base(s);
   const [fr, oi, ls, tk] = await Promise.allSettled([
-    j(`${OKX}/api/v5/public/funding-rate-history?instId=${inst}&limit=21`),        // 7日≈21档(8h)
+    j(`${OKX}/api/v5/public/funding-rate-history?instId=${inst}&limit=21`),        // 7d ≈ 21 points (8h)
     j(`${OKX}/api/v5/rubik/stat/contracts/open-interest-volume?ccy=${ccy}&period=1H`),
     j(`${OKX}/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=${ccy}&period=1H`),
     j(`${OKX}/api/v5/rubik/stat/taker-volume?ccy=${ccy}&instType=CONTRACTS&period=1H`),
   ]);
   const out = { missing: [] };
-  // 资金费率:现值 / 近3日(9档)均 / 7日分位
+  // Funding rate: current / last-3d (9-point) avg / 7d quantile
   if (fr.status === 'fulfilled' && fr.value.data?.length) { const a = fr.value.data.map((x) => +x.fundingRate); out.funding_now = r2(a[0], 6); out.funding_avg3d = r2(a.slice(0, 9).reduce((x, y) => x + y, 0) / Math.min(9, a.length), 6); const sorted = [...a].sort((x, y) => x - y); out.funding_pctile7d = r2(sorted.indexOf(a[0]) / (a.length - 1) * 100, 0); } else out.missing.push('funding');
-  // OI(USD):现值 + 1H/4H/24H 变化率(序列新→旧,index=小时前)
+  // OI (USD): current + 1H/4H/24H change rates (series new→old, index = hours ago)
   if (oi.status === 'fulfilled' && oi.value.data?.length) { const a = oi.value.data.map((x) => +x[1]); const at = (n) => a[n] != null ? pct(a[0], a[n]) : null; out.oi_usd = r2(a[0], 0); out.oi_chg_1h = at(1); out.oi_chg_4h = at(4); out.oi_chg_24h = at(24); } else out.missing.push('oi');
-  // 多空账户比:现值 + 24h变化 + 7日分位
+  // Long/short account ratio: current + 24h change + 7d quantile
   if (ls.status === 'fulfilled' && ls.value.data?.length) { const a = ls.value.data.map((x) => +x[1]); out.ls_ratio = r2(a[0], 2); out.ls_chg_24h = a[24] != null ? pct(a[0], a[24]) : null; const sorted = [...a].sort((x, y) => x - y); out.ls_pctile7d = r2(sorted.indexOf(a[0]) / (a.length - 1) * 100, 0); } else out.missing.push('long_short');
-  // 主动买卖量(CONTRACTS,[ts,sellVol,buyVol]):最近1H/4H 买卖失衡
+  // Taker buy/sell volume (CONTRACTS, [ts,sellVol,buyVol]): 1H/4H imbalance
   if (tk.status === 'fulfilled' && tk.value.data?.length) { const a = tk.value.data; const imb = (n) => { const w = a.slice(0, n); const sell = w.reduce((x, y) => x + +y[1], 0), buy = w.reduce((x, y) => x + +y[2], 0); return buy + sell ? r2((buy - sell) / (buy + sell) * 100, 1) : null; }; out.taker_imb_1h = imb(1); out.taker_imb_4h = imb(4); out.note_ls = 'OKX账户数多空比,非全市场仓位比'; } else out.missing.push('taker');
   return out;
 }
 
-// ---------- 支撑阻力区间(候选→按 ATR 聚类)----------
+// ---------- support/resistance zones (candidates → ATR clustering) ----------
 function buildZones(d1, h4, price, atr4) {
   const cand = [];
   const add = (p, tag) => { if (p && isFinite(p)) cand.push({ p, tag }); };
-  add(d1.ema99, '日EMA99'); add(h4.ema99, '4H EMA99');
-  add(d1.period_high, '日区间高'); add(d1.period_low, '日区间低');
+  add(d1.ema99, 'daily EMA99'); add(h4.ema99, '4H EMA99');
+  add(d1.period_high, 'daily range high'); add(d1.period_low, 'daily range low');
   h4._sw.hi.slice(-4).forEach((x) => add(x.p, '4H前高')); h4._sw.lo.slice(-4).forEach((x) => add(x.p, '4H前低'));
-  // Fib:用 4H 最近一段主要摆动(最高 swingHigh 与最低 swingLow)
+  // Fib: uses the latest major 4H swing (highest swingHigh and lowest swingLow)
   const His = h4._sw.hi.map((x) => x.p), Los = h4._sw.lo.map((x) => x.p);
   if (His.length && Los.length) { const hi = Math.max(...His), lo = Math.min(...Los); [0.382, 0.5, 0.618, 0.786].forEach((f) => add(hi - (hi - lo) * f, `Fib${f}`)); }
-  const tol = Math.max(atr4 * 0.5, price * 0.0025); // 0.5×ATR 或 0.25% 兜底
+  const tol = Math.max(atr4 * 0.5, price * 0.0025); // 0.5xATR or 0.25% fallback
   cand.sort((a, b) => a.p - b.p);
   const zones = [];
   for (const x of cand) { const z = zones[zones.length - 1]; if (z && x.p - z.hi <= tol) { z.hi = x.p; z.tags.add(x.tag); z.pts.push(x.p); } else zones.push({ lo: x.p, hi: x.p, tags: new Set([x.tag]), pts: [x.p] }); }
@@ -159,8 +159,8 @@ function buildZones(d1, h4, price, atr4) {
   return { support: sup, resistance: res };
 }
 
-// ---------- 交易计划:开单区间 / 止损区间 / 移动止盈区间 ----------
-// 开单点位浮动:用户指定 BTC ±369、ETH ±20;其余按 0.5×4H ATR 或 0.35% 兜底
+// ---------- trade plan: entry zone / stop zone / trailing-TP zone ----------
+// Entry float: user-specified BTC ±369, ETH ±20; others fall back to 0.5x 4H ATR or 0.35%
 const ENTRY_TOL = { BTCUSDT: 369, ETHUSDT: 20 };
 function pointTol(symbol, price, atr4) {
   if (ENTRY_TOL[symbol] != null) return ENTRY_TOL[symbol];
@@ -170,21 +170,21 @@ function buildTradePlan(symbol, price, lean, zones, atr4) {
   if (!zones || price == null || !isFinite(price)) return null;
   const tol = pointTol(symbol, price, atr4);
   const atr = atr4 || price * 0.01;
-  // ★精度要跟着价格量级走:亚分币(PENGU 0.0067 / BOME 0.00087)固定 6 位小数时,
-  // 支撑下沿与 ATR 容差会被截断成 0.000000,再做减法就算出**负数止损**。
+  // ★Precision must follow price magnitude: for sub-cent coins (PENGU 0.0067 / BOME 0.00087), fixed 6 decimals
+  // would truncate the support floor and ATR tolerance to 0.000000, and subtraction then yields a **negative stop**.
   const dp = price >= 100 ? 1 : price >= 1 ? 3 : price >= 0.01 ? 5 : price >= 0.0001 ? 7 : 10;
   const R = (x) => +Number(x).toFixed(dp);
   const rng = (a, b) => [R(Math.min(a, b)), R(Math.max(a, b))];
-  const sup = (zones.support || []).filter((z) => z.high < price);   // 已按最近在前排序
+  const sup = (zones.support || []).filter((z) => z.high < price);   // sorted nearest-first
   const res = (zones.resistance || []).filter((z) => z.low > price);
   const dir = lean === '偏多' ? 'long' : lean === '偏空' ? 'short' : 'neutral';
   const base = { symbol, direction_tol_points: R(tol), atr4h: R(atr), note: '技术位推演,非投资建议;必设止损、仓位自负' };
-  // ★安全网:任何价位算出非正值或 NaN,都说明该币价格量级过小、区间不可靠。
-  // 与其抛出负数止损误导人,不如诚实降级为观望。
+  // ★Safety net: any non-positive or NaN price level means the coin's magnitude is too small and zones are unreliable.
+  // Rather than emit a misleading negative stop, honestly degrade to watch.
   const guard = (plan) => {
     const isLong = plan.direction === '做多';
-    // ★目标位距现价不能离谱。阻力/支撑聚类会给出很远的历史区间(SOL 现价 76 而次级阻力在 208),
-    // 数据本身没错,但作为交易计划的止盈毫无意义。超过 8×ATR 就改用 ATR 外推。
+    // ★Targets must stay sane vs current price. Zone clustering can return far historical zones (SOL at 76 with secondary resistance at 208);
+    // the data isn't wrong, but it's useless as a TP. Beyond 8xATR, extrapolate with ATR instead.
     const MAX = 8 * atr;
     const tooFar = (z) => Array.isArray(z) && Math.abs((isLong ? z[0] : z[1]) - price) > MAX;
     if (tooFar(plan.tp1)) {
@@ -193,8 +193,8 @@ function buildTradePlan(symbol, price, lean, zones, atr4) {
     if (tooFar(plan.tp2)) {
       plan = { ...plan, tp2: isLong ? rng(price + 4 * atr, price + 5 * atr) : rng(price - 5 * atr, price - 4 * atr) };
     }
-    // TP2 必须比 TP1 更远。阻力聚类有时只给出一个区间(或两个区间四舍五入后重合),
-    // 会导致 tp1 与 tp2 完全相同——公开展示时很低级,这里用 ATR 外推补开。
+    // TP2 must sit beyond TP1. Resistance clustering sometimes yields one zone (or two that round to the same),
+    // which would make tp1 == tp2 — embarrassing in public output, so ATR extrapolation separates them here.
     if (Array.isArray(plan.tp1) && Array.isArray(plan.tp2)) {
       const notFurther = isLong ? plan.tp2[1] <= plan.tp1[1] : plan.tp2[0] >= plan.tp1[0];
       if (notFurther) {
@@ -233,24 +233,24 @@ function buildTradePlan(symbol, price, lean, zones, atr4) {
     trailing: `到 TP1 先把止损下移到开单价保本;之后按 4H ATR≈${R(atr)} 跟踪——每收一根 4H 阴线,把止损下移到该根高点上方约 ${R(atr * 0.5)},4H 突破前高即离场` });
 }
 
-// ---------- 方向分 + 置信度 ----------
+// ---------- direction score + confidence ----------
 function scoreAll(d1, h4, h1, fut, newsLean) {
   const tv = (t) => t === 'up' ? 1 : t === 'down' ? -1 : 0;
-  // 结构/趋势 40:日线权重最高
+  // Structure/trend 40: daily carries the most weight
   const struct = (tv(d1.trend) * 0.5 + tv(h4.trend) * 0.3 + tv(h1.trend) * 0.2) * 0.6 + (tv(d1.structure) * 0.5 + tv(h4.structure) * 0.3 + tv(h1.structure) * 0.2) * 0.4;
-  // 动量 15:MACD hist 符号 + RSI 位置(4H 为主)
+  // Momentum 15: MACD hist sign + RSI position (4H-led)
   const mom = ((h4.macd?.hist > 0 ? 1 : h4.macd?.hist < 0 ? -1 : 0) * 0.5 + (h4.rsi14 > 55 ? 1 : h4.rsi14 < 45 ? -1 : 0) * 0.5);
-  // 拥挤度 17:多空比过高+资金费率高=多头拥挤→反向风险(负)
+  // Crowding 17: high long-short ratio + high funding = crowded longs → contrarian risk (negative)
   let crowd = 0; if (fut.ls_ratio != null) { if (fut.ls_ratio > 2 && (fut.funding_now || 0) > 0.0002) crowd = -0.7; else if (fut.ls_ratio < 1 && (fut.funding_now || 0) < 0) crowd = 0.5; else crowd = (fut.ls_chg_24h || 0) > 0 ? -0.2 : 0.2; }
-  // 参与度 18:主动买卖失衡 + OI 配合(价需另判,这里只用买卖失衡+OI方向)
+  // Participation 18: taker imbalance + OI confirmation (price judged separately; here imbalance + OI direction only)
   let part = 0; if (fut.taker_imb_4h != null) part = Math.max(-1, Math.min(1, fut.taker_imb_4h / 20));
-  // 新闻情绪 10
+  // News sentiment 10
   const news = Math.max(-1, Math.min(1, newsLean));
   const W = { struct: 40, mom: 15, crowd: 17, part: 18, news: 10 };
   const raw = struct * W.struct + mom * W.mom + crowd * W.crowd + part * W.part + news * W.news;
   const directionScore = Math.round(raw); // -100~100
   const lean = directionScore > 15 ? '偏多' : directionScore < -15 ? '偏空' : '中性';
-  // 置信度:多周期一致 + 数据完整 + 维度共振
+  // Confidence: multi-timeframe agreement + data completeness + factor resonance
   const trends = [d1.trend, h4.trend, h1.trend];
   const agree = trends.filter((t) => tv(t) === Math.sign(directionScore) && tv(t) !== 0).length;
   const dims = [Math.sign(struct), Math.sign(mom), Math.sign(part), Math.sign(news)].filter((x) => x !== 0);
@@ -268,7 +268,7 @@ function scoreAll(d1, h4, h1, fut, newsLean) {
   return { directionScore, lean, confidence: conf, evidence };
 }
 
-// 新闻净倾向:高分(≥60)条目按 signal 加权,封顶 ±1(对应权重10→最多±10)
+// Net news tilt: high-score (≥60) items weighted by signal, capped at ±1 (weight 10 → at most ±10)
 function newsLeanOf(news) {
   if (!news || !news.length) return 0;
   let s = 0, n = 0;
@@ -276,7 +276,7 @@ function newsLeanOf(news) {
   if (!n) return 0; return Math.max(-1, Math.min(1, s / Math.max(n, 2)));
 }
 
-// ---------- 主入口 ----------
+// ---------- main entry ----------
 async function analyze_market(symbol) {
   const s = sym(symbol);
   const asOf = new Date().toISOString();
@@ -285,7 +285,7 @@ async function analyze_market(symbol) {
     analyzeTF(s, '1D'), analyzeTF(s, '4H'), analyzeTF(s, '1H'),
     futures(s), getCoinNews(s, 8),
   ]);
-  if (tk.status !== 'fulfilled') throw new Error('现货价拿不到,停止分析');
+  if (tk.status !== 'fulfilled') throw new Error('spot price unavailable — analysis halted');
   const t = tk.value.data[0]; const price = +t.last;
   const missing = [];
   const d1 = d1r.status === 'fulfilled' ? d1r.value : (missing.push('daily'), null);
@@ -293,7 +293,7 @@ async function analyze_market(symbol) {
   const h1 = h1r.status === 'fulfilled' ? h1r.value : (missing.push('1h'), null);
   const fut = futr.status === 'fulfilled' ? futr.value : { missing: ['futures'] };
   const news = newsr.status === 'fulfilled' && newsr.value ? newsr.value.news : null;
-  if (!d1 || !h4 || !h1) { // 缺周期→只给低置信度骨架
+  if (!d1 || !h4 || !h1) { // missing timeframe → low-confidence skeleton only
     return { symbol: s, asOf, price, quality: 'low', missing: missing.concat(fut.missing || []), note: '多周期数据不全,置信度低', partial: { d1, h4, h1 } };
   }
   const nLean = newsLeanOf(news);
@@ -324,13 +324,13 @@ async function analyze_market(symbol) {
   };
 }
 
-// ---- ZALIEN #3 专属分析图:真 K 线 + EMA7/25/99 + 我算的支撑/阻力区间 + 现价线(QuickChart 标注)----
+// ---- ZALIEN #3 chart: real candles + EMA7/25/99 + my support/resistance zones + current-price line (QuickChart labels)----
 function emaSeriesA(v, p) { const k = 2 / (p + 1); const o = [v[0]]; for (let i = 1; i < v.length; i++) o.push(v[i] * k + o[i - 1] * (1 - k)); return o; }
 async function buildAnnotatedChart(ms) {
   const s = ms.symbol;
   const d = await j(`${OKX}/api/v5/market/candles?instId=${spotId(s)}&bar=4H&limit=220`);
   const raw = (d.data || []).slice().reverse().filter((c) => c[8] === '1');
-  if (raw.length < 30) throw new Error('K线不足');
+  if (raw.length < 30) throw new Error('not enough candles');
   const k = raw.slice(-60); const closesAll = raw.map((c) => +c[4]); const off = raw.length - k.length;
   const candles = k.map((c) => ({ x: +c[0], o: +c[1], h: +c[2], l: +c[3], c: +c[4] }));
   const smaSeries = (v, p) => v.map((_, i) => i < p - 1 ? null : v.slice(i - p + 1, i + 1).reduce((a, b) => a + b, 0) / p);
@@ -347,7 +347,7 @@ async function buildAnnotatedChart(ms) {
     ann['stopz'] = { type: 'line', yMin: tp.stop[0], yMax: tp.stop[0], borderColor: '#ff5f56', borderWidth: 1.2, borderDash: [3, 3], label: { display: true, content: `止损 ${tp.stop[0]}`, position: 'start', backgroundColor: '#ff5f56', color: '#000', font: { size: 9 } } };
     ann['tp1z'] = { type: 'line', yMin: tp.tp1[1], yMax: tp.tp1[1], borderColor: '#27c93f', borderWidth: 1.2, borderDash: [3, 3], label: { display: true, content: `止盈 ${tp.tp1[1]}`, position: 'end', backgroundColor: '#27c93f', color: '#000', font: { size: 9 } } };
   }
-  // ---- 缠论(笔/中枢/背驰)· 波浪 · 斐波那契 叠加 ----
+  // ---- Chan-theory (strokes/zones/divergence) · Waves · Fibonacci overlay ----
   const hAll = raw.map((c) => +c[2]), lAll = raw.map((c) => +c[3]);
   const sw2 = swings(hAll, lAll, 3);
   let piv = [...sw2.hi.map((x) => ({ i: x.i, p: x.p, t: 'H' })), ...sw2.lo.map((x) => ({ i: x.i, p: x.p, t: 'L' }))].sort((a, b) => a.i - b.i);
@@ -374,7 +374,7 @@ async function buildAnnotatedChart(ms) {
       line(emaS25, 'EMA25', '#f5a623'), line(emaS99, 'EMA99', '#c060ff'), line(ma144S, 'MA144', '#ff5fa2', 1.9),
     ] }, options: { plugins: { legend: { display: true, position: 'top', labels: { color: '#cfd3de', boxWidth: 14, font: { size: 10 }, filter: (it) => it.text !== `${base(s)} 4H` } }, annotation: { annotations: ann }, title: { display: true, text: [`Artemis · ${base(s)}/USDT 4H · ${ms.lean} / 置信${ms.confidence}`, subtitle, legend3], color: '#e8e8e8', font: { size: 12 } } }, scales: { x: { type: 'time', ticks: { color: '#aaa' } }, y: { position: 'right', ticks: { color: '#aaa' } } } } };
   const r = await fetch('https://quickchart.io/chart/create', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chart: cfg, width: 1120, height: 700, backgroundColor: '#0b0e13', version: '4' }) });
-  const jr = await r.json(); if (!jr.url) throw new Error('chart 生成失败');
+  const jr = await r.json(); if (!jr.url) throw new Error('chart generation failed');
   const png = await fetch(jr.url); return Buffer.from(await png.arrayBuffer()).toString('base64');
 }
 

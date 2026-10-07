@@ -1,12 +1,12 @@
 'use strict';
 /**
- * spotGuard.js —— monad小精灵现货总控
+ * spotGuard.js — spot master controller
  *
- * 实现 docs/RISK-MODEL.md 第 4 章开仓检查清单。
- * 相对 perps-legacy/accountGuard.js 的变化：
- *   删除：杠杆铁律、暴跌表、爆仓线（现货无爆仓）
- *   新增：Radar 分数门禁、滑点预检、单币/单创建者持仓上限
- *   保留：资金分区（$500 交易 / $500 储备，净值≤$500 停火）、DayGuard、1% 单笔风险
+ * Implements the pre-entry checklist from docs/RISK-MODEL.md chapter 4.
+ * Changes vs perps-legacy/accountGuard.js:
+ *   Removed: leverage rules, crash table, liquidation line (spot can't liquidate)
+ *   Added: Radar score gate, slippage pre-check, per-token/per-creator position caps
+ *   Kept: capital split ($500 trading / $500 reserve, halt below $500 equity), DayGuard, 1% per-trade risk
  */
 const { sizeForRisk, DayGuard } = require('./exit.js');
 
@@ -14,14 +14,14 @@ class SpotGuard {
   constructor({
     equity = 1000,
     tradingPct = 0.5,
-    maxRiskPct = 0.01,        // 单笔最多亏本金的 1%
-    minRadarScore = 60,       // 开仓最低 Radar 分
-    dangerScore = 35,         // 持仓中跌破此分 → 强制离场
-    freshTokenMinScore = 70,  // 发射 <30min 的新币更严
+    maxRiskPct = 0.01,        // max 1% of equity risked per trade
+    minRadarScore = 60,       // min Radar score to open
+    dangerScore = 35,         // score below this while holding → forced exit
+    freshTokenMinScore = 70,  // stricter for tokens launched <30min ago
     freshTokenSecs = 1800,
-    maxSlippagePct = 0.03,    // 滑点上限 3%
-    maxTokenPct = 0.20,       // 单币 ≤ 预算 20%
-    maxCreatorPct = 0.30,     // 单创建者 ≤ 预算 30%
+    maxSlippagePct = 0.03,    // slippage cap 3%
+    maxTokenPct = 0.20,       // per-token ≤ 20% of budget
+    maxCreatorPct = 0.30,     // per-creator ≤ 30% of budget
     minOrderUsd = 5,
   } = {}) {
     this.equity0 = equity;
@@ -37,7 +37,7 @@ class SpotGuard {
     this.maxTokenPct = maxTokenPct;
     this.maxCreatorPct = maxCreatorPct;
     this.minOrderUsd = minOrderUsd;
-    this.used = 0;                    // 已占用预算
+    this.used = 0;                    // budget already used
     this.positions = new Map();       // tokenAddress -> { usd, creator }
     this.creatorExposure = new Map(); // creator -> usd
     this.dayGuard = new DayGuard(equity);
@@ -45,61 +45,61 @@ class SpotGuard {
   }
 
   /**
-   * 开仓前必调（按 RISK-MODEL.md 第 4 章顺序）。
+   * Must be called before every entry (in RISK-MODEL.md chapter 4 order).
    * @param {object} o
    *   tokenAddress, creator, entryPrice, stopPrice, equityNow,
-   *   radar: { score, level, fatal:boolean, launchedAtSec }（已扫好传进来，保持本模块纯决策）
-   *   slippagePct: quoter 预检出的滑点（小数）
+   *   radar: { score, level, fatal:boolean, launchedAtSec } (pre-scanned; keeps this module pure decision logic)
+   *   slippagePct: pre-checked slippage from the quoter (decimal)
    * @returns {{ allowed:boolean, sizeUsd:number, reason:string }}
    */
   requestOpen({ tokenAddress, creator, entryPrice, stopPrice, equityNow, radar, slippagePct }) {
     const deny = (reason) => ({ allowed: false, sizeUsd: 0, reason });
 
-    // 1. 停火线
+    // 1. Kill switch
     if (this.halted || equityNow <= this.reserveLine) {
       this.halted = true;
-      return deny(`净值 $${equityNow.toFixed(0)} ≤ 储备线 $${this.reserveLine.toFixed(0)}，停火。储备金不动。`);
+      return deny(`equity $${equityNow.toFixed(0)} ≤ reserve line $${this.reserveLine.toFixed(0)} — halted. Reserve untouched.`);
     }
     // 2. DayGuard
-    if (!this.dayGuard.canTrade()) return deny(`DayGuard 熔断：${this.dayGuard.pauseReason}`);
-    // 3. Radar 门禁
-    if (!radar || typeof radar.score !== 'number') return deny('无 Radar 评分，不开仓');
-    if (radar.fatal) return deny(`Radar 致命信号（${radar.level}），不开仓`);
+    if (!this.dayGuard.canTrade()) return deny(`DayGuard tripped: ${this.dayGuard.pauseReason}`);
+    // 3. Radar gate
+    if (!radar || typeof radar.score !== 'number') return deny('no Radar score — no entry');
+    if (radar.fatal) return deny(`Radar fatal signal (${radar.level}) — no entry`);
     const ageSec = radar.launchedAtSec ? (Date.now() / 1000 - radar.launchedAtSec) : Infinity;
     const need = ageSec < this.freshTokenSecs ? this.freshTokenMinScore : this.minRadarScore;
     if (radar.score < need) {
-      return deny(`Radar ${radar.score} 分 < 门禁 ${need} 分${ageSec < this.freshTokenSecs ? '（新币加严）' : ''}，不开仓`);
+      return deny(`Radar ${radar.score} < gate ${need}${ageSec < this.freshTokenSecs ? ' (stricter for fresh tokens)' : ''} — no entry`);
     }
-    // 4/5. 单币 & 创建者上限
+    // 4/5. Per-token & creator caps
     const tokenHeld = this.positions.get(tokenAddress)?.usd || 0;
     const creatorHeld = this.creatorExposure.get(creator || 'unknown') || 0;
-    // 6. 滑点预检
+    // 6. Slippage pre-check
     if (slippagePct != null && slippagePct > this.maxSlippagePct) {
-      return deny(`滑点 ${(slippagePct * 100).toFixed(2)}% > 上限 ${(this.maxSlippagePct * 100).toFixed(0)}%，不追`);
+      return deny(`slippage ${(slippagePct * 100).toFixed(2)}% > cap ${(this.maxSlippagePct * 100).toFixed(0)}% — skip`);
     }
-    // 7. 仓位计算：1% 风险倒推，并受单币/创建者/预算三重上限
+    // 7. Position sizing: backed out from 1% risk, capped by token/creator/budget limits
     const sizeByRisk = sizeForRisk(equityNow, this.maxRiskPct, entryPrice, stopPrice, 1);
     const capToken = this.budget * this.maxTokenPct - tokenHeld;
     const capCreator = this.budget * this.maxCreatorPct - creatorHeld;
     const capBudget = this.budget - this.used;
     const sizeUsd = Math.min(sizeByRisk, capToken, capCreator, capBudget);
-    if (capToken <= 0) return deny(`单币持仓已达上限（预算 20%），不开`);
-    if (capCreator <= 0) return deny(`该创建者持仓已达上限（预算 30%），不开`);
+    if (capToken <= 0) return deny(`per-token cap reached (20% of budget) — no entry`);
+    if (capCreator <= 0) return deny(`per-creator cap reached (30% of budget) — no entry`);
     if (sizeUsd < this.minOrderUsd) {
-      return deny(`批单 $${sizeUsd.toFixed(2)} < 最小 $${this.minOrderUsd}，不开`);
+      return deny(`order $${sizeUsd.toFixed(2)} < min $${this.minOrderUsd} — no entry`);
     }
     return {
       allowed: true,
       sizeUsd,
-      reason: `开仓通过｜风险仓位$${sizeByRisk.toFixed(2)} 单币剩$${capToken.toFixed(0)} 创建者剩$${capCreator.toFixed(0)} 预算剩$${capBudget.toFixed(0)} → 批 $${sizeUsd.toFixed(2)}｜Radar ${radar.score}分`,
+      reason: `ENTRY OK | risk-sized $${sizeByRisk.toFixed(2)} token-room $${capToken.toFixed(0)} creator-room $${capCreator.toFixed(0)} budget-room $${capBudget.toFixed(0)} → 批 $${sizeUsd.toFixed(2)}｜Radar ${radar.score}分`,
     };
   }
 
-  /** 持仓中 Radar 重扫：跌破 dangerScore → 强制离场信号 */
+  /** Radar rescan on open positions: score below dangerScore → forced exit signal */
   radarWatch(tokenAddress, radar) {
     if (!this.positions.has(tokenAddress)) return { dump: false };
     if (radar && (radar.fatal || radar.score < this.dangerScore)) {
-      return { dump: true, reason: `Radar 跌破 ${this.dangerScore} 分（现 ${radar.score}），强制离场` };
+      return { dump: true, reason: `Radar broke below ${this.dangerScore} (now ${radar.score}) — forced exit` };
     }
     return { dump: false };
   }

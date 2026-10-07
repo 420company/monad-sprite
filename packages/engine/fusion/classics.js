@@ -1,23 +1,23 @@
 /**
- * classics.js —— 经典理论模块（zalien 缺的几块，现场新写的融合代码）
+ * classics.js — classical TA module (gaps in zalien, written fresh for the fusion)
  *
- * 包含：
- *  1. 量价配合 (Volume-Price)：价涨量增/价涨量缩/价跌量增/放量突破
- *  2. 清算风险代理 (Liquidation Risk Proxy)：无热力图数据源时，用 OI+资金费率+多空比估算
- *  3. 威科夫 Spring / Upthrust：弹簧洗盘 / 上冲回落（聪明钱行为）
- *  4. 缠论简化版：中枢（线段重叠区间）+ 背驰（MACD hist 收缩）
+ * Covers:
+ *  1. Volume-Price: price up + volume up / price up + volume down / price down + volume up / volume breakout
+ *  2. Liquidation Risk Proxy: without heatmap data, estimate from OI + funding rate + long/short ratio
+ *  3. Wyckoff Spring / Upthrust: spring shakeout / upthrust reversal (smart-money behavior)
+ *  4. Simplified Chan theory: consolidation zone (overlapping segments) + divergence (MACD hist contraction)
  *
- * 不做：完整波浪理论（主观性太强，算法数浪≈噪音，投入产出比差）
- * 已有（别重复造）：斐波那契 0.382/0.5/0.618/0.786 在 analyze.js buildZones 里
+ * Skipped: full Elliott Wave (too subjective — algorithmic wave counting ≈ noise, poor ROI)
+ * Already exists (don't rebuild): Fibonacci 0.382/0.5/0.618/0.786 lives in analyze.js buildZones
  */
 'use strict';
 
-// ---------- 小工具 ----------
+// ---------- helpers ----------
 const last = (a) => a[a.length - 1];
 const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
-/** 分型摆动点（照抄 analyze.js swings 逻辑，w=2） */
+/** Fractal swing points (mirrors analyze.js swings logic, w=2) */
 function swings(h, l, w = 2) {
   const hi = [], lo = [];
   for (let i = w; i < h.length - w; i++) {
@@ -41,7 +41,7 @@ function macdHist(c) {
   return (dif[dif.length - 1] - dea[dea.length - 1]) * 2;
 }
 
-// ---------- 1. 量价配合 ----------
+// ---------- 1. Volume-Price ----------
 function volumePrice(c, v) {
   if (!c || c.length < 25 || !v || v.length < 25) return { score: 0, label: '数据不足', volRatio: null, pxChgPct: null };
   const pxChg = (last(c) - c[c.length - 2]) / c[c.length - 2];
@@ -60,15 +60,15 @@ function volumePrice(c, v) {
   return { score: clamp(score, -2, 2), label: tags.join('+') || '量价中性', volRatio: +volRatio.toFixed(2), pxChgPct: +pxChgPct.toFixed(2) };
 }
 
-// ---------- 2. 清算风险代理 ----------
-// 真热力图要 Coinglass 付费数据。这里用 OI 变化 + 资金费率 + 多空比估算拥挤方向。
-// 逻辑：多头越拥挤 → 下方多头清算单越多 → 跌破时加速
+// ---------- 2. Liquidation Risk Proxy ----------
+// A real heatmap needs paid Coinglass data. Here we estimate crowded direction from OI change + funding + long/short ratio.
+// Logic: the more crowded longs are → the more long liquidations below → faster breakdown
 function liquidationRisk(fut = {}) {
   const t = (x) => Math.tanh(x || 0);
   const funding = fut.funding_now || 0;
   const oiChg = fut.oi_chg_24h || 0;
   const ls = (fut.ls_ratio || 1) - 1;
-  // 多头清算风险：资金费率高 + OI 增 + 多头多
+  // Long liquidation risk: high funding + rising OI + long-heavy
   const longRisk = clamp(50 + 30 * t(funding / 0.0005) + 12 * t(oiChg / 40) + 8 * t(ls / 0.8), 0, 100);
   const shortRisk = clamp(50 - 30 * t(funding / 0.0005) - 12 * t(oiChg / 40) - 8 * t(ls / 0.8), 0, 100);
   const note = longRisk > 70 ? '多头拥挤，下方清算多，跌破加速风险高'
@@ -76,7 +76,7 @@ function liquidationRisk(fut = {}) {
   return { longLiqRisk: Math.round(longRisk), shortLiqRisk: Math.round(shortRisk), note, proxy: true };
 }
 
-// ---------- 3. 威科夫 Spring / Upthrust ----------
+// ---------- 3. Wyckoff Spring / Upthrust ----------
 function wyckoff(h, l, c, v) {
   if (!h || h.length < 30) return { signal: null, strength: 0, note: '数据不足' };
   const i = c.length - 1;
@@ -84,26 +84,26 @@ function wyckoff(h, l, c, v) {
   const recentLows = l.slice(-12, -2), recentHighs = h.slice(-12, -2);
   const supFloor = Math.min(...recentLows), resCeil = Math.max(...recentHighs);
   const volRatio = last(v) / avg(v.slice(-21, -1));
-  // Spring：下影线击穿近期低点但收回 + 放量
+  // Spring: lower wick pierces recent low but recovers + volume expansion
   const spring = l[i] < supFloor && c[i] > supFloor && volRatio > 1.2;
-  // Upthrust：上影线突破近期高点但收回 + 放量
+  // Upthrust: upper wick breaks recent high but recovers + volume expansion
   const upthrust = h[i] > resCeil && c[i] < resCeil && volRatio > 1.2;
   if (spring) return { signal: 'spring', strength: clamp(volRatio / 2, 0.3, 1), note: `Spring 弹簧洗盘（${supFloor.toFixed(2)} 下方吸筹），偏多` };
   if (upthrust) return { signal: 'upthrust', strength: clamp(volRatio / 2, 0.3, 1), note: `Upthrust 上冲回落（${resCeil.toFixed(2)} 上方派发），偏空` };
   return { signal: null, strength: 0, note: '无威科夫信号' };
 }
 
-// ---------- 4. 缠论简化版：中枢 + 背驰 ----------
-// 中枢 = 连续三段走势重叠的价格区间（简化：用 swing 高低点构造线段）
-// 背驰 = 创新高/新低但 MACD hist 收缩
+// ---------- 4. Simplified Chan theory: zone + divergence ----------
+// Zone = price range where three consecutive legs overlap (simplified: built from swing highs/lows)
+// Divergence = new high/low while MACD histogram contracts
 function chanLun(h, l, c) {
   if (!c || c.length < 60) return { zhongshu: null, beichi: null, note: '数据不足' };
   const sw = swings(h, l, 2);
-  // 取最近 6 个 swing 点构造线段方向
+  // Take the latest 6 swing points to build leg direction
   const pts = [];
   const all = [...sw.hi.map((x) => ({ ...x, t: 'h' })), ...sw.lo.map((x) => ({ ...x, t: 'l' }))]
     .sort((a, b) => a.i - b.i).slice(-8);
-  // 中枢：找最近 3 个 swing 区间重叠部分
+  // Zone: find the overlap of the latest 3 swing ranges
   let zhongshu = null;
   if (all.length >= 6) {
     const segs = [];
@@ -117,7 +117,7 @@ function chanLun(h, l, c) {
       if (hi > lo) zhongshu = { low: +lo.toFixed(2), high: +hi.toFixed(2) };
     }
   }
-  // 背驰：最近 swing 高创新高，但 MACD hist 比上一个 swing 高时收缩
+  // Divergence: latest swing high makes a new high, but MACD hist contracts vs the previous swing high
   let beichi = null;
   const his = sw.hi.slice(-2);
   if (his.length === 2 && his[1].p > his[0].p && c.length > his[1].i + 5) {
@@ -139,13 +139,13 @@ function chanLun(h, l, c) {
   };
 }
 
-/** 一键全算：输入 K 线数组 + futures 对象 */
+/** Compute everything at once: pass candle array + futures object */
 function analyzeClassics({ o, h, l, c, v, futures }) {
   const vp = volumePrice(c, v);
   const liq = liquidationRisk(futures || {});
   const wy = wyckoff(h, l, c, v);
   const ch = chanLun(h, l, c);
-  // 综合经典分：-100~100，可并入 direction_score 或单独展示
+  // Combined classical score: -100~100, can merge into direction_score or stand alone
   let score = vp.score * 20;
   if (wy.signal === 'spring') score += 25 * wy.strength;
   if (wy.signal === 'upthrust') score -= 25 * wy.strength;

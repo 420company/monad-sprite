@@ -1,5 +1,5 @@
-// Monad testnet bonding curve 代币详情（2026-10-07 黑客松新增）
-// 价格走链上 getPrice()，不用 DexScreener（curve 币无 DEX 交易对）；买卖直调 Launcher 合约
+// Monad testnet bonding-curve token detail (added 2026-10-07 for hackathon)
+// Price comes from on-chain getPrice() — no DexScreener (curve tokens have no DEX pairs); buys/sells call the Launcher directly
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ArrowLeft, Copy, ExternalLink, RefreshCw } from 'lucide-react'
@@ -51,7 +51,7 @@ export default function MonadToken() {
       setInfo(i)
       setPrice(p)
     } catch {
-      /* 保持旧值 */
+      /* keep previous values */
     } finally {
       setLoading(false)
     }
@@ -66,7 +66,7 @@ export default function MonadToken() {
     return () => clearInterval(timer)
   }, [refresh])
 
-  // 买入报价
+  // Buy quote (debounced)
   useEffect(() => {
     const v = parseFloat(buyAmt)
     if (!v || v <= 0 || !address) { setBuyQuote(null); return }
@@ -76,7 +76,7 @@ export default function MonadToken() {
     return () => clearTimeout(t)
   }, [buyAmt, address])
 
-  // 卖出报价
+  // Sell quote (debounced)
   useEffect(() => {
     const v = parseFloat(sellAmt)
     if (!v || v <= 0 || !address) { setSellQuote(null); return }
@@ -257,7 +257,7 @@ export default function MonadToken() {
   )
 }
 
-/** 路由分流：monad-testnet 走 bonding curve 视图，其余走原 Token 页 */
+/** Route split: monad-testnet renders the bonding-curve view, everything else falls back to the original Token page */
 export function TokenRouter({ fallback }: { fallback: React.ReactNode }) {
   const { chain } = useParams()
   if (chain === 'monad-testnet') return <MonadToken />

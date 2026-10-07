@@ -152,8 +152,8 @@ export const CHAINS: ChainInfo[] = [
     nativeLogo: `${TW}/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png`,
   }),
   evmChain(monad, 'monad', 'MON', 'Monad', 'mon', [], 'monad', { nativeLogo: 'https://static.debank.com/image/monad_token/logo_url/monad/9df1611d238781f78045fba9101359a3.png' }),
-  // Monad testnet（2026-10-07 黑客松新增）：key 用 'monad-testnet' 避免与主网 'monad' 冲突；
-  // dexKey 共用 'monad'（DexScreener/GeckoTerminal 标识）；不进 MAIN_CHAIN_IDS（测试网不参与余额扫描）。
+  // Monad testnet (added 2026-10-07 for hackathon): key 'monad-testnet' avoids clash with mainnet 'monad';
+  // dexKey shares 'monad' (DexScreener/GeckoTerminal id); excluded from MAIN_CHAIN_IDS (testnet skips balance scan).
   evmChain(monadTestnet, 'monad-testnet', 'MON', 'Testnet MON', 'mon', [], 'monad', {
     logo: 'https://static.debank.com/image/monad_token/logo_url/monad/9df1611d238781f78045fba9101359a3.png',
     nativeLogo: 'https://static.debank.com/image/monad_token/logo_url/monad/9df1611d238781f78045fba9101359a3.png',

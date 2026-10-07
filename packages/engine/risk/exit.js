@@ -1,35 +1,35 @@
 /**
- * exitEngineV2.js —— 退出引擎 v2（真钱版）
+ * exitEngineV2.js — exit engine v2 (real-money edition)
  *
- * 相对 v1 的升级（v1 是固定 +2%/+4%/-2%，在 meme 币上不是太紧就是太松）：
- *  1. ATR 倍数代替固定百分比：止损 -1×ATR，TP1 +1.5×ATR，TP2 +3×ATR —— 波动大自动放宽
- *  2. 结构止盈止损：优先用 zalien 现成的支撑阻力区间（buildZones），而不是拍脑袋的百分比
- *  3. Chandelier 追踪：最高点 - 2.5×ATR，比 v1 的简单追踪锁住更多利润
- *  4. 保本移动：TP1 成交后，止损移到开单价 + 手续费（这单再也亏不了钱）
- *  5. 信号反转离场：direction_score 强反转 → 直接离场，不等止损被扫
- *  6. 固定风险仓位 sizeForRisk：每笔只冒本金的 1%，仓位按止损距离倒推
- *  7. DayGuard 每日熔断：单日 -3% 停手，连亏 3 笔暂停 —— 保命装置
+ * Upgrades over v1 (fixed +2%/+4%/-2% was too tight or too loose for meme coins):
+ *  1. ATR multiples instead of fixed %: stop -1xATR, TP1 +1.5xATR, TP2 +3xATR — widens automatically in volatility
+ *  2. Structural TP/SL: prefers zalien's support/resistance zones (buildZones) over guessed percentages
+ *  3. Chandelier trailing: peak - 2.5xATR locks in more profit than v1's simple trail
+ *  4. Breakeven move: after TP1 fills, stop moves to entry + fees (trade can't lose anymore)
+ *  5. Signal-reversal exit: strong direction_score reversal → exit immediately, don't wait for the stop
+ *  6. Fixed-risk sizing (sizeForRisk): risk 1% of equity per trade, size backed out from stop distance
+ *  7. DayGuard daily circuit breaker: -3% day stops trading, 3 consecutive losses pause — the survival device
  */
 'use strict';
 
-// ---------- 开仓时生成退出计划 ----------
+// ---------- build exit plan at entry ----------
 function planExit({ side, entryPrice, atr, zones, directionScore, now = Date.now() }) {
   const dir = side === 'long' ? 1 : -1;
   const A = atr && atr > 0 ? atr : entryPrice * 0.01;
 
-  // ATR 基准位
+  // ATR reference levels
   const atrStop = entryPrice - dir * 1.0 * A;
   const atrTp1 = entryPrice + dir * 1.5 * A;
   const atrTp2 = entryPrice + dir * 3.0 * A;
 
-  // 结构位（zalien support_resistance）：支撑做止损锚，阻力做止盈锚
+  // Structural levels (zalien support_resistance): support anchors the stop, resistance anchors profit targets
   let stop = atrStop, tp1 = atrTp1, tp2 = atrTp2;
   const used = [];
   try {
     const sup = (zones?.support || []).filter((z) => (side === 'long' ? z.high < entryPrice : z.low > entryPrice));
     const res = (zones?.resistance || []).filter((z) => (side === 'long' ? z.low > entryPrice : z.high < entryPrice));
     if (side === 'long') {
-      // 止损：最近支撑下沿，但不放宽超 2×ATR、不收紧超 0.5×ATR
+      // Stop: below nearest support, but never wider than 2xATR or tighter than 0.5xATR
       if (sup[0]) {
         const sStop = sup[0].low - 0.3 * A;
         if (sStop < entryPrice && entryPrice - sStop <= 2 * A && entryPrice - sStop >= 0.5 * A) { stop = sStop; used.push('支撑止损'); }
@@ -37,7 +37,7 @@ function planExit({ side, entryPrice, atr, zones, directionScore, now = Date.now
       if (res[0] && res[0].low - entryPrice <= 8 * A && res[0].low > entryPrice) { tp1 = res[0].low; used.push('阻力TP1'); }
       if (res[1] && res[1].low - entryPrice <= 8 * A && res[1].low > tp1) { tp2 = res[1].low; used.push('阻力TP2'); }
     } else {
-      if (sup[0]) { // 做空时下方支撑是止盈目标
+      if (sup[0]) { // for shorts, support below is the TP target
         if (entryPrice - sup[0].high <= 8 * A && sup[0].high < entryPrice) { tp1 = sup[0].high; used.push('支撑TP1'); }
       }
       const res0 = (zones?.resistance || []).filter((z) => z.low > entryPrice)[0];
@@ -46,54 +46,54 @@ function planExit({ side, entryPrice, atr, zones, directionScore, now = Date.now
         if (sStop > entryPrice && sStop - entryPrice <= 2 * A && sStop - entryPrice >= 0.5 * A) { stop = sStop; used.push('阻力止损'); }
       }
     }
-  } catch { /* 结构位缺失就用 ATR 基准 */ }
+  } catch { /* fall back to ATR levels when structural levels are missing */ }
 
   return {
     side, entryPrice, atr: A, stopLoss: stop, tp1, tp2,
     tp1Done: false, breakevenDone: false,
-    extremeHigh: entryPrice, extremeLow: entryPrice, // chandelier 用
+    extremeHigh: entryPrice, extremeLow: entryPrice, // for chandelier
     trailMult: 2.5, entryScore: directionScore ?? null,
-    openedAt: now, usedLevels: used.length ? used : ['ATR基准'],
+    openedAt: now, usedLevels: used.length ? used : ['ATR-based'],
   };
 }
 
-// ---------- 每个 tick 检查 ----------
+// ---------- per-tick checks ----------
 function checkExitV2(p, tick, now = Date.now()) {
   const { price, high, low, directionScore } = tick;
   const dir = p.side === 'long' ? 1 : -1;
   const pnlPct = ((price - p.entryPrice) / p.entryPrice) * dir;
 
-  // 7. 硬止损（ATR 倍数）：-1×ATR 无条件砍
-  if (pnlPct <= -(p.atr / p.entryPrice)) return { type: 'stop_out', reason: `硬止损 -1×ATR(${(p.atr / p.entryPrice * 100).toFixed(2)}%)` };
+  // 7. Hard stop (ATR multiple): -1xATR cuts unconditionally
+  if (pnlPct <= -(p.atr / p.entryPrice)) return { type: 'stop_out', reason: `hard stop -1xATR(${(p.atr / p.entryPrice * 100).toFixed(2)}%)` };
 
-  // 5. 信号反转离场：当初看多(+分)开仓，现在分数强反转 → 不等止损
+  // 5. Signal-reversal exit: entered long on positive score, now strongly reversed → don't wait for the stop
   if (p.entryScore != null && directionScore != null) {
     const wasLong = p.entryScore > 15, wasShort = p.entryScore < -15;
     const nowShort = directionScore < -25, nowLong = directionScore > 25;
     if ((wasLong && nowShort) || (wasShort && nowLong)) {
-      return { type: 'stop_out', reason: `信号反转离场（${p.entryScore}→${directionScore}）` };
+      return { type: 'stop_out', reason: `signal reversal exit (${p.entryScore}→${directionScore})` };
     }
   }
 
-  // 时间止损：4H 无方向（|pnl| < 0.5×ATR）→ 平
+  // Time stop: no direction for 4H (|pnl| < 0.5xATR) → flatten
   if (now - p.openedAt > 4 * 3600 * 1000 && Math.abs(pnlPct) < 0.5 * (p.atr / p.entryPrice)) {
-    return { type: 'stop_out', reason: '时间止损：4H 无方向' };
+    return { type: 'stop_out', reason: 'time stop: no direction for 4H' };
   }
 
-  // 分级止盈（结构位 / ATR 倍数位）
+  // Scaled profit-taking (structural / ATR-multiple levels)
   if (!p.tp1Done && dir * (price - p.tp1) >= 0) return { type: 'take_profit_1', closePct: 50 };
   if (p.tp1Done && dir * (price - p.tp2) >= 0) return { type: 'take_profit_2', closePct: 100 };
 
-  // 3+4. Chandelier 追踪 + TP1 后保本
+  // 3+4. Chandelier trailing + breakeven after TP1
   const hh = Math.max(p.extremeHigh, high ?? price);
   const ll = Math.min(p.extremeLow, low ?? price);
   let newStop = p.stopLoss, note = null;
   if (p.side === 'long') {
     const chand = hh - p.trailMult * p.atr;
     if (chand > newStop) { newStop = chand; note = 'Chandelier'; }
-    if (p.tp1Done && !p.breakevenDone) { // 保本：移到开单价上方一点（cover 手续费）
+    if (p.tp1Done && !p.breakevenDone) { // breakeven: move slightly above entry (cover fees)
       const be = p.entryPrice * 1.0005;
-      if (be > newStop) { newStop = be; note = '保本移动'; }
+      if (be > newStop) { newStop = be; note = 'breakeven move'; }
     }
   } else {
     const chand = ll + p.trailMult * p.atr;
@@ -104,17 +104,17 @@ function checkExitV2(p, tick, now = Date.now()) {
     }
   }
   const upd = { extremeHigh: hh, extremeLow: ll };
-  if (note === '保本移动') upd.breakevenDone = true;
+  if (note === 'breakeven move') upd.breakevenDone = true;
   if (newStop !== p.stopLoss) return { type: 'hold', newStopLoss: newStop, update: upd, note };
 
-  // 跌破止损线
+  // Stop line broken
   const hitStop = p.side === 'long' ? price <= p.stopLoss : price >= p.stopLoss;
   if (hitStop) return { type: 'stop_out', reason: '追踪止损触发' };
 
   return { type: 'hold', update: upd };
 }
 
-// ---------- 执行动作（与 v1 同口径） ----------
+// ---------- actions (same semantics as v1) ----------
 function applyExitV2(state, action, price) {
   const p = state.position;
   if (!p) return null;
@@ -146,8 +146,8 @@ function applyExitV2(state, action, price) {
   return { note: '持有' };
 }
 
-// ---------- 6. 固定风险仓位：每笔只冒 riskPct 本金 ----------
-// 止损宽 → 仓位小；止损窄 → 仓位大；每笔亏的钱一样多。另设单笔上限防穿仓。
+// ---------- 6. Fixed-risk sizing: risk riskPct of equity per trade ----------
+// Wide stop → small size; tight stop → large size; same dollar loss per trade. Per-trade cap prevents blowups.
 function sizeForRisk(equity, riskPct, entryPrice, stopPrice, maxPosPct = 0.3) {
   const stopDistPct = Math.abs(entryPrice - stopPrice) / entryPrice;
   if (!stopDistPct || !isFinite(stopDistPct)) return 0;
@@ -156,7 +156,7 @@ function sizeForRisk(equity, riskPct, entryPrice, stopPrice, maxPosPct = 0.3) {
   return Math.min(byRisk, equity * maxPosPct);
 }
 
-// ---------- 7. DayGuard 每日熔断 ----------
+// ---------- 7. DayGuard daily circuit breaker ----------
 class DayGuard {
   constructor(equity, maxDayLossPct = 0.03, maxConsecLoss = 3) {
     this.startEquity = equity; this.maxDayLossPct = maxDayLossPct;

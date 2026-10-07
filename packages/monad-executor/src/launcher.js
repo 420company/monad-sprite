@@ -1,10 +1,10 @@
 'use strict';
 /**
- * launcher.js —— MemeLauncher 合约读写封装（只读走 publicClient，写走 walletClient）
+ * launcher.js — MemeLauncher contract read/write wrapper (reads via publicClient, writes via walletClient)
  *
- * 关键细节（已核实）：
- *  - sell() 无需预先 approve：MemeToken.burnFrom 只校验 onlyLauncher
- *  - buy() 的 dust refund 合约自动处理
+ * Verified details:
+ *  - sell() needs no pre-approve: MemeToken.burnFrom only checks onlyLauncher
+ *  - buy() dust refunds are handled by the contract automatically
  */
 const { formatEther, parseEther } = require('viem');
 const { publicClient, walletClient, LAUNCHER_ADDRESS } = require('./chain');
@@ -13,7 +13,7 @@ const tokenAbi = require('./tokenAbi.json');
 
 const L = () => LAUNCHER_ADDRESS;
 
-// ---------- 读 ----------
+// ---------- reads ----------
 async function getTokenCount(chainId = 10143) {
   return publicClient(chainId).readContract({ address: L(), abi: launcherAbi, functionName: 'tokenCount' });
 }
@@ -60,7 +60,7 @@ async function tokenBalance(token, holder, chainId = 10143) {
   });
 }
 
-// ---------- 写（仅 live） ----------
+// ---------- writes (live only) ----------
 async function buyTx(token, monInWei, chainId = 10143) {
   const { client } = walletClient(chainId);
   const hash = await client.writeContract({

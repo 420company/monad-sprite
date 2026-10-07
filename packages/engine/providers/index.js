@@ -1,31 +1,31 @@
 'use strict';
 /**
- * providers/index.js —— SignalProvider 接口（果蝇大脑/任意信号源的接入点）
+ * providers/index.js — SignalProvider interface (plug-in point for the fly brain / any signal source)
  *
- * 接口约定：
+ * Interface contract:
  *   {
- *     name: string,                       // 如 'stonkfly' / 'mock-fly'
- *     getSignal(symbol) => Promise<{      // symbol 如 'BTCUSDT' 或代币地址
+ *     name: string,                       // e.g. 'stonkfly' / 'mock-fly'
+ *     getSignal(symbol) => Promise<{      // symbol e.g. 'BTCUSDT' or token address
  *       direction: 'long' | 'short' | 'flat',
  *       strength: number,                 // 0~1
- *       confidence?: number,              // 0~1，可选
- *       timestamp?: number,               // ms，可选
+ *       confidence?: number,              // 0-1, optional
+ *       timestamp?: number,               // ms, optional
  *       source: string,
  *     }>
  *   }
  *
- * 真实果蝇（aster.py）在作者服务器上运行，未开源。本仓库内带 mock 实现，
- * 文档 docs/FLY-BRAIN.md 说明私有 aster.py 如何实现该接口接入。
+ * The real fly (aster.py) runs on the author's server, not open-sourced. This repo ships a mock,
+ * and docs/FLY-BRAIN.md explains how the private aster.py implements this interface.
  */
 
-/** mock 实现：测试/演示用，真实接入时替换 */
+/** Mock implementation: for tests/demos, replaced by the real integration */
 function mockFlyProvider(direction = 'long', strength = 0.7) {
   return {
     name: 'mock-fly',
     async getSignal(symbol) {
       return {
         direction, strength,
-        source: 'mock-fly（真实果蝇接入时替换为 aster.py 输出）',
+        source: 'mock-fly (replaced by aster.py output on real integration)',
         timestamp: Date.now(), symbol,
       };
     },
@@ -33,8 +33,8 @@ function mockFlyProvider(direction = 'long', strength = 0.7) {
 }
 
 /**
- * 把 provider 信号 + zalien 标准信号融合成决策（fusion.js 的薄封装，
- * 保持原有 fuse() 语义，输入改为 provider）。
+ * Merges provider signal + zalien standard signal into a decision (thin wrapper over fusion.js,
+ * preserving fuse() semantics with provider-based input).
  */
 async function fusedDecision(provider, zalienSignal, entryPrice) {
   const { fuse } = require('../fusion/fusion');

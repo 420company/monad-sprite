@@ -1,44 +1,44 @@
 'use strict';
 /**
- * fly-reward/reward.js —— reward.py 的 JS 翻写（公式保持一致）
+ * fly-reward/reward.js — JS port of reward.py (formulas kept identical)
  *
- * Python 原文件不动（那是给用户真机 aster.py 用的）。
- * 这份给 Node 测试框架 / 融合系统调用。
+ * The Python original is untouched (it's for the user's live aster.py).
+ * This copy serves the Node test harness / fusion system.
  *
- * 生物学对应：
- *   觅食成功 → 多巴胺神经元(DAN)放电 → 蘑菇体突触加强 → 下次还走这条路
- *   交易盈利 → dopamine > 0.5        → 决策通路加强
- *   交易亏损 → dopamine < 0.5        → 决策通路削弱
+ * Biology mapping:
+ *   Foraging success → dopamine neuron (DAN) firing → mushroom-body synapses strengthen → repeat next time
+ *   Trading profit  → dopamine > 0.5 → decision pathway strengthens
+ *   Trading loss    → dopamine < 0.5 → decision pathway weakens
  *
- * 作者注：不承诺盈利。这让果蝇"能学习"，不保证"学到真规律"。
+ * Author note: no profit promised. This makes the fly "able to learn", not guaranteed to "learn real patterns".
  */
 
 class FlyReward {
   constructor(baselineWindow = 20, steepness = 3.0) {
-    // baseline: 最近 N 笔的平均风险调整收益，超预期才算奖赏
-    // 防止果蝇对"随机盈利"上瘾（比如牛市里闭眼买都赚）
+    // baseline: average risk-adjusted return of last N trades — only beating expectations counts as reward
+    // Prevents the fly getting hooked on "random profits" (e.g. everything wins in a bull market)
     this.baselineWindow = baselineWindow;
     this.steepness = steepness;
-    this._history = []; // 存每笔的风险调整收益 r
+    this._history = []; // per-trade risk-adjusted return r
   }
 
   /**
-   * 每笔交易结束（平仓）时调一次
-   * @param {number} pnlPct       已实现盈亏，如 0.023 = +2.3%
-   * @param {number} atrPct       当时市场的 ATR%（波动率），如 0.015
-   * @param {number} holdingHours 持仓小时数
-   * @returns {number} dopamine ∈ (0,1)：>0.5 快感，<0.5 痛苦，=0.5 无感
+   * Called once per closed trade
+   * @param {number} pnlPct       Realized P&L, e.g. 0.023 = +2.3%
+   * @param {number} atrPct       Market ATR% (volatility) at the time, e.g. 0.015
+   * @param {number} holdingHours Holding time in hours
+   * @returns {number} dopamine in (0,1): >0.5 pleasure, <0.5 pain, =0.5 neutral
    */
   tradeFeedback(pnlPct, atrPct, holdingHours = 1.0) {
     atrPct = Math.max(atrPct, 1e-4);
 
-    // 1) 风险调整：赚 2% 在 ATR 1% 的市场里，比在 ATR 5% 的市场里更值得奖励
-    const r = pnlPct / atrPct; // "赚了几个 ATR"
+    // 1) Risk adjustment: +2% in a 1% ATR market deserves more reward than +2% in a 5% ATR market
+    const r = pnlPct / atrPct; // "how many ATRs earned"
 
-    // 2) 时间衰减：1 小时赚 2% > 拿 4 天赚 2%（资金效率）
+    // 2) Time decay: +2% in 1 hour > +2% over 4 days (capital efficiency)
     const timeFactor = 1.0 / Math.sqrt(Math.max(holdingHours, 0.25));
 
-    // 3) 超预期：减去基线，只有跑赢自己过去平均水平才算快感
+    // 3) Beat expectations: subtract the baseline — only outperforming your own average counts as pleasure
     const hist = this._history.slice(-this.baselineWindow);
     const baseline = hist.length ? hist.reduce((a, b) => a + b, 0) / hist.length : 0;
     const edge = r * timeFactor - baseline;
@@ -51,24 +51,24 @@ class FlyReward {
   }
 
   /**
-   * 持仓中的连续弱信号（"气味渐浓"），权重只有平仓信号的 1/10。
-   * 别让果蝇持仓时完全没感觉。
+   * Continuous weak signal while holding ("scent getting stronger"), weighted 1/10 of close signals.
+   * Keeps the fly feeling something while holding.
    */
   tickFeedback(unrealizedPct, atrPct) {
     atrPct = Math.max(atrPct, 1e-4);
     const r = unrealizedPct / atrPct;
-    return 0.5 + 0.05 * Math.tanh(r); // 0.45 ~ 0.55 之间轻推
+    return 0.5 + 0.05 * Math.tanh(r); // gentle nudge within 0.45–0.55
   }
 
   /**
-   * 可塑性规则：替换原来无奖赏的 Δw
-   * @param {number} pre      突触前神经元在决策时刻的激活值 (0~1)
-   * @param {number} post     突触后神经元在决策时刻的激活值 (0~1)
-   * @param {number} dopamine 上面算出的奖赏信号
-   * @param {number} lr       学习率
-   * 原来可能是: w += lr * pre * post            （无奖赏，瞎加强）
-   * 现在换成:   w += lr * (dopamine - 0.5) * 2 * pre * post
-   *             快感→加强，痛苦→削弱，无感→不动
+   * Plasticity rule: replaces the old reward-free Δw
+   * @param {number} pre      Presynaptic neuron activation at decision time (0-1)
+   * @param {number} post     Postsynaptic neuron activation at decision time (0-1)
+   * @param {number} dopamine Reward signal computed above
+   * @param {number} lr       Learning rate
+   * Old (maybe): w += lr * pre * post            (no reward, blind strengthening)
+   * Now:         w += lr * (dopamine - 0.5) * 2 * pre * post
+   *             pleasure→strengthen, pain→weaken, neutral→unchanged
    */
   static plasticity(pre, post, dopamine, lr = 0.01) {
     return lr * (dopamine - 0.5) * 2.0 * pre * post;
@@ -76,37 +76,37 @@ class FlyReward {
 }
 
 /**
- * SatiationTP —— "兴奋→平仓"回路（饱足止盈）
+ * SatiationTP — the "excitement→exit" circuit (satiety take-profit)
  *
- * 解决的问题：多巴胺的兴奋只进了学习回路，持仓中的果蝇越涨越兴奋却永远不卖。
- * 生物学对应：动物吃饱了就停嘴 —— 边际效用递减，满足度满了就"落袋"。
+ * Problem solved: dopamine excitement only fed the learning circuit — a holding fly got more excited as price rose but never sold.
+ * Biology mapping: animals stop eating when full — diminishing marginal utility; when satiation fills up, "bank it".
  *
- * 两条触发路径：
- *  快路径：单 tick 兴奋度 ≥ 0.8（仓位盈利约 +25%）→ 立刻止盈一半
- *  慢路径：满足度累积满 5.0（小火慢炖的盈利也会攒满）→ 止盈一半，满足度回落到 1.0
+ * Two trigger paths:
+ *  Fast path: single-tick excitement ≥ 0.8 (position up ~+25%) → take profit on half immediately
+ *  Slow path: accumulated satiation reaches 5.0 (slow-burn profits fill it too) → take profit on half, satiation resets to 1.0
  */
 class SatiationTP {
   constructor({ excitementScale = 0.25, fastThreshold = 0.8, slowThreshold = 5.0 } = {}) {
-    this.excitementScale = excitementScale; // 仓位盈利多少算"很兴奋"，默认 25%
+    this.excitementScale = excitementScale; // position P&L that counts as "very excited", default 25%
     this.fastThreshold = fastThreshold;
     this.slowThreshold = slowThreshold;
     this.satisfaction = 0;
   }
 
-  /** 兴奋度：基于仓位盈亏（果蝇实际感受到的），0~1 */
+  /** Excitement: based on position P&L (what the fly actually feels), 0–1 */
   excitement(positionPnlPct) {
     return Math.tanh(Math.max(positionPnlPct, 0) / this.excitementScale);
   }
 
   /**
-   * 每个 tick 调一次
-   * @param {number} positionPnlPct 仓位当前浮盈，如 0.30 = +30%
+   * Called every tick
+   * @param {number} positionPnlPct Current unrealized position P&L, e.g. 0.30 = +30%
    * @returns {{excitement:number, satisfaction:number, trigger:boolean, path:string|null}}
    */
   update(positionPnlPct) {
     const e = this.excitement(positionPnlPct);
-    if (positionPnlPct > 0) this.satisfaction += e; // 只累积盈利的兴奋，亏损不攒"满足"
-    else this.satisfaction = Math.max(0, this.satisfaction - 0.5); // 亏钱时冷静一点
+    if (positionPnlPct > 0) this.satisfaction += e; // only accumulate excitement from profits; losses don't bank "satisfaction"
+    else this.satisfaction = Math.max(0, this.satisfaction - 0.5); // cool down when losing
 
     if (e >= this.fastThreshold) {
       this.satisfaction = 1.0;
@@ -126,15 +126,15 @@ class SatiationTP {
 
 module.exports = { FlyReward, SatiationTP };
 
-// ---------- 自检：node fly-reward/reward.js ----------
+// ---------- self-check: node fly-reward/reward.js ----------
 if (require.main === module) {
   const fr = new FlyReward();
   const cases = [
-    [0.02, 0.01, 1.0, '赚2%, ATR1%, 拿1H'],
-    [0.02, 0.05, 1.0, '赚2%, ATR5%, 拿1H'],
-    [-0.02, 0.01, 0.5, '亏2%, ATR1%, 拿半H'],
-    [0.03, 0.01, 96.0, '赚3%, 拿了4天'],
-    [0.005, 0.01, 1.0, '赚0.5%, ATR1%'],
+    [0.02, 0.01, 1.0, '+2%, ATR1%, held 1H'],
+    [0.02, 0.05, 1.0, '+2%, ATR5%, held 1H'],
+    [-0.02, 0.01, 0.5, '-2%, ATR1%, held 0.5H'],
+    [0.03, 0.01, 96.0, '+3%, held 4d'],
+    [0.005, 0.01, 1.0, '+0.5%, ATR1%'],
   ];
   for (const [pnl, atr, hh, label] of cases) {
     console.log(`${label.padEnd(24)} → dopamine = ${fr.tradeFeedback(pnl, atr, hh).toFixed(3)}`);

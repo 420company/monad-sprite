@@ -1,12 +1,12 @@
 'use strict';
 /**
- * fusion.js —— 双脑融合决策器（CommonJS，对接 zalien 真实接口）
+ * fusion.js — dual-brain fusion decider (CommonJS, wired to real zalien interfaces)
  *
- * 真实接口（2026-10-07 已验证）：
+ * Real interfaces (verified 2026-10-07):
  *   const { impl } = require('./vendor/analyze');
  *   const a = await impl.analyze_market('BTCUSDT');
- *   // a = { symbol, price, direction_score(-100~100), lean('偏多'/'偏空'/'中性'),
- *   //        confidence('高'/'中'/'低'), timeframes:{ daily,h4:{atr14,...},h1 },
+ *   // a = { symbol, price, direction_score(-100~100), lean('bullish'/'bearish'/'neutral'),
+ *   //        confidence('high'/'medium'/'low'), timeframes:{ daily,h4:{atr14,...},h1 },
  *   //        trade_plan, t144, support_resistance, ... }
  *   const { rankCandidate } = require('./vendor/picks');
  *   const score = rankCandidate(a, { vol_usdt: 1234567 });
@@ -15,16 +15,16 @@
 const CONF_MAP = { 高: 'high', 中: 'medium', 低: 'low', high: 'high', medium: 'medium', low: 'low' };
 
 /**
- * zalienToSignal(analysis) —— 把 analyze_market 输出转成融合器标准信号
- * 返回 { symbol, score, confidence('high'|'medium'|'low'), atr, price }
- * atr 优先级：timeframes.h4.atr14 → trade_plan 里找 → price*0.01 兜底
+ * zalienToSignal(analysis) — converts analyze_market output into the fusion-standard signal
+ * Returns { symbol, score, confidence('high'|'medium'|'low'), atr, price }
+ * atr priority: timeframes.h4.atr14 → look inside trade_plan → price*0.01 fallback
  */
 function zalienToSignal(analysis) {
   if (!analysis || typeof analysis !== 'object') throw new Error('analysis 为空');
   const h4 = analysis.timeframes && analysis.timeframes.h4;
   let atr = h4 && typeof h4.atr14 === 'number' && h4.atr14 > 0 ? h4.atr14 : null;
   if (atr == null && analysis.trade_plan) {
-    // trade_plan 里有时带 atr 字段，宽容查找
+    // trade_plan sometimes carries atr — look it up tolerantly
     const tp = analysis.trade_plan;
     const cand = tp.atr14 || tp.atr || (tp.stop && tp.stop.atr);
     if (typeof cand === 'number' && cand > 0) atr = cand;
@@ -41,10 +41,10 @@ function zalienToSignal(analysis) {
 }
 
 /**
- * FlySignal —— 果蝇大脑信号接口（真实字段）
+ * FlySignal — fly-brain signal interface (real fields)
  *
- * 真实果蝇（aster.py）在用户服务器上，测试时用 mockFly()。
- * 真实信号插进来时字段长这样：
+ * The real fly (aster.py) runs on the user's server; tests use mockFly().
+ * Real signal fields look like this when plugged in:
  *   { symbol: 'BTCUSDT', direction: 'long'|'short'|'flat', strength: 0~1,
  *     confidence?: 0~1, timestamp?: ms, source: 'stonkfly' }
  */
@@ -53,18 +53,18 @@ function mockFly(symbol, direction = 'long', strength = 0.7) {
     symbol,
     direction, // 'long' | 'short' | 'flat'
     strength, // 0~1
-    source: 'mock-fly (真实果蝇接入时替换为 aster.py 输出)',
+    source: 'mock-fly (replaced by aster.py output on real integration)',
     timestamp: Date.now(),
   };
 }
 
 /**
- * fuse(fly, z, entryPrice) —— 融合决策
- * 规则（按蓝图）：
- *   双信号同向 且 |zalien|>40 → open（仓位按置信度 高3%/中1.5%/低0.5%）
- *   单信号 → watch（观察池）
- *   无信号 → skip
- * 返回含止损止盈价的决策对象，可直接喂给 exitEngine 建仓
+ * fuse(fly, z, entryPrice) — fusion decision
+ * Rules (per blueprint):
+ *   Both brains agree and |zalien|>40 → open (size by confidence: high 3% / medium 1.5% / low 0.5%)
+ *   Single signal → watch (watchlist)
+ *   No signal → skip
+ * Returns a decision object with stop-loss/take-profit prices, feedable straight into exitEngine for entries
  */
 function fuse(fly, z, entryPrice) {
   const zalienSide = z.score > 15 ? 'long' : z.score < -15 ? 'short' : 'flat';
@@ -91,9 +91,9 @@ function fuse(fly, z, entryPrice) {
     };
   }
   if (zalienSide !== 'flat' || flyDir !== 'flat') {
-    return { action: 'watch', symbol: z.symbol, reason: '单信号，进观察池' };
+    return { action: 'watch', symbol: z.symbol, reason: 'single signal — watchlist' };
   }
-  return { action: 'skip', symbol: z.symbol, reason: '无信号' };
+  return { action: 'skip', symbol: z.symbol, reason: 'no signal' };
 }
 
 module.exports = { zalienToSignal, mockFly, fuse, CONF_MAP };

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * monad小精灵 CLI
+ * monad-sprite CLI
  *
- *   node cli.js scan                  # 扫描 Launcher 全部代币（价格 + Radar 评分）
- *   node cli.js score <tokenAddress>   # 单个代币 Radar 评分
- *   node cli.js paper [--once]         # 纸交易（默认循环，--once 跑一轮）
- *   node cli.js live --i-know-what-im-doing   # 实盘（双重确认，动真钱）
- *   node cli.js backtest              # 回测（perps 三向回测留档 + spot 框架位）
+ *   node cli.js scan                  # scan all Launcher tokens (price + Radar score)
+ *   node cli.js score <tokenAddress>   # Radar score for one token
+ *   node cli.js paper [--once]         # paper trading (loops by default, --once runs one round)
+ *   node cli.js live --i-know-what-im-doing   # live trading (double confirmation, real money)
+ *   node cli.js backtest              # backtest (perps 3-way backtest on record + spot framework)
  *
- * paper 是默认模式；live 必须显式 --live --i-know-what-im-doing。
+ * paper is the default mode; live requires explicit --live --i-know-what-im-doing.
  */
 const path = require('path');
 process.env.NODE_PATH = [
@@ -21,7 +21,7 @@ require('module').Module._initPaths();
 const { loadConfig } = require('./config');
 
 async function radarScore(api, tokenAddress) {
-  // 仅测试用：MOCK_RADAR_SCORE=75 时跳过 HTTP，直接返回模拟评分
+  // Test only: MOCK_RADAR_SCORE=75 skips HTTP and returns a mock score directly
   if (process.env.MOCK_RADAR_SCORE) {
     const s = Number(process.env.MOCK_RADAR_SCORE);
     return { score: s, level: s >= 70 ? 'LOW' : s >= 40 ? 'MEDIUM' : 'HIGH', tokenAddress, mock: true };
@@ -38,25 +38,25 @@ async function radarScore(api, tokenAddress) {
 async function cmdScan(cfg) {
   const { getAllTokens, formatEther } = require('../monad-executor/src/launcher');
   const tokens = await getAllTokens(cfg.chainId);
-  console.log(`Launcher 代币 ${tokens.length} 个（chain ${cfg.chainId}）`);
+  console.log(`Launcher tokens: ${tokens.length} (chain ${cfg.chainId})`);
   for (const t of tokens) {
     let radar = '';
     try {
       const s = await radarScore(cfg.radarApi, t.address);
       if (s) radar = `｜Radar ${s.score}/${s.level}`;
-    } catch { radar = '｜Radar 不可用'; }
-    console.log(`- ${t.name} (${t.symbol}) ${t.address}｜价格 ${formatEther(t.price)} MON${radar}`);
+    } catch { radar = ' | Radar unavailable'; }
+    console.log(`- ${t.name} (${t.symbol}) ${t.address}| price ${formatEther(t.price)} MON${radar}`);
   }
 }
 
 async function cmdScore(cfg, addr) {
-  if (!addr) { console.error('用法: node cli.js score <tokenAddress>'); process.exit(1); }
+  if (!addr) { console.error('usage: node cli.js score <tokenAddress>'); process.exit(1); }
   const s = await radarScore(cfg.radarApi, addr);
-  if (!s) { console.error('未配置 RADAR_API'); process.exit(1); }
+  if (!s) { console.error('RADAR_API not configured'); process.exit(1); }
   console.log(JSON.stringify(s, null, 2));
 }
 
-/** paper 主循环：信号 → SpotGuard → executor → 退出管理 */
+/** paper main loop: signals → SpotGuard → executor → exit management */
 async function paperOnce(cfg, executor) {
   const { getAllTokens, quoteBuy, formatEther } = require('../monad-executor/src/launcher');
   const { SpotGuard } = require('../engine/risk/spotGuard');
@@ -73,29 +73,29 @@ async function paperOnce(cfg, executor) {
   const equity = cfg.guard.equity + (await executor.equityUsd());
   const tokens = await getAllTokens(cfg.chainId);
 
-  // 1) 管理已有持仓：退出引擎 + Radar 重扫
+  // 1) Manage existing positions: exit engine + Radar rescan
   for (const [token, plan] of exits) {
     const info = tokens.find((t) => t.address.toLowerCase() === token.toLowerCase());
     if (!info) continue;
     const price = Number(formatEther(info.price));
     const tick = { price, high: price, low: price, directionScore: 0 };
     const action = checkExitV2(plan, tick);
-    // SatiationTP：兴奋止盈
+    // SatiationTP: take profit on excitement
     const sat = sats.get(token) || new SatiationTP();
     sats.set(token, sat);
     const pnlPct = (price - plan.entryPrice) / plan.entryPrice;
     const se = sat.update(pnlPct);
-    // Radar 跌破
+    // Radar score breakdown
     let radarDump = false;
     try {
       const s = await radarScore(cfg.radarApi, token);
       if (s) radarDump = guard.radarWatch(token, { score: s.score, fatal: s.level === 'CRITICAL' }).dump;
-    } catch { /* radar 不可用则跳过 */ }
+    } catch { /* skip if radar unavailable */ }
 
     let shouldClose = 0;
     let why = '';
-    if (radarDump) { shouldClose = 1; why = 'Radar 跌破'; }
-    else if (se.trigger) { shouldClose = 0.5; why = `兴奋止盈(${se.path})`; }
+    if (radarDump) { shouldClose = 1; why = 'Radar breakdown'; }
+    else if (se.trigger) { shouldClose = 0.5; why = `satiation TP (${se.path})`; }
     else if (action.type === 'take_profit_1') { shouldClose = action.closePct / 100; why = 'TP1'; }
     else if (action.type === 'take_profit_2' || action.type === 'stop_out') { shouldClose = 1; why = action.type === 'stop_out' ? `止损:${action.reason}` : 'TP2'; }
     else if (action.type === 'hold' && action.newStopLoss != null) { plan.stopLoss = action.newStopLoss; }
@@ -104,25 +104,25 @@ async function paperOnce(cfg, executor) {
       const r = await executor.sell(token, shouldClose);
       const pnl = r.pnlUsd || 0;
       guard.onClose({ tokenAddress: token, usd: 0, pnlUsd: pnl, equityNow: equity });
-      console.log(`[平仓] ${token.slice(0, 10)}… ${why} pnl=$${pnl.toFixed(2)}`);
+      console.log(`[CLOSE] ${token.slice(0, 10)}… ${why} pnl=$${pnl.toFixed(2)}`);
       if (shouldClose >= 1) { exits.delete(token); sats.delete(token); }
     }
   }
 
-  // 2) 扫描新机会：Radar 门禁 → SpotGuard → 买入
+  // 2) Scan for new opportunities: Radar gate → SpotGuard → buy
   for (const t of tokens) {
     if (exits.has(t.address)) continue;
     let radar = null;
-    try { radar = await radarScore(cfg.radarApi, t.address); } catch { /* 无 radar */ }
+    try { radar = await radarScore(cfg.radarApi, t.address); } catch { /* no radar */ }
     const price = Number(formatEther(t.price));
     if (!price) continue;
-    const atr = price * 0.05; // 保守估计：meme 币 5% ATR（无 K 线时的兜底）
-    const stop = price * 0.97; // -3% 初始止损（≈ -0.6×ATR，偏紧，meme 波动大）
+    const atr = price * 0.05; // conservative: 5% ATR for meme coins (fallback without candles)
+    const stop = price * 0.97; // -3% initial stop (≈ -0.6xATR, tight — meme coins are volatile)
     let slippagePct = 0;
     try {
-      const q = await quoteBuy(t.address, BigInt(1e15), cfg.chainId); // 0.001 MON 试单测滑点
+      const q = await quoteBuy(t.address, BigInt(1e15), cfg.chainId); // 0.001 MON probe to measure slippage
       void q;
-    } catch { /* quote 失败则跳过 */ }
+    } catch { /* skip on quote failure */ }
     const dec = guard.requestOpen({
       tokenAddress: t.address, creator: 'unknown', entryPrice: price, stopPrice: stop,
       equityNow: equity,
@@ -135,17 +135,17 @@ async function paperOnce(cfg, executor) {
       guard.onFill({ tokenAddress: t.address, creator: 'unknown', usd: dec.sizeUsd });
       exits.set(t.address, planExit({ side: 'long', entryPrice: price, atr, zones: null, directionScore: radar?.score ?? 0 }));
       sats.set(t.address, new SatiationTP());
-      console.log(`[开仓] ${t.name} $${dec.sizeUsd.toFixed(2)}｜${dec.reason}`);
-    } catch (e) { console.log(`[开仓失败] ${t.name}: ${e.message}`); }
+      console.log(`[OPEN] ${t.name} $${dec.sizeUsd.toFixed(2)} | ${dec.reason}`);
+    } catch (e) { console.log(`[OPEN FAILED] ${t.name}: ${e.message}`); }
   }
 
-  console.log('[状态]', JSON.stringify(guard.status(equity)));
+  console.log('[STATUS]', JSON.stringify(guard.status(equity)));
 }
 
 async function cmdPaper(cfg, once) {
   const { createExecutor } = require('../monad-executor/src/executor');
   const ex = createExecutor({ mode: 'paper', chainId: cfg.chainId, monPriceUsd: cfg.monPriceUsd });
-  console.log(`paper 模式启动（chain ${cfg.chainId}，价格走链上真实读数，不签名不广播）`);
+  console.log(`paper mode started (chain ${cfg.chainId}, prices from live on-chain reads, no signing/broadcasting)`);
   await paperOnce(cfg, ex);
   if (once) return;
   setInterval(() => paperOnce(cfg, ex).catch((e) => console.error('[paper]', e.message)), cfg.paper.intervalMs);
@@ -153,19 +153,19 @@ async function cmdPaper(cfg, once) {
 
 async function cmdLive(cfg) {
   if (!process.argv.includes('--i-know-what-im-doing')) {
-    console.error('⛔ 实盘需要双重确认：node cli.js live --live --i-know-what-im-doing');
-    console.error('   这会动用 MONAD_PRIVATE_KEY 对应的真钱钱包。请先跑 paper。');
+    console.error('⛔ live needs double confirmation: node cli.js live --live --i-know-what-im-doing');
+    console.error('   This uses the real-money wallet behind MONAD_PRIVATE_KEY. Run paper first.');
     process.exit(1);
   }
-  console.log('⚠️  LIVE 模式：真实签名广播，亏的是真钱。');
+  console.log('⚠️  LIVE mode: real signing and broadcasting — this is real money.');
   const { createExecutor } = require('../monad-executor/src/executor');
   const ex = createExecutor({ mode: 'live', chainId: cfg.chainId, monPriceUsd: cfg.monPriceUsd });
-  await paperOnce(cfg, ex); // 同一套逻辑，只是 executor 为 live
+  await paperOnce(cfg, ex); // same logic, executor in live mode
 }
 
 async function cmdBacktest() {
-  console.log('spot 回测框架：以 packages/backtest/backtest3way.js 为种子（perps 留档）。');
-  console.log('Monad spot 回放回测（录制的代币价格序列）为 P1，先跑留档用例冒烟：');
+  console.log('spot backtest framework: seeded from packages/backtest/backtest3way.js (perps on record).');
+  console.log('Monad spot replay backtest (recorded token price series) is P1 — smoke-run the recorded case first:');
   require('child_process').execSync(`node ${path.join(__dirname, '..', 'backtest', 'backtest3way.js')}`, { stdio: 'inherit' });
 }
 
@@ -177,14 +177,14 @@ async function main() {
     else if (cmd === 'score') await cmdScore(cfg, arg);
     else if (cmd === 'paper') await cmdPaper(cfg, process.argv.includes('--once'));
     else if (cmd === 'live') {
-      if (!process.argv.includes('--live')) { console.error('用法: node cli.js live --live --i-know-what-im-doing'); process.exit(1); }
+      if (!process.argv.includes('--live')) { console.error('usage: node cli.js live --live --i-know-what-im-doing'); process.exit(1); }
       await cmdLive(cfg);
     }
     else if (cmd === 'backtest') await cmdBacktest();
     else {
-      console.log('用法: node cli.js <scan|score <addr>|paper [--once]|live --live --i-know-what-im-doing|backtest>');
+      console.log('usage: node cli.js <scan|score <addr>|paper [--once]|live --live --i-know-what-im-doing|backtest>');
       process.exit(1);
     }
-  } catch (e) { console.error('出错:', e.message); process.exit(1); }
+  } catch (e) { console.error('error:', e.message); process.exit(1); }
 }
 main();

@@ -1,7 +1,7 @@
 'use strict';
 /**
- * 加密经济工具:市场总量/主导率、稳定币流动性、DeFi TVL、恐惧贪婪与代币经济体检。
- * 全部使用公开只读接口,不接钱包、不下单。代码只计算可验证指标,模型负责解释。
+ * Crypto-economy tools: total market / dominance, stablecoin liquidity, DeFi TVL, fear-greed, tokenomics checkup.
+ * Public read-only APIs only — no wallets, no orders. Code computes verifiable metrics; the model explains.
  */
 const CG = process.env.CG_BASE || 'https://api.coingecko.com';
 const LLAMA = process.env.LLAMA_BASE || 'https://api.llama.fi';
@@ -60,7 +60,7 @@ function summarizeStablecoins(payload) {
 
 function summarizeTvl(points) {
   const data = (Array.isArray(points) ? points : []).filter((x) => isFinite(+x.tvl) && +x.tvl > 0).sort((a, b) => +a.date - +b.date);
-  if (!data.length) throw new Error('DeFi TVL 数据为空');
+  if (!data.length) throw new Error('DeFi TVL data empty');
   const at = (days) => +data[Math.max(0, data.length - 1 - days)].tvl;
   const current = at(0);
   return { tvl_usd: r2(current, 0), change_1d_pct: pct(current, at(1)), change_7d_pct: pct(current, at(7)), change_30d_pct: pct(current, at(30)) };
@@ -88,7 +88,7 @@ function classifyMarketPulse(parts) {
 
 function summarizeGlobal(payload) {
   const x = payload?.data;
-  if (!x) throw new Error('CoinGecko global 数据为空');
+  if (!x) throw new Error('CoinGecko global data empty');
   const marketCap = +x.total_market_cap?.usd;
   const volume = +x.total_volume?.usd;
   return {
@@ -103,7 +103,7 @@ function summarizeGlobal(payload) {
 
 function summarizeSentiment(payload) {
   const rows = payload?.data || [];
-  if (!rows.length) throw new Error('恐惧贪婪数据为空');
+  if (!rows.length) throw new Error('fear-greed data empty');
   const values = rows.map((x) => +x.value).filter(isFinite);
   return {
     value: values[0], classification: rows[0].value_classification || null,
@@ -129,7 +129,7 @@ async function get_crypto_economy() {
         try { out[names[i]] = parsers[i](result.value); } catch { missing.push(names[i]); }
       } else missing.push(names[i]);
     });
-    if (!Object.keys(out).length) throw new Error('加密经济数据源全部不可用');
+    if (!Object.keys(out).length) throw new Error('all crypto-economy sources unavailable');
     const totalMarketCap = out.global?.market_cap_usd;
     if (totalMarketCap && out.stablecoins?.supply_usd) out.stablecoins.supply_to_market_cap_pct = r2(out.stablecoins.supply_usd / totalMarketCap * 100, 2);
     return {
@@ -148,7 +148,7 @@ const KNOWN_IDS = {
 
 async function resolveCoinId(query) {
   const raw = String(query || '').trim();
-  if (!raw) throw new Error('请提供币种符号或 CoinGecko ID');
+  if (!raw) throw new Error('provide a symbol or CoinGecko ID');
   const key = raw.toLowerCase().replace(/usdt$/, '');
   if (KNOWN_IDS[key]) return KNOWN_IDS[key];
   const result = await json(`${CG}/api/v3/search?query=${encodeURIComponent(raw)}`);
