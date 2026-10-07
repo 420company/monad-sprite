@@ -20,7 +20,7 @@ const LAUNCHER_ABI_TX = [
     name: 'buy',
     type: 'function',
     stateMutability: 'payable',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    inputs: [{ name: 'token', type: 'address' }],
     outputs: [],
   },
   {
@@ -28,7 +28,7 @@ const LAUNCHER_ABI_TX = [
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
-      { name: 'tokenId', type: 'uint256' },
+      { name: 'token', type: 'address' },
       { name: 'tokenAmount', type: 'uint256' },
     ],
     outputs: [],
@@ -198,9 +198,9 @@ export const monadTradingPlugin: AgentPlugin = {
         if (!t) return { ok: false, error: `Token "${args.symbol}" not found` };
         const value = parseEther(String(args.amount_mon));
         const data = encodeFunctionData({
-          abi: LAUNCHER_ABI_TX as any,
+          abi: LAUNCHER_ABI_TX,
           functionName: 'buy',
-          args: [BigInt(t.id)],
+          args: [t.address as Address],
         });
         const price = priceFromReserves(t.reserveMON, t.reserveToken);
         const estTokens = price > 0 ? (parseFloat(String(args.amount_mon)) / price).toFixed(0) : '?';
@@ -216,15 +216,15 @@ export const monadTradingPlugin: AgentPlugin = {
         if (!t) return { ok: false, error: `Token "${args.symbol}" not found` };
         const amount = parseEther(String(args.amount_tokens));
         const data = encodeFunctionData({
-          abi: LAUNCHER_ABI_TX as any,
+          abi: LAUNCHER_ABI_TX,
           functionName: 'sell',
-          args: [BigInt(t.id), amount],
+          args: [t.address as Address, amount],
         });
         return txPayload(LAUNCHER, data, '0', `Sell ${args.amount_tokens} ${t.symbol}`);
       }
       case 'prepare_launch': {
         const data = encodeFunctionData({
-          abi: LAUNCHER_ABI_TX as any,
+          abi: LAUNCHER_ABI_TX,
           functionName: 'createToken',
           args: [String(args.name), String(args.symbol)],
         });

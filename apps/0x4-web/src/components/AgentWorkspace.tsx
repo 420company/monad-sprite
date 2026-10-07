@@ -41,6 +41,11 @@ export interface ChatMsg {
   tone?: 'error'
   tx?: TxProposal
   imageUrl?: string
+  images?: string[]
+  videoId?: string
+  videoUrl?: string
+  videoStatus?: 'generating' | 'ready' | 'failed'
+  audioBase64?: string
 }
 
 interface Conversation {
@@ -55,6 +60,8 @@ interface ApiReply {
   reply: string
   tx?: AgentTx | null
   image_url?: string | null
+  video_id?: string | null
+  audio_base64?: string | null
   error?: string
 }
 
@@ -206,6 +213,86 @@ function TxCard({ tx, explorer, onConfirm, onCancel }: {
   )
 }
 
+// ---------- video card (polls until ready) ----------
+
+function VideoCard({ videoId }: { videoId: string }) {
+  const [status, setStatus] = useState<'generating' | 'ready' | 'failed'>('generating')
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    let attempts = 0
+    const poll = async () => {
+      attempts++
+      try {
+        const r = await fetch(`/api/video?id=${encodeURIComponent(videoId)}`)
+        const data = await r.json()
+        if (cancelled) return
+        const videoUrl = data.url || data.video_url
+        if (data.status === 'completed' && videoUrl) {
+          setVideoUrl(videoUrl)
+          setStatus('ready')
+          return
+        }
+        if (data.status === 'failed' || attempts > 60) {
+          setStatus('failed')
+          return
+        }
+      } catch {
+        if (attempts > 60) {
+          setStatus('failed')
+          return
+        }
+      }
+      if (!cancelled) setTimeout(poll, 5000)
+    }
+    poll()
+    return () => { cancelled = true }
+  }, [videoId])
+
+  if (status === 'failed') {
+    return (
+      <div className="rounded-2xl border border-line bg-card p-4 text-sm text-muted">
+        {t('视频生成失败，请重试')}
+      </div>
+    )
+  }
+
+  if (status === 'generating' || !videoUrl) {
+    return (
+      <div className="rounded-2xl border border-line bg-card p-4">
+        <div className="flex items-center gap-3">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="text-sm">
+            <div className="font-medium">{t('视频生成中…')}</div>
+            <div className="text-xs text-muted">{t('通常需要 1-3 分钟，你可以继续聊天')}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-line bg-card">
+      <video src={videoUrl} controls className="max-h-96 w-full" preload="metadata" />
+      <a href={videoUrl} target="_blank" rel="noreferrer" download className="flex items-center gap-1 px-3 py-2 text-xs text-primary">
+        <ImageIcon size={12} /> {t('下载视频')}
+      </a>
+    </div>
+  )
+}
+
+// ---------- audio player ----------
+
+function AudioPlayer({ base64 }: { base64: string }) {
+  const url = `data:audio/mpeg;base64,${base64}`
+  return (
+    <div className="rounded-2xl border border-line bg-card p-3">
+      <audio src={url} controls className="w-full" preload="metadata" />
+    </div>
+  )
+}
+
 // ---------- message bubble ----------
 
 function MessageBubble({ msg, isLast, thinking, explorer, onConfirmTx, onCancelTx }: {
@@ -241,6 +328,13 @@ function MessageBubble({ msg, isLast, thinking, explorer, onConfirmTx, onCancelT
               <span className="whitespace-pre-wrap">{msg.text}</span>
             )}
           </div>
+          {msg.images && msg.images.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {msg.images.map((src, i) => (
+                <img key={i} src={src} alt={`upload ${i + 1}`} className="max-h-48 rounded-xl border border-line object-cover" />
+              ))}
+            </div>
+          )}
           {msg.imageUrl && (
             <div className="overflow-hidden rounded-2xl border border-line bg-card">
               <img src={msg.imageUrl} alt="AI generated" className="max-h-96 w-full object-cover" loading="lazy" />
@@ -249,6 +343,8 @@ function MessageBubble({ msg, isLast, thinking, explorer, onConfirmTx, onCancelT
               </a>
             </div>
           )}
+          {msg.videoId && <VideoCard videoId={msg.videoId} />}
+          {msg.audioBase64 && <AudioPlayer base64={msg.audioBase64} />}
           {msg.tx && (
             <TxCard tx={msg.tx} explorer={explorer} onConfirm={() => onConfirmTx(msg.id, msg.tx!)} onCancel={() => onCancelTx(msg.id)} />
           )}
@@ -280,11 +376,13 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
   const [thinkLine, setThinkLine] = useState(0)
   const [models, setModels] = useState<ModelOption[]>([])
   const [listening, setListening] = useState(false)
+  const [attachedImages, setAttachedImages] = useState<string[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const nextId = useRef(1)
   const sendingRef = useRef(false)
   const listRef = useRef<HTMLDivElement>(null)
-  const historyRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+  const historyRef = useRef<Array<{ role: 'user' | 'assistant'; content: string; images?: string[] }>>([])
   const recogRef = useRef<{ stop: () => void } | null>(null)
 
   const explorer = chainById(AGENT_CHAIN_ID)?.viem?.blockExplorers?.default.url
@@ -397,10 +495,12 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
 
   const handle = useCallback(async (line: string) => {
     const text = line.trim()
-    if (!text || thinking || !activeId) return
+    const images = attachedImages.slice()
+    if ((!text && images.length === 0) || thinking || !activeId) return
     setInput('')
-    push({ from: 'user', text })
-    historyRef.current.push({ role: 'user', content: text })
+    setAttachedImages([])
+    push({ from: 'user', text: text || t('(图片)'), images: images.length > 0 ? images : undefined })
+    historyRef.current.push({ role: 'user', content: text, images: images.length > 0 ? images : undefined })
     setThinking(true)
     try {
       const res = await fetch('/api/agent', {
@@ -420,6 +520,8 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
       historyRef.current.push({ role: 'assistant', content: data.reply })
       if (data.tx) proposeTx(data.reply || data.tx.description, data.tx)
       else if (data.image_url) push({ from: 'agent', text: data.reply, imageUrl: data.image_url })
+      else if (data.video_id) push({ from: 'agent', text: data.reply, videoId: data.video_id })
+      else if (data.audio_base64) push({ from: 'agent', text: data.reply, audioBase64: data.audio_base64 })
       else reply(data.reply)
     } catch (e) {
       historyRef.current.pop()
@@ -654,6 +756,22 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
         {/* Input */}
         <div className="shrink-0 border-t border-line px-4 py-3 md:px-8">
           <div className="mx-auto max-w-3xl">
+            {attachedImages.length > 0 && (
+              <div className="mb-2 flex gap-2">
+                {attachedImages.map((src, i) => (
+                  <div key={i} className="relative">
+                    <img src={src} alt={`attach ${i + 1}`} className="h-16 w-16 rounded-xl border border-line object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setAttachedImages((prev) => prev.filter((_, j) => j !== i))}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-down text-[10px] text-white"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <form
               onSubmit={(e) => {
                 e.preventDefault()
@@ -661,11 +779,31 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
               }}
               className="flex items-end gap-2 rounded-2xl border border-line bg-card p-2 focus-within:border-primary/50"
             >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []).slice(0, 4)
+                  for (const f of files) {
+                    if (f.size > 5 * 1024 * 1024) continue
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      const url = reader.result as string
+                      setAttachedImages((prev) => [...prev.slice(0, 3), url])
+                    }
+                    reader.readAsDataURL(f)
+                  }
+                  e.target.value = ''
+                }}
+              />
               <button
                 type="button"
+                onClick={() => fileInputRef.current?.click()}
                 className="rounded-xl p-2.5 text-muted hover:bg-background hover:text-fg"
-                title={t('附件（即将上线）')}
-                disabled
+                title={t('上传图片')}
               >
                 <Paperclip size={18} />
               </button>
@@ -693,7 +831,7 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
               </button>
               <button
                 type="submit"
-                disabled={thinking || !input.trim()}
+                disabled={thinking || (!input.trim() && attachedImages.length === 0)}
                 className="rounded-xl bg-primary p-2.5 text-white disabled:opacity-40"
                 title={t('发送')}
               >
