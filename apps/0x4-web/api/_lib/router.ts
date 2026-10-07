@@ -1,8 +1,10 @@
 /**
  * router.ai client (OpenAI-compatible). Key comes from ROUTER_AI_KEY env var.
+ * Base URL defaults to https://api.router.ai, override with ROUTER_AI_BASE_URL
+ * (e.g. if using the luna.gift relay endpoint).
  * Never log or expose the key.
  */
-const BASE = 'https://api.router.ai';
+const BASE = (process.env.ROUTER_AI_BASE_URL || 'https://api.router.ai').replace(/\/$/, '');
 
 function key(): string {
   const k = process.env.ROUTER_AI_KEY;
