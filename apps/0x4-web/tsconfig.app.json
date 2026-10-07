@@ -15,7 +15,12 @@
     "noEmit": true,
     "types": ["vite/client", "vite-plugin-pwa/client"],
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": {
+      "@/*": ["src/*"],
+      // packages/agent-gate is linked from outside this app: type-check it against this app's viem
+      "viem": ["node_modules/viem"],
+      "viem/*": ["node_modules/viem/*"]
+    }
   },
   "include": ["src"]
 }

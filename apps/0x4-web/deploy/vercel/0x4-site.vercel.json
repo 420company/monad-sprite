@@ -52,11 +52,11 @@
       ]
     },
     {
-      "source": "/:page(activity|approvals|community|discover|dm|earnings|energy|flies|fly|friends|g|groups|live|meet|meetings|messages|notifications|official|onboarding|pc-login|perp|portfolio|post|rank|rewards|room|settings|spot|support|swap|token|u|unlock|watch)",
+      "source": "/:page(activity|agent|approvals|community|discover|dm|earnings|energy|flies|fly|friends|g|groups|launch|live|meet|meetings|messages|notifications|official|onboarding|pc-login|perp|portfolio|post|rank|rewards|room|settings|spot|support|swap|token|u|unlock|watch)",
       "destination": "/app/index.html"
     },
     {
-      "source": "/:page(activity|approvals|community|discover|dm|earnings|energy|flies|fly|friends|g|groups|live|meet|meetings|messages|notifications|official|onboarding|pc-login|perp|portfolio|post|rank|rewards|room|settings|spot|support|swap|token|u|unlock|watch)/:rest*",
+      "source": "/:page(activity|agent|approvals|community|discover|dm|earnings|energy|flies|fly|friends|g|groups|launch|live|meet|meetings|messages|notifications|official|onboarding|pc-login|perp|portfolio|post|rank|rewards|room|settings|spot|support|swap|token|u|unlock|watch)/:rest*",
       "destination": "/app/index.html"
     },
     {
@@ -91,7 +91,7 @@
       ]
     },
     {
-      "source": "/((?!(?:app|activity|approvals|community|discover|dm|earnings|energy|flies|fly|friends|g|groups|live|meet|meetings|messages|notifications|official|onboarding|pc-login|perp|portfolio|post|rank|rewards|room|settings|spot|support|swap|token|u|unlock|watch)(?:/|$)).*)",
+      "source": "/((?!(?:app|activity|agent|approvals|community|discover|dm|earnings|energy|flies|fly|friends|g|groups|launch|live|meet|meetings|messages|notifications|official|onboarding|pc-login|perp|portfolio|post|rank|rewards|room|settings|spot|support|swap|token|u|unlock|watch)(?:/|$)).*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
@@ -100,11 +100,11 @@
       ]
     },
     {
-      "source": "/((?:app|activity|approvals|community|discover|dm|earnings|energy|flies|fly|friends|g|groups|live|meet|meetings|messages|notifications|official|onboarding|pc-login|perp|portfolio|post|rank|rewards|room|settings|spot|support|swap|token|u|unlock|watch)(?:/.*)?)",
+      "source": "/((?:app|activity|agent|approvals|community|discover|dm|earnings|energy|flies|fly|friends|g|groups|launch|live|meet|meetings|messages|notifications|official|onboarding|pc-login|perp|portfolio|post|rank|rewards|room|settings|spot|support|swap|token|u|unlock|watch)(?:/.*)?)",
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' data: blob: https://api.420.meme wss://api.420.meme https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://li.quest https://api.dexscreener.com https://api.geckoterminal.com https://api.dexpaprika.com https://fapi.asterdex.com wss://fstream.asterdex.com wss://relay.walletconnect.org https://relay.walletconnect.org wss://relay.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://rpc.walletconnect.com https://verify.walletconnect.org https://verify.walletconnect.com https://pulse.walletconnect.org https://api.web3modal.org https://explorer-api.walletconnect.com https://www.asterdex.com https://*.livekit.cloud wss://*.livekit.cloud https://250.rpc.thirdweb.com https://56.rpc.thirdweb.com https://api.avax.network https://api.mainnet.abs.xyz https://arb1.arbitrum.io https://ethereum.reth.rs https://evm-rpc.sei-apis.com https://evm.cronos.org https://forno.celo.org https://mainnet.base.org https://mainnet.era.zksync.io https://mainnet.evm.nodes.onflow.org https://mainnet.megaeth.com https://mainnet.mode.network https://mainnet.optimism.io https://mainnet.unichain.org https://opbnb-mainnet-rpc.bnbchain.org https://polygon.drpc.org https://rpc-gel.inkonchain.com https://rpc-qnd.inkonchain.com https://rpc.apechain.com https://rpc.berachain.com https://rpc.blast.io https://rpc.drpc.mainnet.arc.io https://rpc.gnosischain.com https://rpc.hyperliquid.xyz https://rpc.katana.network https://rpc.linea.build https://rpc.mainnet.chain.robinhood.com https://rpc.mantle.xyz https://rpc.monad.xyz https://rpc.plasma.to https://rpc.scroll.io https://rpc.soneium.org https://rpc.soniclabs.com https://rpc.zora.energy https://rpc1.monad.xyz https://worldchain-mainnet.g.alchemy.com; media-src 'self' blob: mediastream: https:; worker-src 'self' blob:; frame-src https://game.420.meme https://verify.walletconnect.org https://verify.walletconnect.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' data: blob: https://api.420.meme wss://api.420.meme https://api.mainnet-beta.solana.com https://lite-api.jup.ag https://li.quest https://api.dexscreener.com https://api.geckoterminal.com https://api.dexpaprika.com https://fapi.asterdex.com wss://fstream.asterdex.com wss://relay.walletconnect.org https://relay.walletconnect.org wss://relay.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://rpc.walletconnect.com https://verify.walletconnect.org https://verify.walletconnect.com https://pulse.walletconnect.org https://api.web3modal.org https://explorer-api.walletconnect.com https://www.asterdex.com https://*.livekit.cloud wss://*.livekit.cloud https://250.rpc.thirdweb.com https://56.rpc.thirdweb.com https://api.avax.network https://api.mainnet.abs.xyz https://arb1.arbitrum.io https://ethereum.reth.rs https://evm-rpc.sei-apis.com https://evm.cronos.org https://forno.celo.org https://mainnet.base.org https://mainnet.era.zksync.io https://mainnet.evm.nodes.onflow.org https://mainnet.megaeth.com https://mainnet.mode.network https://mainnet.optimism.io https://mainnet.unichain.org https://opbnb-mainnet-rpc.bnbchain.org https://polygon.drpc.org https://rpc-gel.inkonchain.com https://rpc-qnd.inkonchain.com https://rpc.apechain.com https://rpc.berachain.com https://rpc.blast.io https://rpc.drpc.mainnet.arc.io https://rpc.gnosischain.com https://rpc.hyperliquid.xyz https://rpc.katana.network https://rpc.linea.build https://rpc.mainnet.chain.robinhood.com https://rpc.mantle.xyz https://rpc.monad.xyz https://rpc.plasma.to https://rpc.scroll.io https://rpc.soneium.org https://rpc.soniclabs.com https://rpc.zora.energy https://rpc1.monad.xyz https://testnet-rpc.monad.xyz https://bsc-rpc.publicnode.com https://worldchain-mainnet.g.alchemy.com; media-src 'self' blob: mediastream: https:; worker-src 'self' blob:; frame-src https://game.420.meme https://verify.walletconnect.org https://verify.walletconnect.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
         }
       ]
     },

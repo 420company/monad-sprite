@@ -124,6 +124,8 @@ export default defineConfig({
   resolve: {
     // buffer 指向 npm 包而不是 Node 内置模块
     alias: [...NO_PERP_ALIAS, { find: '@', replacement: '/src' }, { find: 'buffer', replacement: 'buffer/' }],
+    // packages/agent-gate is linked from outside this app and has no node_modules of its own: resolve its viem from here
+    dedupe: ['viem'],
   },
   optimizeDeps: {
     include: ['buffer'],

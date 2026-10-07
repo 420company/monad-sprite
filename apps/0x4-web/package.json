@@ -36,6 +36,7 @@
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource/pixelify-sans": "^5.3.0",
     "@mediapipe/tasks-vision": "^1.0.1",
+    "@monad-sprite/agent-gate": "file:../../packages/agent-gate",
     "@nktkas/hyperliquid": "^0.33.3",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^2.4.0",
