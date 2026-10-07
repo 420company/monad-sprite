@@ -1,4 +1,4 @@
-// 信息流：全球 / 好友。交易自动生成的「买入 / 卖出」帖、带价格快照的「观点」帖、普通帖
+// Feed: global / friends. Auto-generated "buy / sell" posts from trades, "take" posts with price snapshots, plain posts
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Heart, MessageSquare, Pin, PinOff, RefreshCw, Trash2, WifiOff } from 'lucide-react'
@@ -30,21 +30,21 @@ import UserName from './UserName'
 import { errorText } from '@/lib/errors'
 
 export interface FeedPost {
-  /** 管理员置顶的（全球动态第一页最上面） */
+  /** Pinned by admins (top of the global feed's first page) */
   pinned?: boolean
   id: string; author: string; nickname: string | null; avatar: string | null; handle: string | null; text: string; image: string | null; images?: PostImage[]; kind: 'text' | 'trade' | 'opinion'
-  token: { chain: string; address: string; symbol: string; /** 合约成交（服务器已把 ETH-PERP 换成 ETH） */ perp?: boolean } | null
-  /** 小精灵自己发的成交动态：作者是小精灵（2026-10-05 goat：原来显示成小精灵的地址） */
+  token: { chain: string; address: string; symbol: string; /** Perps fills (the server already converted ETH-PERP to ETH) */ perp?: boolean } | null
+  /** Fill posts published by the sprite itself: the author is the sprite (2026-10-05 goat: it used to show the sprite's address) */
   sprite?: { id: string; name: string; owner: string; ownerNickname: string | null } | null
   snapshot: { side?: 'buy' | 'sell'; qty?: number; usd?: number; price?: number | null; marketCap?: number | null; realized?: number; change24h?: number | null; logo?: string | null } | null
   likes: number; comments?: number; liked: boolean; createdAt: number
-  /** 现货买入的交易帖：作者现在还持有（服务器查持仓，2026-10-01）；其它帖子 null */
+  /** Trade posts for spot buys: the author still holds (server checks positions, 2026-10-01); null for other posts */
   holding?: boolean | null
-  /** 帖子下面露的评论（服务端按「赞多优先，否则最新」挑好，最多 2 条） */
+  /** Comments peeking under a post (the server picks up to 2 — most likes first, otherwise latest) */
   topComments?: Comment[]
 }
 
-/** 信息流每页条数，滚到底再拉下一页 */
+/** Feed items per page; pull the next page on scroll-to-bottom */
 export const FEED_PAGE = 20
 
 export const handleOf = (p: { handle?: string | null; address: string; nickname?: string | null }) => (p.handle ? `@${p.handle}` : displayName(p))
@@ -52,8 +52,8 @@ export const handleOf = (p: { handle?: string | null; address: string; nickname?
 export default function Feed({ scope, refreshKey }: { scope: 'global' | 'friends'; refreshKey?: number }) {
   const nav = useNavigate()
   const { status, login, me } = useSocial()
-  // 网页版没连钱包：公开的全球动态照样能看（接口支持不登录）；点赞等互动点了弹「连接 0x4 Wallet」。
-  // 2026-09-29：连了钱包但社区还没连上（登录中 / 连不上）也先按游客读公开动态，社区的状态只在页面顶部说一次（电脑端社区页中栏的状态条）
+  // Web without a wallet: public global posts still viewable (the API supports logged-out); likes and other interactions pop "Connect 0x4 Wallet".
+  // 2026-09-29: with a wallet connected but the community not yet (logging in / unreachable), still read public posts as a guest first; the community's state is stated only once at the top of the page (the desktop community page's middle-column status strip)
   const hasWallet = useWallet(isWalletConnected)
   const guest = WEB_SURFACE && (!hasWallet || status !== 'ready')
   const canRead = status === 'ready' || (guest && scope === 'global')
@@ -61,19 +61,19 @@ export default function Feed({ scope, refreshKey }: { scope: 'global' | 'friends
   const { cache, loadTokens } = useMarket()
   const [pending, setPending] = useState<Set<string>>(new Set())
   const active = useRef(new Set<string>())
-  // 切换全球 / 关注 = 换一份数据；旧请求迟到的响应由 usePaged 丢弃
-  // 游客读和登录后读分两份（登录后要带「我点过赞」），社区连上后自动换成登录那份
+  // Switching global / following = a different dataset; late responses from old requests are dropped by usePaged
+  // Guest reads and logged-in reads are two separate copies (logged-in must carry "I liked"); once the community connects, it auto-switches to the logged-in copy
   const paged = usePaged<FeedPost>(canRead ? (status === 'ready' ? scope : `${scope}|guest`) : null, async (cursor, signal) => {
     const list = await api<FeedPost[]>(`/api/feed?scope=${scope}&limit=${FEED_PAGE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { signal })
     if (!Array.isArray(list)) throw new Error(t('加载失败'))
-    // 拉一下这一页帖子里提到的代币的现价，观点帖能显示发帖后的涨跌；永续不是链上代币，拿它的「链」去查行情只会白跑一趟
+    // Pull the current prices of tokens mentioned in this page's posts so opinion posts can show post-publication moves; perps aren't on-chain tokens — looking up quotes by their "chain" is a wasted trip
     const byChain = new Map<string, string[]>()
     list.forEach((p) => { if (p.token && !isPerpMarket(p.token.chain)) byChain.set(p.token.chain, [...(byChain.get(p.token.chain) || []), p.token.address]) })
     byChain.forEach((addrs, chain) => loadTokens([...new Set(addrs)], chain))
     return { items: list, next: nextCursorOf(list, FEED_PAGE) }
-  }, (p) => p.id, { cache: 'feed' })   // 后退回来保留已加载的几页
+  }, (p) => p.id, { cache: 'feed' })   // Going back keeps the loaded pages
   const { items: posts, setItems, reload, retry } = paged
-  // 每页最多 30 条，点翻页（服务器分批给，本页不满自动补拉）
+  // At most 30 per page; tap to page (the server sends in batches, auto-topping-up when the page is short)
   const pager = usePager(posts, { reset: scope, loadMore: paged.loadMore, done: paged.done, loading: paged.loading, failed: paged.moreFailed })
   const firstKey = useRef(refreshKey)
   useEffect(() => { if (firstKey.current !== refreshKey) { firstKey.current = refreshKey; reload() } }, [refreshKey, reload])
@@ -90,8 +90,8 @@ export default function Feed({ scope, refreshKey }: { scope: 'global' | 'friends
     finally { active.current.delete(p.id); setPending(new Set(active.current)) }
   }
 
-  // 删帖：作者删自己的；客服 / 管理员删违规的（服务端写审计并通知作者）
-  // 管理员置顶 / 取消置顶：成功后重新拉第一页（置顶的会排到最上面）
+  // Delete post: authors delete their own; support / admins delete violating ones (the server writes an audit log and notifies the author)
+  // Admin pin / unpin: re-pull the first page on success (pinned ones sort to the top)
   const togglePin = async (p: FeedPost) => {
     try { await api(`/api/posts/${p.id}/pin`, { method: 'POST', body: JSON.stringify({ pinned: !p.pinned }) }); toast.success(p.pinned ? t('已取消置顶') : t('已置顶')); reload() }
     catch (e) { toast.error(errorText(e, t('操作失败'))) }
@@ -139,7 +139,7 @@ export default function Feed({ scope, refreshKey }: { scope: 'global' | 'friends
               <PostReport id={p.id} author={p.author} name={p.nickname} />
             </div>
 
-            {/* 交易帖（2026-09-27 goat：数量和均价放进框里）：第一行 币种·方向 + 金额，第二行 数量 · 均价 · 市值，右边已实现盈亏 */}
+            {/* Trade posts (2026-09-27 goat: amount and avg price go inside the box): first line coin · side + amount, second line amount · avg price · market cap, realized PnL on the right */}
             {p.kind === 'trade' && p.token && s && (
               <Link to={marketLinkOf(p.token.chain, p.token.address)} className="mt-3 flex items-center gap-3 rounded-lg border border-line bg-card px-3 py-3">
                 <TokenLogo src={live?.logo || s.logo || undefined} symbol={p.token.symbol} size={32} />
@@ -152,7 +152,7 @@ export default function Feed({ scope, refreshKey }: { scope: 'global' | 'friends
                   ].filter(Boolean).join(' · ')}</div>
                 </div>
                 {s.side === 'sell' && typeof s.realized === 'number' && s.realized !== 0 && <span className={`number shrink-0 text-sm font-semibold ${s.realized > 0 ? 'text-up' : 'text-down'}`}>{s.realized > 0 ? '+' : ''}{fmtUsd(s.realized)}</span>}
-                {/* 买入（2026-10-01 社区合并）：右边是买入后的涨跌（现价 / 成交均价，行情拿到才显示），下面「持有中」= 作者现在还拿着（服务器查持仓） */}
+                {/* Buy (2026-10-01 community merge): the right side shows post-buy move (current price / avg fill, shown once quotes arrive); "Holding" below = the author still holds it (server checks positions) */}
                 {s.side === 'buy' && (live?.priceUsd && s.price || p.holding) ? <span className="flex shrink-0 flex-col items-end gap-0.5">
                   {live?.priceUsd && s.price ? <span className={`number text-sm font-semibold ${live.priceUsd >= s.price ? 'text-up' : 'text-down'}`}>{live.priceUsd >= s.price ? '+' : '-'}{Math.abs((live.priceUsd / s.price - 1) * 100).toFixed(1)}%</span> : null}
                   {p.holding && <span className="text-[11px] text-muted">{t('持有中')}</span>}
@@ -160,7 +160,7 @@ export default function Feed({ scope, refreshKey }: { scope: 'global' | 'friends
               </Link>
             )}
 
-            {/* 观点帖：代币 + 现价 + 发帖以来涨跌 */}
+            {/* Opinion posts: token + current price + move since posting */}
             {p.kind === 'opinion' && p.token && (
               <Link to={marketLinkOf(p.token.chain, p.token.address)} className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-lg border border-line bg-card px-3 py-3">
                 <TokenLogo src={live?.logo || s?.logo || undefined} symbol={p.token.symbol} size={28} />
@@ -171,12 +171,12 @@ export default function Feed({ scope, refreshKey }: { scope: 'global' | 'friends
             )}
 
             <PostBody post={p} />
-            {/* 开单帖、观点帖、普通帖同在 posts 表，评论接口通用；之前这里只放了点赞按钮 */}
+            {/* Position posts, take posts and plain posts all live in the posts table with a shared comments API; this spot previously only had a like button */}
             <div className="mt-2 flex items-center gap-4">
               <button onClick={() => nav(postPath(p.id), { state: { compose: true } })} aria-label={t('评论')} className="flex min-h-11 items-center gap-1.5 text-[13px] text-muted"><MessageSquare size={18} /><span className="number min-w-[1ch]">{p.comments || ''}</span></button>
               <button onClick={() => void like(p)} disabled={pending.has(p.id)} aria-label={p.liked ? t('取消点赞') : t('点赞')} aria-pressed={p.liked} className={`flex min-h-11 items-center gap-1.5 text-[13px] disabled:opacity-50 ${p.liked ? 'text-down' : 'text-muted'}`}><Heart size={18} fill={p.liked ? 'currentColor' : 'none'} /><span className="number min-w-[1ch]">{p.likes || ''}</span></button>
             </div>
-            {/* 只露最多 2 条评论 +「查看全部」+「写评论…」入口，整串评论和输入框在对话页里 */}
+            {/* Show at most 2 comments + "view all" + "write a comment…" entry; the full thread and input live on the conversation page */}
             <CommentPreview post={p} onPatch={(c) => patch(p.id, c)} />
           </article>
         )

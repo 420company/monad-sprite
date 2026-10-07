@@ -1,4 +1,4 @@
-// 表单输入框
+// Form input field
 import type { InputHTMLAttributes, LabelHTMLAttributes, TextareaHTMLAttributes } from 'react'
 
 export function Input({ className = '', ...rest }: InputHTMLAttributes<HTMLInputElement>) {
@@ -9,7 +9,7 @@ export function Textarea({ className = '', ...rest }: TextareaHTMLAttributes<HTM
   return <textarea className={`ui-field min-h-[96px] resize-y ${className}`} {...rest} />
 }
 
-// 可逐页补上 htmlFor，既有调用保持兼容。
+// htmlFor can be added page by page; existing callers stay compatible.
 export function Label({ className = '', ...rest }: LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={`ui-label ${className}`} {...rest} />
 }

@@ -1,4 +1,4 @@
-// 「空间」外观的背景选择（space.ts）：亮度 → 压暗的换算、该铺哪张图
+// The "space" appearance's background selection (space.ts): brightness → dimming conversion, which image to lay
 import { describe, expect, it } from 'vitest'
 import { SPACE_WALLS, dimFor, wallSrc } from './space'
 

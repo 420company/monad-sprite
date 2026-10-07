@@ -1,6 +1,6 @@
-// 网页版顶栏右侧（2026-09-29 goat：电脑端点通知 / 个人中心还是手机页面）：
-// · 铃铛：点开是贴着按钮的下拉面板（380 宽，全部 / 互动 / 系统），底部「查看全部」进电脑端通知页，不再直接跳手机页；
-// · 钱包胶囊：点开菜单（我的资产 / 我的主页 / 设置 / 断开钱包），不再直接跳手机首页。
+// Web top bar, right side (2026-09-29 goat: tapping notifications / profile on desktop still opened mobile pages):
+// · Bell: opens a dropdown attached to the button (380px, All / Interactions / System); "view all" at the bottom goes to the desktop notifications page — no more jumping to the mobile page;
+// · Wallet capsule: opens a menu (my assets / my profile / settings / disconnect) — no more jumping to the mobile home.
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Bell, ChevronDown, Copy, LogOut, Settings as SettingsIcon, Smartphone, UserRound, Wallet, Zap } from 'lucide-react'
@@ -15,7 +15,7 @@ import catUrl from './cat-tight.svg'
 import { NotifPanel, type NotifTab } from './notifs'
 import { copyAddr, midShort, usePop } from './ui'
 
-/** 铃铛 + 通知下拉 */
+/** Bell + notification dropdown */
 export function BellMenu({ unread }: { unread: number }) {
   const pop = usePop()
   const [tab, setTab] = useState<NotifTab>('all')
@@ -30,20 +30,20 @@ export function BellMenu({ unread }: { unread: number }) {
   )
 }
 
-/** 钱包胶囊 + 菜单 */
+/** Wallet capsule + menu */
 export function WalletMenu() {
   const pop = usePop()
   const nav = useNavigate()
   const { pathname } = useLocation()
   const { evmAddress, address, kind, external } = useWallet()
   const me = useSocial((s) => s.me)
-  // 连的是哪个钱包（2026-09-30）：0x4 Wallet 用猫头，外部钱包用它自己公告的图标（没有就用通用钱包图标）
+  // Which wallet is connected (2026-09-30): 0x4 Wallet uses the cat head; external wallets use their own announced icon (generic wallet icon when none)
   const walletName = kind === 'external' ? external?.name || t('钱包') : t('0x4 Wallet')
   const walletIcon = kind === 'external'
     ? (external?.icon ? <img src={external.icon} alt="" className="desk-wallet-ic" /> : <span className="desk-wallet-ic is-blank"><Wallet size={11} /></span>)
     : <img src={catUrl} alt="" className="desk-wallet-ic is-ox4" />
   const myAddr = evmAddress || address || ''
-  // 主页地址 = 社交身份（和手机「我」页点头像去的是同一个）
+  // The profile address = the social identity (same destination as tapping the avatar on the mobile "Me" page)
   const profileAddr = me?.address || address || ''
   const name = me?.nickname || (myAddr ? shortId(myAddr) : t('钱包'))
   const go = (path: string) => { pop.setOpen(false); nav(path) }
@@ -64,10 +64,10 @@ export function WalletMenu() {
               <button type="button" className="desk-menu-addr" onClick={() => copyAddr(myAddr)} aria-label={t('复制钱包地址')}>{midShort(myAddr)}<Copy size={12} aria-hidden="true" /></button>
             </span>
           </div>
-          {/* 用外部钱包时：一个不打扰的入口，换成 0x4 Wallet 解锁合约、私信等专属功能 */}
+          {/* With an external wallet: an unobtrusive entry to switch to 0x4 Wallet and unlock perps, DMs, and other exclusives */}
           {kind === 'external' && <button type="button" role="menuitem" className="desk-menu-item desk-menu-ox4" onClick={() => { pop.setOpen(false); void connectOx4() }}><img src={catUrl} alt="" className="desk-wallet-ic is-ox4" />{t('换用 0x4 Wallet，解锁全部功能')}</button>}
           <button type="button" role="menuitem" className="desk-menu-item" aria-current={pathname === '/portfolio' ? 'page' : undefined} onClick={() => go('/portfolio')}><Wallet size={16} />{t('我的资产')}</button>
-          {/* 能量与收益（2026-10-04 走查：以前只有主播在自己直播间里能点到；下播后的收益、观众的充值记录都没入口） */}
+          {/* Energy & earnings (2026-10-04 review: previously only streamers could reach it from their own live room; post-stream earnings and viewers' top-up records had no entry) */}
           {ENERGY_GIFTS && <button type="button" role="menuitem" className="desk-menu-item" aria-current={pathname === '/energy' ? 'page' : undefined} onClick={() => go('/energy')}><Zap size={16} />{t('能量与收益')}</button>}
           <button type="button" role="menuitem" className="desk-menu-item" disabled={!profileAddr} onClick={() => go(`/u/${profileAddr}`)}><UserRound size={16} />{t('我的主页')}</button>
           <button type="button" role="menuitem" className="desk-menu-item" aria-current={pathname === '/settings' ? 'page' : undefined} onClick={() => go('/settings')}><SettingsIcon size={16} />{t('设置')}</button>
@@ -80,8 +80,8 @@ export function WalletMenu() {
 }
 
 /**
- * 手机 App 扫码登录（电脑上没连钱包，2026-10-01）时的账号菜单：我的主页 / 连接钱包（交易、送礼要它）/ 退出登录。
- * 胶囊上的小图标是手机，表示「扫码登录的」。
+ * Account menu for mobile-app QR login (no wallet connected on the computer, 2026-10-01): my profile / connect wallet (needed for trading and gifting) / log out.
+ * The capsule's small icon is a phone, meaning "signed in via QR".
  */
 export function AppLoginMenu() {
   const pop = usePop()

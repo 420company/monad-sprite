@@ -1,5 +1,5 @@
-// 助记词分格输入：一个格子一个词，避免整串手打漏字、多空格。
-// 粘贴整串会自动分发到各格并按词数切换 12 / 24。
+// Mnemonic grid input: one word per cell — no more dropped words or stray spaces from typing the whole string.
+// Pasting the whole string auto-distributes into cells and switches 12 / 24 by word count.
 import { useRef, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { isMnemonicWord, MNEMONIC_LENGTHS, suggestMnemonicWords } from '@/lib/wallet'
@@ -31,7 +31,7 @@ export default function MnemonicInput({ onChange }: { onChange: (mnemonic: strin
     inputs.current[i]?.select()
   }
 
-  // 多词写入：从第一格开始的整串按自身长度定格数，中途粘贴只覆盖后续格子
+  // Multi-word write: a whole string starting at the first cell sets the cell count by its own length; mid-way pastes only overwrite following cells
   function fill(parts: string[], from: number) {
     const next = [...words]
     for (let i = 0; i < parts.length && from + i < MAX; i++) next[from + i] = parts[i]
@@ -52,7 +52,7 @@ export default function MnemonicInput({ onChange }: { onChange: (mnemonic: strin
   }
 
   const current = focused >= 0 ? words[focused] : ''
-  // 已经是完整的词就不再打扰；拼到两个字母才给候选，否则几十个词刷屏
+  // Leave complete words alone; candidates appear only after two letters typed — otherwise dozens of words flood the screen
   const suggestions = current.length >= 2 && !isMnemonicWord(current) ? suggestMnemonicWords(current) : []
   const lengths = [...new Set([...TOGGLES, count])].sort((a, b) => a - b)
 
@@ -113,7 +113,7 @@ export default function MnemonicInput({ onChange }: { onChange: (mnemonic: strin
               onKeyDown={(e) => {
                 if (e.key === ' ' || e.key === 'Enter') {
                   e.preventDefault()
-                  // 候选唯一时空格直接补全，和硬件钱包的输入习惯一致
+                  // Space auto-completes when there's a single candidate — matches hardware-wallet input habits
                   if (suggestions.length === 1) setWord(i, suggestions[0])
                   if (i < count - 1) focusAt(i + 1)
                 } else if (e.key === 'Backspace' && !words[i] && i > 0) {
@@ -136,8 +136,8 @@ export default function MnemonicInput({ onChange }: { onChange: (mnemonic: strin
             <button
               key={s}
               type="button"
-              // 按下就填：pointerDown 抢在 blur 前面（触摸端 mouseDown 太晚，候选已随失焦消失），
-              // preventDefault 让焦点留在原格子
+              // Fill on press: pointerDown beats blur (on touch, mouseDown is too late — candidates vanish with the blur),
+              // preventDefault keeps focus in the original cell
               onPointerDown={(e) => {
                 e.preventDefault()
                 const i = focused

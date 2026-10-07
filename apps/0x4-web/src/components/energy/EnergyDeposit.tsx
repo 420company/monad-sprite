@@ -1,6 +1,6 @@
-// 充值能量（网页版）：BNB Chain 的 USDT 充进打赏合约，1 USDT = 1 能量，只收整数。
-// 0x4 Wallet 和其他钱包都能充（普通的授权 + 合约调用，钱包里确认）。停止充值 / 暂停时按钮不可用并说明原因。
-// 充进去的能量只能用来送礼，不能转给别人、不能退、不能提现（充值前写清楚）。
+// Top up energy (web): BNB Chain USDT into the tipping contract, 1 USDT = 1 energy, integers only.
+// 0x4 Wallet and other wallets can top up (standard approval + contract call, confirmed in the wallet). The button disables with a reason when top-ups stop / pause.
+// Topped-up energy is gift-only: can't be transferred, refunded, or withdrawn (stated before topping up).
 import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -14,7 +14,7 @@ import { t } from '@/lib/i18n'
 import { useWallet } from '@/store/wallet'
 import energyIcon from './energy.webp'
 
-// 数量规则、快捷数量、关着的原因和电脑端会议共用 lib/energyDepositCore.ts
+// Amount rules, quick amounts, and closed-reasons shared with desktop meetings via lib/energyDepositCore.ts
 const QUICK = DEPOSIT_QUICK
 const explorerTx = depositTxUrl
 
@@ -48,7 +48,7 @@ export default function EnergyDeposit({ open, onClose }: { open: boolean; onClos
       setHash(h)
       setAmount('')
       toast.success(t('充值成功，能量约 1 分钟内到账'))
-      // 服务器读到链上充值后会推送新余额；这里再主动刷一次，防止推送晚到
+      // The server pushes the new balance after seeing the on-chain top-up; refresh once here too in case the push is late
       setTimeout(() => void refresh(), 15_000)
       void usdtOf(me, evmAccount.address).then(setUsdt)
     } catch (e) { const m = errorText(e, t('充值失败')); if (m) toast.error(m) } finally { setStep('idle') }

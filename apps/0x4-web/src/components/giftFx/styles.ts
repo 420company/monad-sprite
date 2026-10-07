@@ -1,5 +1,5 @@
-// 礼物动画的样式：一段 CSS 字符串，第一次用到时插进 <head>（不依赖 Tailwind，会议工程 meet/ 也能直接引用）。
-// 只动 transform / opacity（礼花用一块 canvas），不用 filter 动画、不用 box-shadow 动画，省显卡。
+// Gift-animation styles: one CSS string, injected into <head> on first use (no Tailwind dependency, so the meet/ project can import it directly too).
+// Animates only transform / opacity (confetti uses one canvas) — no filter or box-shadow animations, to spare the GPU.
 export const GIFT_FX_CSS = `
 .gfx-stage { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 60; contain: strict; }
 .gfx-stage * { box-sizing: border-box; }
@@ -107,7 +107,7 @@ export const GIFT_FX_CSS = `
 `
 
 let injected = false
-/** 第一次用到时把样式插进页面（服务端渲染 / 测试环境没有 document 就跳过） */
+/** Injects the styles into the page on first use (skips when there's no document in SSR / test environments) */
 export function injectGiftFxCss() {
   if (injected || typeof document === 'undefined') return
   injected = true

@@ -1,4 +1,4 @@
-// 授权检查与撤销：Solana 的代币账户委托（delegate）与 EVM 的 ERC20 allowance
+// Approval checks and revocation: Solana token-account delegates and EVM ERC20 allowances
 import { PublicKey, Transaction } from '@solana/web3.js'
 import type { SolanaWallet } from '@/lib/vault/signers'
 import { createRevokeInstruction, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token'
@@ -15,13 +15,13 @@ export interface Approval {
   symbol: string
   spender: string
   spenderName: string
-  /** 授权额度（十进制；EVM 无限授权时为 Infinity） */
+  /** Approved amount (decimal; Infinity for EVM unlimited approvals) */
   amount: number
-  /** Solana：代币账户地址（撤销用） */
+  /** Solana: token account address (for revocation) */
   account?: string
 }
 
-/** 常见合约地址：DEX 路由、聚合器、Permit2、LI.FI。多数在各 EVM 链上地址相同 */
+/** Common contract addresses: DEX routers, aggregators, Permit2, LI.FI. Mostly the same address across EVM chains */
 export const KNOWN_SPENDERS: { address: string; name: string; chains?: number[] }[] = [
   { address: '0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE', name: '跨链兑换路由' },
   { address: '0x000000000022D473030F116dDEE9F6B43aC78BA3', name: 'Permit2（Uniswap）' },
@@ -39,7 +39,7 @@ export const KNOWN_SPENDERS: { address: string; name: string; chains?: number[] 
 
 const UNLIMITED = 2n ** 255n
 
-/** Solana：找出所有设置了委托的代币账户 */
+/** Solana: find all token accounts with a delegate set */
 export async function scanSolana(rpcUrl: string, owner: string): Promise<Approval[]> {
   const conn = getConnection(rpcUrl)
   const pk = new PublicKey(owner)
@@ -55,7 +55,7 @@ export async function scanSolana(rpcUrl: string, owner: string): Promise<Approva
   return out
 }
 
-/** EVM：对持有的每个代币，查一遍常见合约的授权额度 */
+/** EVM: check each held token's allowance against the common contracts */
 export async function scanEvm(evmAddress: string, holdings: Holding[], extraSpenders: string[] = []): Promise<Approval[]> {
   const out: Approval[] = []
   const tokens = holdings.filter((h) => h.chainId !== SOLANA_CHAIN_ID && !h.mint.startsWith('0x000000000000000000000000000000000000'))
@@ -90,7 +90,7 @@ export async function revoke(a: Approval, signers: { solana: SolanaWallet | null
   }
   if (!signers.evm) throw new Error(t('缺少 EVM 密钥'))
   const chain = chainById(a.chainId)!.viem!
-  const wallet = await walletClientFor(signers.evm, a.chainId)   // 外部钱包由它自己签名广播（lib/evm.ts）
+  const wallet = await walletClientFor(signers.evm, a.chainId)   // External wallets sign and broadcast themselves (lib/evm.ts)
   const hash = await wallet.writeContract({ chain, address: a.token as Hex, abi: erc20Abi, functionName: 'approve', args: [a.spender as Hex, 0n] })
   await publicClient(a.chainId).waitForTransactionReceipt({ hash })
   return hash

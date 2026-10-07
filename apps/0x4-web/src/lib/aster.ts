@@ -1,13 +1,13 @@
-// BSC 原生永续合约（Aster）：用户全程只用 BNB 当 gas。
-// 结构和之前的合约层一致：行情 / 账户 / 下单 / 杠杆 / 撤单 / 存入 / 提出 / 授权。
-// 鉴权模型（2026-09-18 用官方 demo 与真实接口核过）：
-//  - 交易类请求必须由「已授权的 agent」签（主钱包直签会报 No agent found）。手动交易的 agent 从主钱包
-//    对一条固定消息的确定性签名派生出来，不落地、不显示，解锁后可重算；第一次用或过期时自动用主钱包签一次 approveAgent。
-//  - 管理类（approveAgent）：主钱包签 EIP-712，domain AsterSignTransaction chainId 56，字段首字母大写。
-//  - 交易类：agent 签 EIP-712 Message{msg = 最终 querystring}，domain chainId 1666。
-//  - 提现：主钱包签 Action（domain Aster chainId 56），再连同 agent 签名一起 POST。
-//  - 存入：链上调 Treasury.deposit(USDT, amount, broker=1)，gas 用 BNB。
-// Builder（Aster Code）：下单带 builder + feeRate，我们收成交额的 0.06%（2026-09-25 从 0.05% 调到 0.06%，吃单合计凑整 0.1%）。
+// BSC-native perps (Aster): users pay gas in BNB throughout.
+// Same structure as the previous contract layer: quotes / account / orders / leverage / cancels / deposits / withdrawals / authorization.
+// Auth model (verified against the official demo and the real API on 2026-09-18):
+//  - Trading requests must be signed by an "authorized agent" (signing directly with the main wallet reports No agent found). The manual-trading agent derives from the main wallet
+//    Derived from a deterministic signature over a fixed message — never persisted, never displayed, recomputable after unlock; on first use or expiry, auto-sign one approveAgent with the main wallet.
+//  - Management (approveAgent): the main wallet signs EIP-712, domain AsterSignTransaction, chainId 56, field names capitalized.
+//  - Trading: the agent signs EIP-712 Message{msg = final querystring}, domain chainId 1666.
+//  - Withdraw: the main wallet signs the Action (domain Aster, chainId 56), then POSTs it together with the agent signature.
+//  - Deposit: call Treasury.deposit(USDT, amount, broker=1) on-chain, gas in BNB.
+// Builder (Aster Code): orders carry builder + feeRate; we take 0.06% of volume (raised from 0.05% on 2026-09-25; taker total rounds to 0.1%).
 import { encodeFunctionData, getTypesForEIP712Domain, hashDomain, hashStruct, keccak256, parseAbi, type Account, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { ensureAllowance, getEvmTokenBalance, publicClient, sendEvmTx } from './evm'
@@ -20,21 +20,21 @@ import { api } from './social'
 import { perpReadEndpointOf, perpReadQuery, type PerpReadEndpoint } from './asterPerpRead'
 import { BUILDER as PERP_BUILDER, BUILDER_FEE as PERP_BUILDER_FEE, perpWriteBatch, perpWriteOk, type PerpWriteAction, type PerpWriteResult } from './asterPerpWrite'
 
-/** 交易所接口地址。导出给 lib/asterBook.ts（网页版合约终端的盘口 / 最新成交，公开行情，不用签名） */
+/** Exchange API base URL. Exported for lib/asterBook.ts (web perps terminal order book / latest trades — public market data, no signature needed) */
 export const HOST = 'https://fapi.asterdex.com'
 const BAPI = 'https://www.asterdex.com/bapi/futures/v1/public/future/aster'
 export const BSC_CHAIN_ID = 56
-export const BSC_USDT = '0x55d398326f99059fF775485246999027B3197955' // BSC 上的 USDT 是 18 位小数
+export const BSC_USDT = '0x55d398326f99059fF775485246999027B3197955' // USDT on BSC has 18 decimals
 export const TREASURY = '0x128463A60784c4D3f46c23Af3f65Ed859Ba87974'
-/** 收费地址和费率上限写在 lib/asterPerpWrite.ts（插件也按它核对网页的下单），这里导出同一个值 */
+/** The fee address and rate cap live in lib/asterPerpWrite.ts (the extension also checks web orders against it); the same value is exported here */
 export const BUILDER = PERP_BUILDER
-// 用户批准的费率上限 = 我们实际收的：成交额的 0.06%。交易所允许的上限是 0.1%。
-// ⚠️ 调高后，老用户授权里签的上限还是旧值，下单会被拒 → call() 里识别出来自动重新授权一次（见 FEE_REAUTH）。
-//    果蝇自动交易（fly/stonkfly/aster.py）仍是 0.0005：它的授权服务器替用户重签不了，要调得让用户在 App 里重新授权。
+// The user-approved fee cap = what we actually charge: 0.06% of volume. The exchange allows up to 0.1%.
+// ⚠️ After raising it, existing users' authorized cap is still the old value and orders get rejected → call() detects this and auto re-authorizes once (see FEE_REAUTH).
+//    The fly autopilot (fly/stonkfly/aster.py) stays at 0.0005: its authorization can't be re-signed by the server for the user — changing it requires the user to re-authorize in the app.
 export const BUILDER_FEE = PERP_BUILDER_FEE
 /**
- * 实际下单收的 builder 费（2026-09-27）：普通 0.06% / VIP 0.04%，由服务器按是否 VIP 下发（lib/fees.ts 拉到后调 setPerpFeeRate）。
- * 授权时签的上限仍是 BUILDER_FEE，VIP 调低不用重签；超过上限的值一律不用（交易所会拒单）
+ * Actual builder fee charged on orders (2026-09-27): 0.06% regular / 0.04% VIP, issued by the server based on VIP status (lib/fees.ts calls setPerpFeeRate after fetching).
+ * The cap signed at authorization is still BUILDER_FEE; a VIP lowering needs no re-sign; anything above the cap is never used (the exchange would reject the order)
  */
 let orderFeeRate = BUILDER_FEE
 export function setPerpFeeRate(rate: number) {
@@ -42,7 +42,7 @@ export function setPerpFeeRate(rate: number) {
 }
 export const perpFeeRate = () => Number(orderFeeRate)
 export const MIN_DEPOSIT = 5
-export const MIN_NOTIONAL = 5 // 交易所最小名义
+export const MIN_NOTIONAL = 5 // Exchange minimum notional
 export const AGENT_TTL_MS = 180 * 86400_000
 const ZERO = '0x0000000000000000000000000000000000000000'
 const DOMAIN_MAIN = { name: 'AsterSignTransaction', version: '1', chainId: 56, verifyingContract: ZERO } as const
@@ -55,25 +55,25 @@ export interface PerpAccount { accountValue: number; withdrawable: number; margi
 export interface PerpOrder { oid: number; coin: string; isBuy: boolean; limitPx: number; size: number; timestamp: number; reduceOnly?: boolean; trigger?: string }
 export interface PerpFill { coin: string; px: number; sz: number; isBuy: boolean; time: number; dir: string; closedPnl: number; fee: number; hash: string }
 export type Interval = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
-export interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; /** 成交额（美元）和其中主动买入的部分：合约 K 线才有，「买卖力量」用（lib/perpFlow.ts） */ quoteVolume?: number; buyQuote?: number }
+export interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; /** Volume (USD) and the aggressive-buying portion of it: only perps K-lines have it; used by "buy/sell pressure" (lib/perpFlow.ts) */ quoteVolume?: number; buyQuote?: number }
 
 const num = (s: string | number | null | undefined) => { const n = Number(s); return Number.isFinite(n) ? n : 0 }
 export const symbolOf = (coin: string) => `${coin.toUpperCase()}USDT`
 export const coinOf = (symbol: string) => symbol.replace(/USDT$/, '')
 
-// ---------- nonce / 签名 ----------
+// ---------- nonce / signing ----------
 let lastSec = 0, seq = 0
-/** 官方约定：秒 × 1e6 + 同秒内递增，保证单调 */
+/** Official convention: seconds × 1e6 + increment within the same second, guaranteeing monotonicity */
 function nonce(): number { const s = Math.floor(Date.now() / 1000); if (s === lastSec) seq++; else { lastSec = s; seq = 0 } return s * 1_000_000 + seq }
 const qsOf = (p: Record<string, unknown>) => new URLSearchParams(Object.entries(p).map(([k, v]) => [k, String(v)])).toString()
 
 async function readJson(r: Response) {
   const text = await r.text()
   let body: unknown = text
-  try { body = JSON.parse(text) } catch { /* 非 JSON */ }
+  try { body = JSON.parse(text) } catch { /* Non-JSON */ }
   return checked(r.ok, body, text)
 }
-/** 交易所回的结果：HTTP 失败或 code < 0 按错误抛（插件代办的只读查询回来的状态码和 JSON 也走这里） */
+/** Exchange results: HTTP failure or code < 0 throws as an error (read-only queries handled by the extension come back through here too, status code and JSON) */
 function checked(ok: boolean, body: unknown, text: string) {
   if (!ok || (body && typeof body === 'object' && 'code' in body && Number((body as { code: number }).code) < 0)) {
     const msg = body && typeof body === 'object' ? String((body as { msg?: string; error?: string }).msg || (body as { error?: string }).error || text) : text
@@ -83,7 +83,7 @@ function checked(ok: boolean, body: unknown, text: string) {
 }
 function friendly(msg: string): string {
   if (/No agent found/i.test(msg)) return 'NO_AGENT'
-  // 下单费率超过用户授权时签的上限（平台费调高过）：要重新授权。交易所原话没有公开文档，按关键词宽松识别
+  // Order fee rate exceeds the cap signed at authorization (platform fee was raised): re-authorization needed. The exchange's original message has no public docs — match loosely by keywords
   if (/fee ?rate|maxFeeRate|builder fee/i.test(msg)) return 'FEE_REAUTH'
   if (/Margin is insufficient/i.test(msg)) return t('保证金不足')
   if (/ReduceOnly Order is rejected/i.test(msg)) return t('没有可减的仓位')
@@ -93,7 +93,7 @@ function friendly(msg: string): string {
   return msg
 }
 
-/** 主钱包签管理类请求（approveAgent 等）：字段首字母大写，类型按值推断，末尾固定 AsterChain / User / Nonce */
+/** The main wallet signs management requests (approveAgent etc.): field names capitalized, types inferred from values, fixed trailing AsterChain / User / Nonce */
 async function signMain(account: Account, primaryType: string, params: Record<string, string | number | boolean>) {
   const full: Record<string, string | number | boolean> = { ...params, asterChain: 'Mainnet', user: account.address, nonce: nonce() }
   const types = { [primaryType]: Object.entries(full).map(([k, v]) => ({ name: k[0].toUpperCase() + k.slice(1), type: typeof v === 'boolean' ? 'bool' : typeof v === 'number' ? 'uint256' : 'string' })) }
@@ -102,7 +102,7 @@ async function signMain(account: Account, primaryType: string, params: Record<st
   return { ...full, signature, signatureChainId: 56 }
 }
 
-/** agent 签交易类请求：msg = 最终 querystring（不含 signature） */
+/** The agent signs trading requests: msg = the final querystring (excluding signature) */
 async function signedRequest(agent: PerpAgent, user: string, method: 'GET' | 'POST' | 'DELETE', path: string, params: Record<string, unknown> = {}) {
   const full = { ...params, asterChain: 'Mainnet', user, signer: agent.address, nonce: nonce() }
   const qs = qsOf(full)
@@ -110,30 +110,30 @@ async function signedRequest(agent: PerpAgent, user: string, method: 'GET' | 'PO
   return readJson(await fetch(`${HOST}${path}?${qs}&signature=${signature}`, { method }))
 }
 
-// ---------- agent：手动交易用，从主钱包派生 ----------
-/** 代理密钥只需要「地址」和「签结构化数据」两件事 */
+// ---------- agent: for manual trading, derived from the main wallet ----------
+/** The agent key only needs two things: the "address" and "sign structured data" */
 export interface PerpAgent {
   address: Hex
   signTypedData(td: { domain: typeof DOMAIN_AGENT; types: Record<string, { name: string; type: string }[]>; primaryType: string; message: Record<string, unknown> }): Promise<Hex>
 }
 
 let agentCache = new WeakMap<Account, PerpAgent>()
-// 钱包一锁就扔掉代理密钥：网页层算出来的那把在内存里，不扔的话锁着也能继续下单
+// Drop the agent key the moment the wallet locks: the web-derived one lives in memory — without dropping it, orders could keep going while locked
 onLock(() => { agentCache = new WeakMap() })
 
 /**
- * 对固定消息签名 → keccak → 私钥。签名是确定性的（RFC6979），同一个钱包每次算出同一把；不存任何地方。
- * App 里整个推导与签名都在原生模块内完成，网页层只拿得到代理地址（原生与网页版算出的是同一把，有对拍测试）。
+ * Fixed-message signature -> keccak -> private key. The signature is deterministic (RFC6979) — the same wallet derives the same key every time; stored nowhere.
+ * In the app the whole derivation and signing happens inside the native module; the web layer only ever gets the agent address (native and web derive the same key — there's a cross-check test).
  */
 export async function agentFor(account: Account): Promise<PerpAgent> {
   let a = agentCache.get(account)
   if (a) return a
-  // 网页版连的 0x4 浏览器插件：交易密钥在插件里派生，私钥不出插件；插件也不签「0x4 perp agent v2」原始消息（lib/vault/extension.ts）
+  // The 0x4 browser extension connected on web: the trading key is derived inside the extension, the private key never leaves it; the extension also won't sign the raw "0x4 perp agent v2" message (lib/vault/extension.ts)
   const ox4Agent = (account as Account & { ox4Agent?: () => Promise<PerpAgent> }).ox4Agent
   if (ox4Agent) {
     a = await ox4Agent()
   } else if (nativeVault) {
-    // 原生锁定后代理密钥也跟着清，要先解锁（锁着就弹验证）
+    // Native locking also clears the agent key — unlock first (locked pops verification)
     await ensureUnlocked(t('确认合约交易'))
     const { address } = await Vault.agentAddress()
     a = {
@@ -157,12 +157,12 @@ export async function agentFor(account: Account): Promise<PerpAgent> {
   agentCache.set(account, a)
   return a
 }
-/** 主钱包签一次，把 agent 登记到交易所（只能开合约，不能提币，180 天有效），同时批准我们的 builder 费 */
+/** The main wallet signs once to register the agent with the exchange (perps only, no withdrawals, valid 180 days), approving our builder fee at the same time */
 export async function approveAgentAddress(account: Account, agentAddress: string, agentName: string): Promise<void> {
   const body = await signMain(account, 'ApproveAgent', { agentName: agentName.slice(0, 20), agentAddress, ipWhitelist: '', expired: Date.now() + AGENT_TTL_MS, canSpotTrade: false, canPerpTrade: true, canWithdraw: false, builder: BUILDER, maxFeeRate: BUILDER_FEE, builderName: '0x4' })
   await readJson(await fetch(`${HOST}/fapi/v3/approveAgent`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: qsOf(body) }))
 }
-/** 给果蝇用：新生成一把随机 agent，授权后把私钥交给调用方（加密存服务端），本函数不保存 */
+/** For the fly: generate a fresh random agent; after authorization, hand the private key to the caller (stored encrypted server-side) — this function saves nothing */
 export async function approveAgent(account: Account, agentName: string): Promise<{ agentKey: Hex; agentAddress: string }> {
   const agentKey = generatePrivateKey()
   const agentAddress = privateKeyToAccount(agentKey).address
@@ -170,16 +170,16 @@ export async function approveAgent(account: Account, agentName: string): Promise
   return { agentKey, agentAddress }
 }
 /**
- * 手动合约计入 VIP 交易额（2026-09-27）：给服务器授权一把「只读」代理 —— 交易、提币权限全关，只能查这个账户的成交记录。
- * 服务器生成这把代理、私钥加密保存；主钱包签一次授权，服务器向交易所确认权限确实只有「读」才启用。
- * 每个钱包每次打开 App 最多试一次，失败不影响交易。
+ * Manual perps count toward VIP volume (2026-09-27): authorize the server a "read-only" agent — trading and withdrawal permissions all off; it can only read this account's fill history.
+ * The server generates this agent and stores its key encrypted; the main wallet signs one authorization, and it's only enabled after the server confirms with the exchange that permissions are really read-only.
+ * Each wallet tries at most once per app launch; a failure doesn't affect trading.
  */
 const readerTried = new WeakSet<Account>()
 export async function linkPerpReader(account: Account): Promise<void> {
   if (readerTried.has(account)) return
   readerTried.add(account)
-  // 网页版（插件钱包）：这一步要主钱包签名 = 插件弹「结构化签名」窗口，而它是后台自己发起的，不是用户操作（2026-09-29 goat 实测合约页一开就弹）。
-  // 网页版先不自动授权；手机 App 里签名不弹窗，照旧
+  // Web (extension wallet): this step needs the main wallet's signature = the extension pops a "structured signature" window, but it's initiated by the background itself, not a user action (2026-09-29 goat measured: it popped as soon as the perps page opened).
+  // Web doesn't auto-authorize yet; the phone app signs without popups, as before
   if (isPluginAccount(account)) return
   try {
     const r = await api<{ agentAddress: string; approved: boolean }>('/api/fees/perp-reader')
@@ -187,10 +187,10 @@ export async function linkPerpReader(account: Account): Promise<void> {
     const body = await signMain(account, 'ApproveAgent', { agentName: '0x4volume', agentAddress: r.agentAddress, ipWhitelist: '', expired: Date.now() + AGENT_TTL_MS, canSpotTrade: false, canPerpTrade: false, canWithdraw: false, builder: BUILDER, maxFeeRate: BUILDER_FEE, builderName: '0x4' })
     await readJson(await fetch(`${HOST}/fapi/v3/approveAgent`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: qsOf(body) }))
     await api('/api/fees/perp-reader/confirm', { method: 'POST' })
-  } catch { /* 下次打开 App 再试 */ }
+  } catch { /* Try again next app launch */ }
 }
 
-/** 同一个钱包同时只做一次授权：账户 / 挂单 / 成交三个请求并发时各自去授权会撞车（实测有的返回 400） */
+/** One authorization at a time per wallet: the account / open-orders / fills requests racing to authorize concurrently would collide (measured: some return 400) */
 const approving = new WeakMap<Account, Promise<void>>()
 function ensureAgent(account: Account, agentAddress: string): Promise<void> {
   let p = approving.get(account)
@@ -201,35 +201,35 @@ function ensureAgent(account: Account, agentAddress: string): Promise<void> {
   return p
 }
 /**
- * 用户主动授权交易密钥（2026-10-05 goat：存了钱进合约账户，合约页一直「未授权交易密钥」、余额全是 --，只想看余额也没地方授权）。
- * 网页版的只读查询碰到没授权不自动弹窗（见 call 的说明），所以合约页给一个按钮，点了走这里：主钱包签一次，之后照常读账户
+ * The user proactively authorizes a trading key (2026-10-05 goat: funded the perps account, but the perps page kept saying "trading key not authorized" with balances all "--" — no place to authorize just to view balances).
+ * Web read-only queries don't auto-popup on unauthorized (see call's note), so the perps page gets a button that goes here: the main wallet signs once, then reads work as usual
  */
 export async function authorizePerpAgent(account: Account): Promise<void> {
   const agent = await agentFor(account)
   await ensureAgent(account, agent.address)
   agentMissing.delete(account)
 }
-/** 网页版连的 0x4 浏览器插件：主钱包每个签名都要用户在插件里确认（lib/vault/extension.ts 给账户挂了 ox4Agent） */
+/** The 0x4 browser extension connected on web: every main-wallet signature needs the user's confirmation in the extension (lib/vault/extension.ts mounted ox4Agent on the account) */
 const isPluginAccount = (account: Account) => typeof (account as Account & { ox4Agent?: unknown }).ox4Agent === 'function'
-/** 网页版插件账户的只读查询：插件代办（lib/asterPerpRead.ts），返回 HTTP 状态码和交易所的 JSON */
+/** Read-only queries for the web extension account: handled by the extension (lib/asterPerpRead.ts), returning the HTTP status code and the exchange's JSON */
 type PerpReadFn = (endpoint: PerpReadEndpoint, params: Record<string, string>) => Promise<{ status: number; body: unknown }>
-/** 网页版：后台只读查询碰到过「没授权」的钱包 → 什么时候看到的（下一次用户下单时先授权；60 秒内只读查询不再重复问交易所） */
+/** Web: a background read-only query once saw an "unauthorized" wallet → when it was seen (authorize before the user's next order; read-only queries don't re-ask the exchange within 60 seconds) */
 const agentMissing = new WeakMap<Account, number>()
 const AGENT_MISSING_RECHECK_MS = 60_000
 
 /**
- * 交易类调用：没授权或过期时自动补一次授权再重试。
- * read = 页面定时刷新的只读查询（账户、挂单、成交、杠杆分档）。网页版（插件钱包）上只读查询碰到没授权不自动去授权：
- * 授权要主钱包签名 = 插件弹窗，页面每 8 秒刷新一次就弹一次（2026-09-29 goat 实测）。抛 NO_AGENT，页面按「还没开通」显示，
- * 等用户第一次下单（用户操作）时再授权。手机 App 签名不弹窗，照旧自动补。
+ * Trading calls: when unauthorized or expired, automatically top up one authorization and retry.
+ * read = the page's periodic read-only queries (account, open orders, fills, leverage brackets). On web (extension wallet), read-only queries hitting "unauthorized" don't auto-authorize:
+ * authorizing needs the main wallet's signature = an extension popup, and the page refreshes every 8 seconds so it would pop every 8 seconds (2026-09-29 goat verified). Throws NO_AGENT; the page shows "not enabled yet"
+ * and waits for the user's first order (a user action) to authorize. The phone app signs without popups, so it still auto-tops-up as before.
  */
 async function call(account: Account, method: 'GET' | 'POST' | 'DELETE', path: string, params: Record<string, unknown> = {}, read = false) {
   const plugin = isPluginAccount(account)
-  // 网页版只读查询：交给插件代办，插件自己签名、自己请求交易所，签名不交给网页（2026-09-29 审查，见 lib/asterPerpRead.ts）
+  // Web read-only queries: handled by the extension — it signs itself and requests the exchange itself; signatures are never handed to the web page (2026-09-29 review, see lib/asterPerpRead.ts)
   if (plugin && read) return pluginRead(account, path, params)
   const agent = await agentFor(account)
-  // 网页版：后台只读查询已经知道还没授权，这次写操作（用户下单）先授权再签单子。
-  // 不然先弹一个「合约下单」、交易所回没授权、再弹授权、再弹一次「合约下单」，一次下单三个窗口
+  // Web: the background read-only query already knows it's unauthorized — this write op (the user's order) authorizes first, then signs the order.
+  // Otherwise one order pops three windows: "perp order" first, then the exchange says not authorized, then the auth prompt, then "perp order" again
   if (plugin && !read && agentMissing.has(account)) {
     await ensureAgent(account, agent.address)
     agentMissing.delete(account)
@@ -240,11 +240,11 @@ async function call(account: Account, method: 'GET' | 'POST' | 'DELETE', path: s
     agentMissing.delete(account)
     return r
   } catch (e) {
-    // NO_AGENT：还没授权 / 过期；FEE_REAUTH：授权里的平台费上限低于现在收的。两种都是主钱包重签一次授权
+    // NO_AGENT: not authorized / expired; FEE_REAUTH: the authorized platform-fee cap is below what's now charged. Both are fixed by the main wallet re-signing one authorization
     const reauth = (x: unknown) => x instanceof Error && (x.message === 'NO_AGENT' || x.message === 'FEE_REAUTH')
     if (!reauth(e)) throw e
     await ensureAgent(account, agent.address)
-    // 授权刚生效的一两秒内交易所各接口不同步（实测账户已 200、成交仍报 No agent found），退避重试几次
+    // In the second or two after authorization takes effect, the exchange's endpoints are out of sync (measured: account already 200 while fills still report No agent found) — back off and retry a few times
     for (let i = 0; ; i++) {
       await new Promise((r) => setTimeout(r, 700 * (i + 1)))
       try { return await signedRequest(agent, account.address, method, path, params) }
@@ -257,9 +257,9 @@ async function call(account: Account, method: 'GET' | 'POST' | 'DELETE', path: s
 }
 
 /**
- * 网页版（插件钱包）的只读查询：只认 lib/asterPerpRead.ts 白名单里的接口和参数，交给插件的 perpRead。
- * 碰到「没授权」不自动去授权（授权要主钱包签名 = 插件弹窗，页面每 8 秒刷新就弹一次），抛 NO_AGENT，
- * 页面按「还没开通」显示；一分钟内刚确认过没授权，不再每 8 秒去问交易所（结果一样，还满屏 400）
+ * Web (extension wallet) read-only queries: only the interfaces and params whitelisted in lib/asterPerpRead.ts are handed to the extension's perpRead.
+ * Hitting "unauthorized" doesn't auto-authorize (authorizing needs the main wallet's signature = an extension popup, and the page refreshes every 8 seconds), so it throws NO_AGENT
+ * and the page shows "not enabled yet"; if it was confirmed unauthorized within the last minute, don't ask the exchange every 8 seconds (same answer, plus a screenful of 400s)
  */
 async function pluginRead(account: Account, path: string, params: Record<string, unknown>) {
   const q = perpReadQuery(perpReadEndpointOf(path), params)
@@ -278,19 +278,19 @@ async function pluginRead(account: Account, path: string, params: Record<string,
 }
 
 /**
- * 网页版（插件钱包）的合约写操作：一次用户操作的全部动作（改杠杆、改保证金模式、主单、止盈止损）一起交给插件的 perpWrite，
- * 插件核对白名单、自己签名、自己请求交易所，最多弹一个确认窗口；开着网页快捷交易且在上限以内就不弹（2026-09-30 goat）。
- * 没授权交易密钥（NO_AGENT）或平台费上限要更新（FEE_REAUTH）：主钱包授权一次再整批重发。
- * 只在还没有任何下单成功时整批重发（改杠杆、改保证金模式重发一次结果一样），不会重复下单。
- * 返回每个动作的结果（顺序：改杠杆 → 改保证金模式 → 主单 → 止盈止损），失败的由调用方决定怎么报
+ * Web (extension wallet) contract writes: every action in one user operation (change leverage, change margin mode, main order, TP/SL) goes to the extension's perpWrite in one batch;
+ * the extension checks a whitelist, signs itself, and requests the exchange itself — at most one confirmation popup; with web quick-trade on and within limits, no popup (2026-09-30 goat).
+ * No authorized trading key (NO_AGENT) or platform-fee cap needs updating (FEE_REAUTH): the main wallet authorizes once, then the whole batch is resent.
+ * The batch is only resent when no order has succeeded yet (resending leverage/margin-mode changes is idempotent) — never double-orders.
+ * Returns each action's result (order: leverage -> margin mode -> main order -> TP/SL); the caller decides how to report failures
  */
 type PerpWriteFn = (actions: PerpWriteAction[]) => Promise<{ results: PerpWriteResult[] }>
 async function pluginWrite(account: Account, actions: PerpWriteAction[]): Promise<PerpWriteResult[]> {
   const write = (account as Account & { ox4PerpWrite?: PerpWriteFn }).ox4PerpWrite
   if (typeof write !== 'function') throw new Error(t('请更新 0x4 浏览器插件后再试'))
-  perpWriteBatch(actions)   // 网页发出前按同一份白名单核一遍，格式不对在这里就报错，不去打扰插件
+  perpWriteBatch(actions)   // Before the web page sends, verify against the same whitelist once — bad formats error here instead of bothering the extension
   const agent = await agentFor(account)
-  // 后台只读查询已经知道还没授权：先授权再下单，免得先弹下单窗口、交易所回没授权、再弹授权、再弹一次下单
+  // The background read-only query already knows it's unauthorized: authorize before ordering — avoids popping the order window, getting "unauthorized" from the exchange, popping auth, then popping the order window again
   if (agentMissing.has(account)) {
     await ensureAgent(account, agent.address)
     agentMissing.delete(account)
@@ -302,7 +302,7 @@ async function pluginWrite(account: Account, actions: PerpWriteAction[]): Promis
   let results = (await write(actions)).results
   if (!needAuth(results)) { agentMissing.delete(account); return results }
   await ensureAgent(account, agent.address)
-  // 授权刚生效的一两秒内交易所各接口不同步，退避重试几次（和 call() 一样）
+  // In the second or two after authorization takes effect, the exchange's endpoints are out of sync — back off and retry a few times (same as call())
   for (let i = 0; i < 4; i++) {
     await new Promise((r) => setTimeout(r, 700 * (i + 1)))
     results = (await write(actions)).results
@@ -311,18 +311,18 @@ async function pluginWrite(account: Account, actions: PerpWriteAction[]): Promis
   const fee = results.some((r) => failMsg(r) === 'FEE_REAUTH')
   throw new Error(fee ? t('平台费授权更新失败，请稍后再试') : 'NO_AGENT')
 }
-/** 交易所回复里的错误原文 */
+/** The original error text in the exchange's response */
 function messageOf(body: unknown): string {
   if (body && typeof body === 'object') return String((body as { msg?: string; error?: string }).msg || (body as { error?: string }).error || JSON.stringify(body))
   return String(body ?? '')
 }
-/** 某个动作失败了就按交易所原话（换成中文提示）抛出；没执行（前面失败了）的不管 */
+/** When an action fails, rethrow with the exchange's original message (rendered as a Chinese hint); actions that never ran (earlier failure) are left alone */
 function throwIfFailed(r: PerpWriteResult | undefined) {
   if (!r || !('status' in r) || perpWriteOk(r, r.status, r.body)) return
   checked(false, r.body, messageOf(r.body))
 }
 const isPluginWriter = (account: Account) => typeof (account as Account & { ox4PerpWrite?: unknown }).ox4PerpWrite === 'function'
-/** 改杠杆 / 改保证金模式的动作（和 setLeverage 同一套取值） */
+/** Change-leverage / change-margin-mode actions (same value set as setLeverage) */
 function settingsActions(market: PerpMarket, leverage: number, isCross: boolean): PerpWriteAction[] {
   return [
     { action: 'leverage', params: { symbol: market.symbol, leverage: String(Math.max(1, Math.min(market.maxLeverage, Math.round(leverage)))) } },
@@ -330,7 +330,7 @@ function settingsActions(market: PerpMarket, leverage: number, isCross: boolean)
   ]
 }
 
-// ---------- 行情（公开） ----------
+// ---------- Market data (public) ----------
 interface ExSymbol { symbol: string; status: string; baseAsset: string; quoteAsset: string; marginAsset: string; pricePrecision: number; quantityPrecision: number }
 let exInfo: { at: number; list: ExSymbol[] } | null = null
 async function exchangeInfo(): Promise<ExSymbol[]> {
@@ -339,8 +339,8 @@ async function exchangeInfo(): Promise<ExSymbol[]> {
   exInfo = { at: Date.now(), list: d.symbols.filter((s) => s.status === 'TRADING' && s.quoteAsset === 'USDT' && s.marginAsset === 'USDT') }
   return exInfo.list
 }
-/** 全部 USDT 永续 + 24h 行情 + 标记价 / 资金费，按成交额排序。杠杆上限公开接口不给，先按主流币 100x / 其它 20x 估，页面下单时交易所会按实际上限校验 */
-// maxLeverage 在这里只是未连钱包时的估计值；连上钱包后 Perp 页用 loadLeverageBrackets 的真实分档覆盖（701 个合约里 325 个只有 5x）
+/** All USDT perps + 24h market data + mark price / funding, sorted by volume. The public API doesn't give max leverage — estimate 100x for majors / 20x for the rest for now; the exchange validates against the real cap at order time */
+// maxLeverage here is only a pre-wallet estimate; once the wallet connects, the Perp page overwrites it with loadLeverageBrackets' real brackets (325 of 701 contracts cap at 5x)
 export async function loadMarkets(): Promise<PerpMarket[]> {
   const [syms, tickers, premiums] = await Promise.all([
     exchangeInfo(),
@@ -360,12 +360,12 @@ export async function loadMarkets(): Promise<PerpMarket[]> {
 }
 export async function loadCandles(coin: string, interval: Interval, bars = 300): Promise<Candle[]> {
   const raw = await readJson(await fetch(`${HOST}/fapi/v3/klines?symbol=${symbolOf(coin)}&interval=${interval}&limit=${Math.min(1500, bars)}`)) as (string | number)[][]
-  // 第 7 项 = 成交额，第 10 项 = 主动买入的成交额；老格式没有这两项就不带（不拿 0 冒充）
+  // Item 7 = volume, item 10 = aggressive-buy volume; the old format lacks both — omit them (never fake with 0)
   const opt = (v: string | number | undefined) => v === undefined || v === '' || !Number.isFinite(Number(v)) ? undefined : Number(v)
   return raw.map((k) => ({ time: Math.floor(num(k[0]) / 1000), open: num(k[1]), high: num(k[2]), low: num(k[3]), close: num(k[4]), volume: num(k[5]), quoteVolume: opt(k[7]), buyQuote: opt(k[10]) }))
 }
 
-// ---------- 账户（agent 签名） ----------
+// ---------- Account (agent-signed) ----------
 export async function loadAccount(account: Account): Promise<PerpAccount> {
   const a = await call(account, 'GET', '/fapi/v3/account', {}, true) as { totalMarginBalance: string; totalWalletBalance: string; availableBalance: string; maxWithdrawAmount: string; totalInitialMargin: string; positions: { symbol: string; positionAmt: string; entryPrice: string; leverage: string; liquidationPrice: string; markPrice?: string; unRealizedProfit: string; marginType?: string; isolated?: boolean; isolatedMargin?: string; positionInitialMargin?: string }[] }
   const positions: PerpPosition[] = (a.positions || []).filter((p) => num(p.positionAmt) !== 0).map((p) => {
@@ -388,10 +388,10 @@ export async function loadFills(account: Account, limit = 30): Promise<PerpFill[
   })
 }
 
-// ---------- 交易 ----------
+// ---------- Trading ----------
 export function roundSz(sz: number, szDecimals: number): string { const f = 10 ** szDecimals; return (Math.floor(sz * f + 1e-9) / f).toFixed(szDecimals) }
 export function roundPx(px: number, pxDecimals: number): string { return px.toFixed(pxDecimals) }
-/** 交易所对每个合约的真实最高杠杆（按名义分档，取最小档也就是最高的那个数）。要签名，所以只有连了钱包才拿得到；拿不到就沿用 loadMarkets 的估计值 */
+/** Each contract's real max leverage from the exchange (by notional bracket — the smallest bracket, i.e. the highest number). Requires signing, so it's only available with a wallet connected; otherwise keep loadMarkets' estimate */
 let bracketCache: Record<string, number> | null = null
 export async function loadLeverageBrackets(account: Account): Promise<Record<string, number>> {
   if (bracketCache) return bracketCache
@@ -402,18 +402,18 @@ export async function loadLeverageBrackets(account: Account): Promise<Record<str
   return out
 }
 export async function setLeverage(account: Account, market: PerpMarket, leverage: number, isCross: boolean): Promise<void> {
-  // 网页版（插件钱包）：两个动作一起交给插件（最多一个确认窗口）；保证金模式「不用改」插件已按成功算
+  // Web (extension wallet): both actions go to the extension together (at most one confirmation window); a margin mode of "no change" already counts as success on the extension side
   if (isPluginWriter(account)) { for (const r of await pluginWrite(account, settingsActions(market, leverage, isCross))) throwIfFailed(r); return }
   await call(account, 'POST', '/fapi/v3/leverage', { symbol: market.symbol, leverage: Math.max(1, Math.min(market.maxLeverage, Math.round(leverage))) })
   try { await call(account, 'POST', '/fapi/v3/marginType', { symbol: market.symbol, marginType: isCross ? 'CROSSED' : 'ISOLATED' }) }
   catch (e) { if (!(e instanceof Error && e.message === 'NO_CHANGE')) throw e }
 }
 /**
- * leverage / isCross：下单前先把这个币的杠杆和保证金模式设好（给了 leverage 才设）。
- * 网页版（插件钱包）上和主单、止盈止损一起交给插件，一次下单最多一个确认窗口；手机 App 照旧先调 setLeverage 再下单
+ * leverage / isCross: set this coin's leverage and margin mode before ordering (only set when leverage is given).
+ * On web (extension wallet) it goes to the extension together with the main order and TP/SL — at most one confirmation window per order; the phone app still calls setLeverage first, then orders
  */
 export interface OrderInput { market: PerpMarket; isBuy: boolean; size: number; limitPx?: number; reduceOnly?: boolean; slippageBps?: number; takeProfit?: number; stopLoss?: number; leverage?: number; isCross?: boolean }
-export interface OrderResult { filledSz: number; avgPx: number; resting: boolean; oid?: number; /** 主单之后挂的止盈 / 止损里没挂上的（2026-09-28 审查 #10：原来失败被吞掉，界面照样报成功） */ protectionFailed?: ('tp' | 'sl')[] }
+export interface OrderResult { filledSz: number; avgPx: number; resting: boolean; oid?: number; /** TP / SL orders placed after the main order that failed to place (2026-09-28 review #10: failures used to be swallowed while the UI still reported success) */ protectionFailed?: ('tp' | 'sl')[] }
 interface OrderResp { orderId: number; status: string; executedQty: string; avgPrice: string; cumQuote?: string }
 export async function placeOrder(account: Account, o: OrderInput): Promise<OrderResult> {
   const { market } = o
@@ -424,7 +424,7 @@ export async function placeOrder(account: Account, o: OrderInput): Promise<Order
   if (isPluginWriter(account)) return placeOrderViaPlugin(account, o, params)
   if (o.leverage !== undefined) await setLeverage(account, market, o.leverage, !!o.isCross)
   const r = await call(account, 'POST', '/fapi/v3/order', params) as OrderResp
-  // 止盈 / 止损：反向、触发后市价平掉整个仓位；主单成交后再挂，挂失败不回滚主单，只提示
+  // Take-profit / stop-loss: opposite direction, market-closes the whole position on trigger; placed after the main order fills — a placement failure doesn't roll back the main order, just notifies
   const tpsl = async (type: 'TAKE_PROFIT_MARKET' | 'STOP_MARKET', px: number) => call(account, 'POST', '/fapi/v3/order', { symbol: market.symbol, side: o.isBuy ? 'SELL' : 'BUY', type, stopPrice: roundPx(px, market.pxDecimals), closePosition: 'true', builder: BUILDER, feeRate: orderFeeRate })
   const extras: { kind: 'tp' | 'sl'; p: Promise<unknown> }[] = []
   if (o.takeProfit) extras.push({ kind: 'tp', p: tpsl('TAKE_PROFIT_MARKET', o.takeProfit) })
@@ -439,8 +439,8 @@ function orderResult(r: OrderResp, protectionFailed: ('tp' | 'sl')[]): OrderResu
   return { filledSz: 0, avgPx: 0, resting: true, oid: r.orderId, protectionFailed }
 }
 /**
- * 网页版（插件钱包）下单：改杠杆、改保证金模式、主单、止盈、止损一次交给插件（lib/asterPerpWrite.ts），最多一个确认窗口。
- * 插件按顺序执行，前面失败后面不发；主单成交后止盈止损各挂各的，没挂上的照旧报给界面
+ * Web (extension wallet) ordering: leverage change, margin-mode change, main order, TP, SL go to the extension in one shot (lib/asterPerpWrite.ts) — at most one confirmation window.
+ * The extension executes in order; if an earlier step fails, later ones aren't sent; after the main order fills, TP and SL are placed independently — a failed one is still reported to the UI as before
  */
 async function placeOrderViaPlugin(account: Account, o: OrderInput, main: Record<string, unknown>): Promise<OrderResult> {
   const { market } = o
@@ -470,9 +470,9 @@ export async function cancelOrder(account: Account, market: PerpMarket, oid: num
   await call(account, 'DELETE', '/fapi/v3/order', { symbol: market.symbol, orderId: oid })
 }
 /**
- * 给已有仓位挂 / 改止盈或止损（2026-10-02 网页版 K 线上的交易线）：触发后市价平掉整个仓位，和下单时带的止盈止损是同一种单。
- * replaceOid = 要换掉的旧单：交易所同一方向同一种「平掉整个仓位」的触发单只能有一张，所以先撤旧的、再挂新的。
- * 旧的撤了、新的没挂上：抛的错误带 protectionGone = true，界面必须明说「现在没有保护了」。
+ * Attach / change TP or SL on an existing position (2026-10-02 trading lines on the web K-line chart): after triggering, the whole position is closed at market — same order type as the TP/SL attached at order time.
+ * replaceOid = the old order to replace: the exchange allows only one "close whole position" trigger order per side per direction, so cancel the old one first, then place the new one.
+ * Old cancelled but new not placed: the thrown error carries protectionGone = true, and the UI must say plainly "there is no protection now".
  */
 export async function setProtection(account: Account, market: PerpMarket, isLong: boolean, kind: 'tp' | 'sl', px: number, replaceOid?: number): Promise<void> {
   if (!(px > 0)) throw new Error(t('请输入价格'))
@@ -487,11 +487,11 @@ export async function setProtection(account: Account, market: PerpMarket, isLong
   }
 }
 
-// ---------- 出入金（BSC） ----------
+// ---------- Deposits / withdrawals (BSC) ----------
 export async function bscUsdtBalance(address: string): Promise<number> {
   try { return Number(await getEvmTokenBalance(BSC_CHAIN_ID, address, BSC_USDT)) / 1e18 } catch { return 0 }
 }
-/** 存入：approve（必要时）+ Treasury.deposit，两笔 BSC 交易，gas 用 BNB。到账约 1–3 分钟 */
+/** Deposit: approve (when needed) + Treasury.deposit — two BSC transactions, gas in BNB. Arrival takes ~1–3 minutes */
 export async function depositUsdt(account: Account, amount: number, onApproving?: () => void): Promise<Hex> {
   if (amount < MIN_DEPOSIT) throw new Error(t('最少存入 {n} USDT', { n: MIN_DEPOSIT }))
   const units = BigInt(Math.round(amount * 1e6)) * 10n ** 12n
@@ -500,11 +500,11 @@ export async function depositUsdt(account: Account, amount: number, onApproving?
   await ensureAllowance(account, BSC_CHAIN_ID, BSC_USDT, TREASURY, units, onApproving)
   return sendEvmTx(account, BSC_CHAIN_ID, { to: TREASURY, data: encodeFunctionData({ abi: TREASURY_ABI, functionName: 'deposit', args: [BSC_USDT as Hex, units, 1n] }) })
 }
-/** 提现手续费（交易所按当时 gas 估，USDT 计） */
+/** Withdrawal fee (estimated by the exchange at then-gas, denominated in USDT) */
 export async function estimateWithdrawFee(): Promise<number> {
   try { const d = await readJson(await fetch(`${BAPI}/estimate-withdraw-fee?chainId=${BSC_CHAIN_ID}&network=EVM&currency=USDT&accountType=1`)) as { data?: { gasCost?: number } }; return num(d.data?.gasCost) || 0.2 } catch { return 0.2 }
 }
-/** 提出到 BNB Chain 的同一个地址：主钱包签 Action，agent 签请求 */
+/** Withdraw to the same address on BNB Chain: the main wallet signs the Action, the agent signs the request */
 export async function withdrawUsdt(account: Account, amount: number): Promise<{ withdrawId?: string; hash?: string }> {
   const fee = await estimateWithdrawFee()
   if (amount <= fee) throw new Error(t('提现要大于手续费 {fee} USDT', { fee }))
@@ -518,13 +518,13 @@ export async function withdrawUsdt(account: Account, amount: number): Promise<{ 
   return call(account, 'POST', '/fapi/v3/aster/user-withdraw', { chainId: BSC_CHAIN_ID, asset: 'USDT', amount: amt, fee: feeStr, receiver: account.address, userNonce, userSignature }) as Promise<{ withdrawId?: string; hash?: string }>
 }
 
-/** 钱包里的 BNB 余额（减去留给 gas 的一点） */
+/** BNB balance in the wallet (minus a bit reserved for gas) */
 export async function bscBnbBalance(address: string): Promise<number> {
   try { return Number(await publicClient(BSC_CHAIN_ID).getBalance({ address: address as Hex })) / 1e18 } catch { return 0 }
 }
 export const BNB_GAS_RESERVE = 0.003
-/** 用 BNB 存入：先在 BSC 上把 BNB 闪兑成 USDT（LI.FI 同链路线），到账后再存进合约账户。
- *  保证金永远是 USDT，用户不承担 BNB 抵押的折价和波动；代价是一次兑换费（约 0.1–0.3%）和多一笔 gas。 */
+/** Depositing with BNB: first swap BNB to USDT on BSC (LI.FI same-chain route), then deposit into the perps account once it arrives.
+ *  Margin is always USDT — the user never takes the BNB collateral haircut or volatility; the cost is one swap fee (~0.1–0.3%) and one extra gas tx. */
 export async function depositBnb(account: Account, bnb: number, onPhase?: (p: string) => void): Promise<Hex> {
   if (!(bnb > 0)) throw new Error(t('请输入 BNB 数量'))
   const balance = await bscBnbBalance(account.address)
@@ -537,7 +537,7 @@ export async function depositBnb(account: Account, bnb: number, onPhase?: (p: st
   const before = await getEvmTokenBalance(BSC_CHAIN_ID, account.address, BSC_USDT)
   onPhase?.(t('第 1 步：BNB 换成 USDT（钱包签名）'))
   await executeLifiStep(quote, { solana: null, evm: account, solanaRpc: '' }, (ph) => onPhase?.(ph === 'signing' ? t('第 1 步：BNB 换成 USDT（钱包签名）') : ph === 'sent' ? t('兑换已上链，等待到账…') : t('第 1 步：授权')))
-  // 同链兑换 sendEvmTx 已等回执；再确认余额确实到了，按实际到账数存入（不按报价数，避免差一点点失败）
+  // Same-chain swaps already waited for the receipt via sendEvmTx; then confirm the balance actually arrived and deposit the actual received amount (not the quoted amount, avoiding off-by-a-dust failures)
   let after = before
   for (let i = 0; i < 10 && after <= before; i++) { await new Promise((r) => setTimeout(r, 1500)); after = await getEvmTokenBalance(BSC_CHAIN_ID, account.address, BSC_USDT) }
   const got = after - before

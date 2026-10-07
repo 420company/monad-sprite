@@ -1,7 +1,7 @@
-// 能量礼物面板（网页版直播间 / 会议）：余额、每个礼物「可送 N 个」、不够的置灰、点一下送一个，连点排队。
-// 服务器确认后才会广播动画（GiftFxLayer 收到才播），这里点了不先播；被拒只在本机提示一句。
-// 收礼人：直播 = 主播（PK 时可以切到对面主播）；会议 = 主持人 + 台上开视频 / 共享屏幕的人。
-// 0x4 Wallet：可开「免确认送礼」（插件授权一次）；其他钱包每一下都要在钱包里确认，面板顶部放一张「0x4 Wallet 专属」提示。
+// Energy gift panel (web live room / meeting): balance, per-gift "can send N", grayed-out when unaffordable, tap to send one, rapid taps queue up.
+// Animations broadcast only after server confirmation (GiftFxLayer plays on receipt) — tapping here doesn't pre-play; rejections get a local one-liner.
+// Recipient: live = the streamer (switchable to the opponent during PK); meeting = the host + on-stage people with video / screen share on.
+// 0x4 Wallet: "confirm-free gifting" can be enabled (one extension authorization); other wallets confirm every tap in-wallet, so the panel top shows a "0x4 Wallet exclusive" notice.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Plus, X, Zap } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -23,10 +23,10 @@ import { reportActivity } from '@/desktop/qrIdle'
 
 export interface GiftTarget { address: string; nickname?: string | null; avatar?: string | null; label?: string }
 
-/** 被拒原因 → 给点的人看的一句话（服务器已经给了简体原文，翻译走 t） */
+/** Rejection reason → one-liner for the tapper (the server already sent the Simplified Chinese source; translation goes through t) */
 const reasonText = (r: string): string | null => ({ insufficient: t('能量不足'), closed: t('送礼暂停中'), disabled: t('送礼暂未开放'), bad_recipient: t('对方现在不能收礼') } as Record<string, string>)[r] ?? null
 
-/** docked：网页版直播间里贴在视频右边的侧栏（2026-10-02 goat：弹窗挡住了视频），没有遮罩、不挡画面；不传就是原来的弹层 */
+/** docked: a sidebar hugging the video's right side in the web live room (2026-10-02 goat: the dialog covered the video) — no scrim, never covers the picture; omit for the original dialog */
 export default function GiftPanel({ open, onClose, room, targets, docked = false }: { open: boolean; onClose: () => void; room: string; targets: GiftTarget[]; docked?: boolean }) {
   const { evmAccount } = useWallet()
   const lang = useLang((s) => s.lang)
@@ -50,7 +50,7 @@ export default function GiftPanel({ open, onClose, room, targets, docked = false
     if (kind === 'ox4') void giftSessionStatus().then(setSession)
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 送礼走实时连接（同一条连接顺序到达，连击更稳）；连接不在就走 HTTP
+  // Gifting goes over the realtime connection (in-order arrival on one connection steadies rapid taps); falls back to HTTP when there's no connection
   const pendingAcks = useRef(new Map<string, (r: GiftSendResult) => void>())
   useEffect(() => {
     if (!socket) return
@@ -62,7 +62,7 @@ export default function GiftPanel({ open, onClose, room, targets, docked = false
     return () => { off() }
   }, [socket])
 
-  // 每个收礼人一条队列（通道 = 房间 × 设备 × 收礼人）
+  // One queue per recipient (channel = room × device × recipient)
   const queues = useRef(new Map<string, GiftQueue>())
   const queueFor = (addr: string): GiftQueue => {
     let q = queues.current.get(addr)
@@ -88,7 +88,7 @@ export default function GiftPanel({ open, onClose, room, targets, docked = false
     }
     return q
   }
-  // 离开房间：还没签的全部取消
+  // Leaving the room: cancel everything unsigned
   useEffect(() => () => { for (const q of queues.current.values()) q.cancel() }, [room])
 
   const queued = [...queues.current.values()].reduce((a, q) => a + q.queuedEnergy, 0)
@@ -101,7 +101,7 @@ export default function GiftPanel({ open, onClose, room, targets, docked = false
     if (!to || closed) return
     if (available < g.price) { setDeposit(true); return }
     const r = await queueFor(to).tap({ id: g.id, price: g.price })
-    if (r.ok) reportActivity('gift')   // 扫码登录的公共电脑：送礼算「在用」
+    if (r.ok) reportActivity('gift')   // Shared computers signed in via QR: gifting counts as "in use"
     if (r.ok) { if (r.available) setAvailable(r.available); else void refresh(); return }
     if (r.reason === 'cancelled') return
     if (r.reason === 'insufficient') { toast.error(t('能量不足')); void refresh(); return }
@@ -120,7 +120,7 @@ export default function GiftPanel({ open, onClose, room, targets, docked = false
 
   const body = (
       <div className="flex flex-col gap-3 pb-1" data-testid="gift-panel">
-        {/* 余额 + 充值 */}
+        {/* Balance + top-up */}
         <div className="flex items-center gap-3 rounded-2xl bg-card2 px-3.5 py-2.5">
           <img src={energyIcon} alt="" className="h-8 w-8 shrink-0" draggable={false} />
           <div className="min-w-0 flex-1">
@@ -130,7 +130,7 @@ export default function GiftPanel({ open, onClose, room, targets, docked = false
           <button type="button" onClick={() => setDeposit(true)} className="inline-flex min-h-9 items-center gap-1 rounded-full bg-accent px-3.5 text-sm font-semibold text-bg" data-testid="gift-topup"><Plus size={15} />{t('充值')}</button>
         </div>
 
-        {/* 收礼人（直播 PK 两边主播 / 会议主持人和台上的人） */}
+        {/* Recipient (both PK streamers / meeting host and on-stage people) */}
         {targets.length > 1 && (
           <div className="flex gap-2 overflow-x-auto no-scrollbar" role="radiogroup" aria-label={t('送给谁')}>
             {targets.map((x) => (
@@ -144,7 +144,7 @@ export default function GiftPanel({ open, onClose, room, targets, docked = false
           </div>
         )}
 
-        {/* 用手机 App 扫码登录的电脑（没连钱包，2026-10-01）：送礼要钱包签名，先连钱包 */}
+        {/* Computers signed in via the mobile app's QR (no wallet connected, 2026-10-01): gifting needs a wallet signature — connect a wallet first */}
         {kind === 'none' && (
           <div className="flex items-center gap-2.5 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2.5" data-testid="gift-need-wallet">
             <Zap size={16} className="shrink-0 text-accent" />
@@ -152,7 +152,7 @@ export default function GiftPanel({ open, onClose, room, targets, docked = false
             <button type="button" onClick={connectWallet} className="inline-flex shrink-0 items-center gap-0.5 text-xs font-semibold text-accent">{t('连接钱包')}<ArrowRight size={13} /></button>
           </div>
         )}
-        {/* 其他钱包：每一下都要在钱包里确认。0x4 Wallet 可以免确认 */}
+        {/* Other wallets: every tap confirms in-wallet. 0x4 Wallet can skip confirmation */}
         {kind === 'external' && (
           <div className="flex items-center gap-2.5 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2.5" data-testid="gift-ox4-hint">
             <Zap size={16} className="shrink-0 text-accent" />

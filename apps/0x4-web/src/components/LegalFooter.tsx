@@ -1,6 +1,6 @@
-// 网页版的一排小链接：服务条款 · 隐私政策 · 风险披露 · 下载中心（2026-10-04 走查）。
-// 宽屏底部状态栏里本来就有；手机浏览器（窄屏）状态栏整条不显示、「空间」外观的底部胶囊也不放，访客就找不到这几页。
-// 放在连接钱包面板底下和手机行情页最底下。新标签打开，带上当前主题（legalUrl）。
+// The web version's row of small links: Terms · Privacy · Risk disclosure · Download center (2026-10-04 walkthrough).
+// The wide-screen bottom status bar already has them; on phone browsers (narrow) the status bar isn't shown at all, and the "space" appearance's bottom capsule doesn't carry them — so visitors couldn't find these pages.
+// Placed under the connect-wallet panel and at the bottom of the mobile markets page. Open in a new tab with the current theme (legalUrl).
 import { SITE_LINKS, legalUrl } from '@/lib/legal'
 import { t } from '@/lib/i18n'
 

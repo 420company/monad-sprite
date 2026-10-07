@@ -1,5 +1,5 @@
-// PK 比分条 + 倒计时 + 结束画面（2026-09-30）。直播间里主播和观众都看这一块；左边永远是本房间的主播。
-// 结束画面：胜 / 负 / 平的图 + 双方前 3 名（只有头像和名字，不带金额），停留时间由服务器定（默认 30 秒）。
+// PK score bar + countdown + end screen (2026-09-30). Hosts and viewers in the live room all see this; the left side is always this room's host.
+// End screen: win / loss / draw art + each side's top 3 (avatar and name only, no amounts); dwell time set by the server (30s default).
 import Avatar from '@/components/Avatar'
 import { t } from '@/lib/i18n'
 import { displayName } from '@/store/social'
@@ -25,7 +25,7 @@ export function PkBar({ pk, now }: { pk: PkState; now: () => number }) {
   </div>
 }
 
-/** 结束画面（result / linked 时显示在画面中间） */
+/** End screen (centered when result / linked) */
 export function PkResult({ pk }: { pk: PkState }) {
   if (pk.phase === 'running' || !pk.winner) return null
   const img = pk.winner === 'tie' ? LIVE_IMG.draw : pk.winner === 'me' ? LIVE_IMG.win : LIVE_IMG.lose
@@ -33,7 +33,7 @@ export function PkResult({ pk }: { pk: PkState }) {
   return <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-2 px-4" data-testid="pk-result" role="status">
     <img src={img} alt="" className="h-24 w-24 object-contain drop-shadow-[0_8px_24px_rgba(0,0,0,.5)] pk-pop" draggable={false} />
     <div className="rounded-full bg-black/60 px-4 py-1.5 text-center text-[15px] font-bold text-white backdrop-blur">{title}</div>
-    {/* 不是打满时间分出的胜负，说一下原因（0:0 也判了输赢时不让人困惑） */}
+    {/* When the result wasn't decided by the full timer, say why (so a 0:0 with a winner doesn't confuse) */}
     {pk.reason === 'quit' && <div className="rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white/85" data-testid="pk-reason">{pk.winner === 'me' ? t('对方中途离开') : t('中途离开，判负')}</div>}
     {(pk.top.me.length > 0 || pk.top.opp.length > 0) && <div className="grid w-full max-w-[360px] grid-cols-2 gap-2">
       <TopList users={pk.top.me} />

@@ -1,8 +1,8 @@
-import './polyfills' // 必须放在最前面：@solana/* 依赖 Node 的 Buffer
-import './lib/storageMigrate' // 必须第二：在任何 store 读存储之前把旧品牌前缀的存储键搬到 0x4.*
-import './lib/chunkReload' // 发新版后旧页面拿不到旧分包：自动原地刷新一次（2026-10-02）
-import './lib/reloadWatch' // 记录「被系统杀掉后自动重载」，要尽早跑，才能在别的代码之前读到上一次的心跳
-import './lib/theme' // 尽早把深 / 浅色写到 <html data-theme>，避免先闪一下深色
+import './polyfills' // Must come first: @solana/* depends on Node's Buffer
+import './lib/storageMigrate' // Must come second: migrate old-brand storage keys to 0x4.* before any store reads storage
+import './lib/chunkReload' // After a release, stale pages can't fetch old chunks: auto-refresh in place once (2026-10-02)
+import './lib/reloadWatch' // Records "auto-reloaded after being killed by the OS" — must run early to read the last heartbeat before other code
+import './lib/theme' // Write dark/light to <html data-theme> ASAP to avoid flashing dark first
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { unstable_HistoryRouter as HistoryRouter } from 'react-router-dom'
@@ -15,45 +15,45 @@ import { initPwaUpdate } from './lib/pwaUpdate'
 import { createAppHistory } from './lib/pageTransition'
 import { migrateLegacyUrl } from './lib/route'
 import './index.css'
-// 网页版外框样式（只在 html[data-surface="web"] / .desk-* 下生效，手机 App 里用不到）
+// Web frame styles (only under html[data-surface="web"] / .desk-*; unused in the phone app)
 import './desktop/desktop.css'
 import './desktop/motion.css'
 import './desktop/light.css'
 import './desktop/space.css'
 import { WEB_SURFACE } from './lib/surface'
-// 首页顶栏「0x4」的像素字体（2026-09-29 goat：常规字体太普通）：打包进 App，原生离线也能显示；只取拉丁 600 一档
+// Home top-bar "0x4" pixel font (2026-09-29 goat: regular fonts look too plain): bundled into the app so native shows it offline; Latin 600 only
 import '@fontsource/pixelify-sans/latin-600.css'
-// 网页版正文字体 Geist（docs/WEB_DESIGN.md）：打包进来，不连 Google Fonts。手机 App 构建时 WEB_SURFACE 恒为 false，这行整个被删掉
+// Web body font Geist (docs/WEB_DESIGN.md): bundled, no Google Fonts. WEB_SURFACE is always false in phone-app builds, so this line is compiled out entirely
 if (WEB_SURFACE) void import('@fontsource-variable/geist/index.css')
-// 浅色「液态玻璃」的环境光和鼠标反光（desktop/liquid.ts，2026-10-03）
+// Light-mode "liquid glass" ambient light and cursor reflections (desktop/liquid.ts, 2026-10-03)
 if (WEB_SURFACE) void import('./desktop/liquid').then((m) => m.mountLiquid())
-// 「空间」外观的虚化照片背景和视差（desktop/space.ts，2026-10-03）
+// "Space" appearance's blurred photo background and parallax (desktop/space.ts, 2026-10-03)
 if (WEB_SURFACE) void import('./desktop/space').then((m) => m.mountSpace())
 
-// 网页版：从官网「Into the 0x4」过来的进场光（html.arrive，desktop/warp.js 在第一帧前加上），播完摘掉并清标记
+// Web: entry light-beam from the website's "Into the 0x4" (html.arrive, added by desktop/warp.js before the first frame); removed with its flag after playing
 if (WEB_SURFACE) {
   try {
     if (sessionStorage.getItem('0x4.warp')) {
       sessionStorage.removeItem('0x4.warp')
       setTimeout(() => document.documentElement.classList.remove('arrive'), 1400)
     }
-  } catch { /* 隐私模式 */ }
+  } catch { /* Privacy mode */ }
 }
 
-// 网页版先把以前的 420.meme/app/#/xxx 地址原地换成 /xxx（lib/route.ts）。要在读地址参数的任何代码之前：
-// 绑定 X 的授权窗口跳回来时地址带着 ?x=…，下一行就要读它
+// Web first rewrites legacy 420.meme/app/#/xxx URLs to /xxx in place (lib/route.ts). Must precede any code reading URL params:
+// the X-binding auth window returns with ?x=… in the URL, which the next line reads
 migrateLegacyUrl()
-// 绑定 X 的授权窗口跳回来时：把结果交给原页面并关掉自己，不渲染界面
+// When the X-binding auth window returns: hand the result to the original page and close itself, rendering nothing
 if (!handleXAuthPopup()) {
-// 以前测试版写在本机的诊断记录，诊断工具删掉后清掉它
-try { localStorage.removeItem('0x4.diag.log') } catch { /* 存储不可用 */ }
-// 软键盘弹出时把输入框挪到键盘上方
+// Diagnostics written locally by old beta builds; cleared after the diagnostics tool was removed
+try { localStorage.removeItem('0x4.diag.log') } catch { /* Storage unavailable */ }
+// Move inputs above the keyboard when the soft keyboard opens
 installKeyboardFollow()
-installTapRipple() // 全局按键水波纹，见 lib/tapRipple.ts
-// 网页版：检查新版本，刚打开还没操作就自动换成新版，否则底部提示（原生 App 里是空操作）
+installTapRipple() // Global key-press ripple, see lib/tapRipple.ts
+// Web: check for new versions — auto-switch when opened fresh with no interaction yet, otherwise a bottom prompt (no-op in the native app)
 initPwaUpdate()
-// 路由：手机是 #/ 地址，电脑网页版是干净网址（lib/route.ts）；历史对象包了一层，页面切换时按方向播放过渡动画（lib/pageTransition.ts）。
-// useTransitions={false}：路由状态同步更新，才能放进 View Transition 的回调里一次渲染完（原来默认包在 React startTransition 里）
+// Routing: #/ URLs on phones, clean URLs on desktop web (lib/route.ts); the history object is wrapped to play directional transition animations on page changes (lib/pageTransition.ts).
+// useTransitions={false}: route state updates synchronously so it can render in one go inside the View Transition callback (it used to default to React startTransition)
 const appHistory = createAppHistory()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

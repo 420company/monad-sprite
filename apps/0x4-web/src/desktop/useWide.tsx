@@ -1,4 +1,4 @@
-// 网页版（VITE_SURFACE=web）宽屏 / 窄屏切换：≥ 900 走电脑端页面，窄屏（手机浏览器打开网页版）退回手机 App 的同一页。
+// Web (VITE_SURFACE=web) wide / narrow switching: ≥ 900 renders desktop pages; narrow (web opened in a phone browser) falls back to the mobile app's same page.
 import { useSyncExternalStore, type ReactNode } from 'react'
 
 const mq = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 900px)') : null
@@ -11,7 +11,7 @@ export function useWide(): boolean {
   )
 }
 
-/** 宽屏渲染 desk，窄屏渲染 phone（两边都是完整页面，按屏幕宽度二选一） */
+/** Wide renders desk, narrow renders phone (both full pages — pick one by screen width) */
 export function Wide({ desk, phone }: { desk: ReactNode; phone: ReactNode }) {
   return <>{useWide() ? desk : phone}</>
 }

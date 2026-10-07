@@ -1,19 +1,19 @@
 @import "tailwindcss";
 
-/* 中性表面承载内容，品牌色与行情涨跌分工。 */
+/* Neutral surfaces carry content; brand color and market up/down colors have distinct roles. */
 @theme {
-  /* 底色是实心深色（液态背景的底、以及压在品牌色按钮上的深色字都用它）；
-     卡片 / 线条是半透明，让背后的流体柔光透出来（2026-09-25 液态玻璃改版） */
+  /* Base is solid dark (used both under the liquid background and for dark text on brand-color buttons);
+     cards / lines are translucent so the fluid glow behind shows through (2026-09-25 liquid-glass redesign) */
   --color-bg: #0c0e13;
   --color-card: rgb(34 37 47 / .52);
   --color-card2: rgb(52 56 70 / .55);
   --color-line: rgb(255 255 255 / .09);
   --color-fg: #f5f6f7;
   --color-muted: #a7adb2;
-  /* 品牌色：珍珠淡紫（2026-09-25 改名 0x4 时换掉荧光绿 #8cff4d，goat 嫌太「AI」）。
-     深字压在它上面对比度够；高光渐变用蜜桃 #ffc9a8 → 淡紫 → 冰青 #8fe0ff，与猫头 logo 一致 */
+  /* Brand color: pearl lavender (replaced neon green #8cff4d when renaming to 0x4 on 2026-09-25; goat thought it looked too "AI").
+     Dark text on it has enough contrast; highlight gradient peach #ffc9a8 → lavender → ice cyan #8fe0ff matches the cat-head logo */
   --color-accent: #cdbdff;
-  /* 主按钮的珍珠渐变（白 → 淡紫），和猫头 logo 的脸同一套 */
+  /* Primary buttons' pearl gradient (white → lavender), same set as the cat-head logo's face */
   --pearl: linear-gradient(145deg, #ffffff 0%, #ece6ff 55%, #d9ccff 100%);
   --color-accent-dark: #b8a5f5;
   --color-up: #43d6a0;
@@ -25,20 +25,20 @@
 
 html, body, #root { min-height: 100%; }
 
-/* ---------- 液态流体背景（components/LiquidBackground） ---------- */
+/* ---------- Liquid fluid background (components/LiquidBackground) ---------- */
 .liquid-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--color-bg); }
 .liquid-layer { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-/* 外层只管位置和漂移（transform 动画），自己不画东西；柔光画在里面两张 128px 的小 canvas 上，
-   两张交叉淡入淡出换色（opacity 是合成层动画，不重画）。透明度已烘进 canvas，外层不要再设 opacity。
-   为什么这样做、显存怎么算，见 LiquidBackground.tsx 文件头。 */
+/* Outer layer only handles position and drift (transform animation), paints nothing itself; the glow is drawn on two small 128px canvases inside,
+   cross-fading between them to change colors (opacity is a compositor animation, no repaint). Opacity is baked into the canvas; don't set opacity on the outer layer.
+   Why this design and how VRAM is counted: see the LiquidBackground.tsx file header. */
 .liquid-blob { position: absolute; will-change: transform; }
 .liquid-blob > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 1; transition: opacity 5s ease; }
 [data-face="0"] > .liquid-blob > canvas[data-f="1"], [data-face="1"] > .liquid-blob > canvas[data-f="0"] { opacity: 0; }
-/* ⚠️ 显存：光斑原来每团 85–95vmax，iPhone 3 倍屏上一团就是约 2900×2900 像素的图层（约 30MB），四团 100MB+，
-   长时间开着会被 iOS 判内存超标、杀掉网页进程，App 看起来就是「自己刷新了一下」（2026-09-25 goat 反馈）。
-   现在元素只做原尺寸的 1/3，用 transform: scale(3) 放大显示：柔光渐变放大看不出差别，图层显存降到约 1/9。
-   中心位置保持和原来一致（新 left/top = 原 left/top + 原宽度/3）。动画里的 scale 也都乘 3。
-   09-26 起光斑画在固定 128×128 的 canvas 上，显存已和显示尺寸无关；这套 1/3 + scale(3) 的几何保留只是为了位置和动画不变。 */
+/* ⚠️ VRAM: glows were 85–95vmax blobs; on an iPhone 3x screen one blob is a ~2900×2900px layer (~30MB), four blobs = 100MB+,
+   left open long enough iOS kills the web process for memory overuse, and the app looks like it "refreshed itself" (2026-09-25 goat feedback).
+   Now elements render at 1/3 size and are shown scaled up with transform: scale(3): soft gradients show no visible difference, layer VRAM drops to ~1/9.
+   Center positions stay the same (new left/top = old left/top + old width/3). Scales inside animations are all ×3 too.
+   Since 09-26 glows are drawn on fixed 128×128 canvases, VRAM no longer depends on display size; the 1/3 + scale(3) geometry is kept just to preserve positions and animations. */
 .liquid-a { width: 31.67vmax; height: 31.67vmax; left: -13.33vmax; top: -8.33vmax; transform: scale(3); animation: liquid-a 23s ease-in-out infinite alternate; }
 .liquid-b { width: 28.33vmax; height: 28.33vmax; right: -16.67vmax; top: 38.33vmax; transform: scale(3); animation: liquid-b 29s ease-in-out infinite alternate; }
 .liquid-c { width: 30vmax; height: 30vmax; left: 0vmax; bottom: -25vmax; transform: scale(3); animation: liquid-c 31s ease-in-out infinite alternate; }
@@ -47,18 +47,18 @@ html, body, #root { min-height: 100%; }
 @keyframes liquid-b { to { transform: translate(-30vmax, 18vmax) scale(2.58); } }
 @keyframes liquid-c { to { transform: translate(24vmax, -26vmax) scale(3.36); } }
 @keyframes liquid-d { to { transform: translate(-26vmax, -34vmax) scale(3.75); } }
-/* 所有品牌色实心块（bg-accent：各页主按钮、选中态）统一叠珍珠渐变。
-   写在层外，优先级高于 Tailwind 工具类；bg-accent/20 这类半透明是另一个类名，不受影响 */
+/* All solid brand-color blocks (bg-accent: primary buttons, selected states across pages) get the pearl gradient overlay.
+   Written outside layers so it outranks Tailwind utilities; translucent variants like bg-accent/20 are separate class names and unaffected */
 .bg-accent { background-image: var(--pearl); }
-/* 内容层压在背景上面 */
+/* Content layer sits above the background */
 .app-shell { position: relative; z-index: 1; }
 .status-glass { position: fixed; inset: 0 0 auto 0; height: env(safe-area-inset-top); z-index: 60; pointer-events: none;
   background: color-mix(in oklab, var(--color-bg) 55%, transparent); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); }
-/* 弹层面板 / 吸顶栏：深色半透明 + 背景模糊，流体颜色隐约透出来 */
-/* 弹层面板：实心底色 + 面板里的 <LiquidLayer />（和背景同一组颜色，一起变） */
+/* Sheet panels / sticky bars: dark translucent + backdrop blur, fluid colors faintly showing through */
+/* Sheet panel: solid background + <LiquidLayer /> inside the panel (same color set as the background, changing together) */
 .sheet-glass { position: relative; background: var(--color-bg); }
 .sheet-glass > :not(.liquid-layer) { position: relative; z-index: 1; }
-/* 通知条：实心底色（页面底色上叠一层卡片色），不再透出下面的列表；亮暗主题都走变量 */
+/* Notice bar: solid background (card color layered over the page base), no longer showing the list beneath; light/dark themes go through variables */
 .toast-solid { background-color: var(--color-bg); background-image: linear-gradient(var(--color-card), var(--color-card)); }
 .bar-glass { background: rgb(12 14 19 / .66); -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%); }
 html { height: 100%; color-scheme: dark; }
@@ -87,8 +87,8 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 }
 
 @layer components {
-  /* 玻璃：glass = 真毛玻璃（背后内容会被模糊，只用在导航、弹层、首页资产卡这些少数大块上，
-     列表里大量使用会让手机滚动掉帧）；glass-lite = 半透明卡片（背景本身是柔光，透出来就是毛玻璃感） */
+  /* Glass: glass = true frosted glass (blurs content behind; only for a few large areas — nav, sheets, the home assets card;
+     heavy use in lists drops frames on phones); glass-lite = translucent card (the background itself is a glow, so it shows through as a frosted feel) */
   .glass { background: rgb(28 31 40 / .5); -webkit-backdrop-filter: blur(26px) saturate(160%); backdrop-filter: blur(26px) saturate(160%);
     border: 1px solid rgb(255 255 255 / .09); box-shadow: 0 22px 44px rgb(0 0 0 / .38), inset 0 1px 0 rgb(255 255 255 / .09); }
   .glass-lite { background: rgb(34 37 47 / .46); border: 1px solid rgb(255 255 255 / .07); box-shadow: 0 12px 28px rgb(0 0 0 / .22), inset 0 1px 0 rgb(255 255 255 / .07); }
@@ -116,7 +116,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
   .ui-field:focus { border-color: var(--color-accent); }
   .ui-field[aria-invalid=true] { border-color: var(--color-down); }
   .ui-field:disabled { opacity: .5; }
-  /* 助记词遮蔽用 text-security 而不是 type=password：后者会招来 iOS 的密码自动填充条 */
+  /* Seed-phrase masking uses text-security instead of type=password: the latter summons iOS's password autofill bar */
   .field-masked { -webkit-text-security: disc; text-security: disc; }
   .ui-label { display: block; margin-bottom: .5rem; font-size: .8125rem; font-weight: 500; color: var(--color-muted); }
   .icon-button {
@@ -128,9 +128,9 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
   .icon-button:disabled { opacity: .5; cursor: not-allowed; }
   .text-action { display: inline-flex; min-height: 2.75rem; align-items: center; gap: .375rem; font-size: .8125rem; color: var(--color-muted); }
   .app-nav { border-radius: 999px; }
-  /* 胶囊后面的「地板」（2026-09-29 goat 真机：导航没在最底部、下面露出别的页面）：
-     原来是「遮罩 + 背景模糊」，iOS 的 WKWebView 不支持两者叠用，模糊没生效，只剩半透明一层，滚动内容从胶囊下面清楚透出来。
-     现在直接用页面底色盖：上沿一小段渐隐（内容滚到胶囊附近淡出），胶囊上沿往下完全不透明，一直铺到屏幕底边；不再用模糊，也省显卡 */
+  /* The "floor" behind the capsule (2026-09-29 goat on-device: nav isn't at the very bottom, other pages peek out beneath):
+     it used to be "mask + backdrop blur", but iOS WKWebView doesn't support the two stacked — the blur never applied, leaving only a translucent layer with scrolled content clearly visible under the capsule.
+     Now covered directly with the page base color: a short fade at the top edge (content fades out near the capsule), fully opaque from the capsule's top edge down to the screen bottom; no blur, and cheaper on the GPU */
   .nav-floor::before { content: ''; position: absolute; inset: 0; z-index: -1;
     background: linear-gradient(to bottom, color-mix(in srgb, var(--color-bg) 0%, transparent) 0%, color-mix(in srgb, var(--color-bg) 82%, transparent) 26%, var(--color-bg) 42%, var(--color-bg) 100%); }
   .nav-tab { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: .2rem; min-height: 3.5rem; font-size: .6875rem; font-weight: 600; color: var(--color-muted); border-radius: 999px; transition: color 160ms ease; }
@@ -141,19 +141,19 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
   .account-tools > button { min-width: 44px; min-height: 44px; }
   .account-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 8px; }
   .account-summary > * { white-space: nowrap; }
-  /* 数字保持完整一行；上限只约束展示金额，浏览器整页缩放仍可使用。 */
+  /* Numbers stay on one line; the cap only constrains displayed amounts, full-page browser zoom still works. */
   .balance-value { font-size: min(2.25rem, 48px); line-height: 1.2; font-weight: 600; white-space: nowrap; }
   .balance-value[data-long=true] { font-size: min(1.75rem, 40px); }
-  /* 首页地址下的账户勋章（2026-09-29）：普通账户是中性玻璃，VIP 是金色玻璃；按钮本身留出 32px 高的点按区域 */
+  /* Account badge under the home address (2026-09-29): neutral glass for regular accounts, gold glass for VIP; the button keeps a 32px-tall tap area */
   .tier-badge { position: relative; isolation: isolate; display: inline-flex; min-height: 2rem; align-items: center; gap: .25rem; padding-inline: .5rem; font-size: .6875rem; font-weight: 600; letter-spacing: .02em; white-space: nowrap; color: var(--color-muted); }
   .tier-badge::before { content: ""; position: absolute; inset: .3125rem 0; z-index: -1; border-radius: 999px; border: 1px solid rgb(255 255 255 / .1); background: rgb(255 255 255 / .06); box-shadow: inset 0 1px 0 rgb(255 255 255 / .08); }
   .tier-badge[data-vip=true] { color: #f5d58c; }
   .tier-badge[data-vip=true]::before { border-color: rgb(245 205 120 / .45); background: linear-gradient(135deg, rgb(245 205 120 / .26), rgb(190 140 50 / .1)); box-shadow: inset 0 1px 0 rgb(255 240 200 / .3), 0 4px 14px rgb(214 160 60 / .18); }
-  /* 「账户种类」面板顶部的 VIP 卡片：和勋章同一套金色 */
+  /* VIP card at the top of the "account type" panel: same gold as the badge */
   .tier-card-vip { border: 1px solid rgb(245 205 120 / .35); background: linear-gradient(135deg, rgb(245 205 120 / .18), rgb(190 140 50 / .06)); box-shadow: inset 0 1px 0 rgb(255 240 200 / .18); }
   .tier-gold { color: #f5d58c; }
   .wallet-action { display: flex; min-width: 0; min-height: 84px; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; font-size: .8125rem; font-weight: 500; white-space: nowrap; }
-  /* 首页四个操作圆钮（2026-09-26 goat 定案）：深色 = 四个一样的深灰玻璃圆 + 白图标；浅色 = 四个一样的珠光圆 + 深色图标。不再单独突出「收款」 */
+  /* The four home action round buttons (2026-09-26 goat finalized): dark = four identical dark-gray glass circles + white icons; light = four identical pearl circles + dark icons. "Receive" is no longer singled out */
   .wallet-action-icon { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; transition: transform 120ms ease; color: #fff;
     background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .12); box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), 0 10px 24px rgb(0 0 0 / .3); }
   .wallet-action:active .wallet-action-icon { transform: scale(.94); }
@@ -197,15 +197,15 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
   .welcome-brand { padding-block: 1rem 2rem; }
 }
 
-/* 隐藏滚动条但保留滚动 */
+/* Hide the scrollbar but keep scrolling */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
-/* 全 App 隐藏滚动条（2026-09-26 goat：选币、代币门槛等弹层右边那根滑杆很丑）。
-   手机上本来就是滑动时才出现的细条；这里主要是网页版在电脑浏览器里会显示一根常驻的粗滚动条。内容照样能滚 */
+/* Hide scrollbars across the app (2026-09-26 goat: the slider bar on the right of sheets like token pickers and token gates is ugly).
+   On phones it's a thin bar that only appears while scrolling anyway; this mainly targets the desktop web version, which shows a thick persistent scrollbar in desktop browsers. Content still scrolls */
 html, body, * { scrollbar-width: none; }
 ::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
-/* 安全区（刘海屏 / Home 指示条） */
+/* Safe areas (notch / home indicator) */
 .safe-top { padding-top: env(safe-area-inset-top); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
@@ -215,16 +215,16 @@ html, body, * { scrollbar-width: none; }
 @keyframes slide-up { from { transform: translateY(100%) } to { transform: translateY(0) } }
 .sheet-enter { animation: slide-up .22s cubic-bezier(.2,.8,.2,1); }
 
-/* 弹性缓动：阻尼弹簧（阻尼比 0.7，冲过头约 4.6% 再回稳），猫头落下用；不支持 linear() 的系统退回带一次过冲的三次贝塞尔 */
+/* Elastic easing: damped spring (damping ratio 0.7, overshoots ~4.6% before settling), used for the cat-head drop; systems without linear() fall back to a cubic-bezier with one overshoot */
 :root { --ease-spring: cubic-bezier(.3, 1.32, .5, 1); }
 @supports (transition-timing-function: linear(0, 1)) {
   :root { --ease-spring: linear(0, 0.0339, 0.1184, 0.2317, 0.3574, 0.4835, 0.6018, 0.7073, 0.7974, 0.8713, 0.9296, 0.9736, 1.005, 1.026, 1.0386, 1.0447, 1.0459, 1.0439, 1.0397, 1.0343, 1.0285, 1.0227, 1.0174, 1.0126, 1.0086, 1.0054, 1.0028, 1.0009, 0.9996, 0.9987, 0.9982, 0.9979, 1); }
-/* ── 页面切换（lib/pageTransition.ts，2026-09-29 goat：「切换很生硬」）──
-   浏览器截下旧页（::view-transition-old(root)）和新页（::view-transition-new(root)），按 <html data-nav> 播：
-   进入下一级 forward：新页从右边推进来，旧页往左让 28% 并变暗；返回 back：反过来；底部标签之间 tab：很短的淡入淡出。
-   曲线用 ease-out-cubic（和半屏弹层同一条，见 Sheet.tsx 的 halfEase 注释：WebKit 交给系统合成要晚一两帧，
-   前段太陡的 iOS 曲线第一帧就走了一大截，看着像闪出来的），尾段收得柔；只动位置和透明度，不掉帧。
-   底部导航和状态栏玻璃单独截图（view-transition-name），切页时原地不动，只有页面内容在动。 */
+/* ── Page transitions (lib/pageTransition.ts, 2026-09-29 goat: "transitions feel abrupt") ──
+   The browser snapshots the old page (::view-transition-old(root)) and new page (::view-transition-new(root)) and plays per <html data-nav>:
+   forward to the next level: new page pushes in from the right, old page yields 28% to the left and darkens; back: reversed; between bottom tabs: a very short crossfade.
+   Curve is ease-out-cubic (same as half-screen sheets, see the halfEase comment in Sheet.tsx: WebKit hands compositing to the system a frame or two late,
+   and with a steep early segment an iOS curve covers most of its distance in the first frame, looking like it flashes in), with a soft tail; only position and opacity move, no dropped frames.
+   The bottom nav and status bar glass are snapshotted separately (view-transition-name) and stay put during transitions — only page content moves. */
 }
 :root { --vt-dur: 380ms; --vt-ease: cubic-bezier(.33,1,.68,1); }
 ::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; animation-duration: var(--vt-dur); animation-timing-function: var(--vt-ease); animation-fill-mode: both; }
@@ -234,7 +234,7 @@ html, body, * { scrollbar-width: none; }
 :root[data-nav="back"]::view-transition-new(root) { animation-name: vt-in-left; }
 :root[data-nav="tab"]::view-transition-old(root) { animation: vt-fade-out 110ms ease-out both; }
 :root[data-nav="tab"]::view-transition-new(root) { animation: vt-fade-in 170ms ease-out both; }
-/* 电脑网页版换栏目（lib/pageTransition.ts webNavDirection）：只做短淡入淡出，不横推；顶栏和底部状态栏单独截图原地不动 */
+/* Desktop web tab switches (lib/pageTransition.ts webNavDirection): short crossfade only, no horizontal push; top bar and bottom status bar are snapshotted separately and stay put */
 :root[data-nav="fade"]::view-transition-old(root) { animation: vt-fade-out 90ms ease-out both; }
 :root[data-nav="fade"]::view-transition-new(root) { animation: vt-fade-in 150ms ease-out both; }
 .desk-bar { view-transition-name: desk-bar; }
@@ -270,7 +270,7 @@ html, body, * { scrollbar-width: none; }
 
 @keyframes alert-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
 
-/* 合约页杠杆滑条：轨道和已选段由外层 div 画，这里只保留一个白色圆钮（2026-09-24 按设计稿） */
+/* Perp page leverage slider: the track and filled segment are drawn by the outer div; only a white knob is kept here (2026-09-24 per design) */
 .lev-range { -webkit-appearance: none; appearance: none; background: transparent; margin: 0; height: 28px; cursor: pointer; }
 .lev-range::-webkit-slider-runnable-track { background: transparent; height: 28px; }
 .lev-range::-moz-range-track { background: transparent; height: 28px; }
@@ -278,9 +278,9 @@ html, body, * { scrollbar-width: none; }
 .lev-range::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: var(--color-fg); box-shadow: 0 0 0 4px rgba(205, 189, 255, .3); }
 .lev-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(205, 189, 255, .5); }
 
-/* ---------- 浅色外观（lib/theme.ts 写 <html data-theme="light">） ----------
-   深色是默认；这里只覆盖颜色变量和少数写死深色的玻璃 / 输入底。
-   品牌淡紫在浅底上当文字太淡，浅色下换成深一档的紫；珍珠按钮保持白底，文字固定深色。 */
+/* ---------- Light appearance (lib/theme.ts writes <html data-theme="light">) ----------
+   Dark is the default; this only overrides color variables and the few hardcoded dark glasses / input bases.
+   Brand lavender is too faint as text on light backgrounds, so light mode uses a deeper purple; pearl buttons stay white-based with fixed dark text. */
 :root[data-theme="light"] {
   color-scheme: light;
   --color-bg: #eef0f6;
@@ -312,21 +312,21 @@ html, body, * { scrollbar-width: none; }
 :root[data-theme="light"] .nav-tab[aria-current=page] { text-shadow: 0 0 14px rgb(107 77 230 / .35); }
 :root[data-theme="light"] .nav-tab[aria-current=page] svg { filter: drop-shadow(0 0 6px rgb(107 77 230 / .4)); }
 
-/* 聊天里的图片消息不套气泡：气泡里只有一张图时去掉底色和内边距，图片自己带 12px 圆角。
-   气泡在 GroupChat / DmChat 里，这里用 :has 控制，不改那两个页面；不在图层里，所以能压过 Tailwind 的 bg-* / px-* */
+/* Image messages in chat don't get bubbles: when a bubble holds only one image, strip its background and padding — the image carries its own 12px radius.
+   Bubbles live in GroupChat / DmChat; :has controls them here so those pages stay untouched; it's outside layers so it outranks Tailwind bg-* / px-* */
 div:has(> [data-chat-image]:only-child) { background: transparent; padding: 0; }
 
-/* ---------- 欢迎页 / 解锁页开场（components/welcome/WelcomeIntro，2026-09-25 像素版） ----------
-   背景就是全局液态流体，这里不铺底色；标语和猫头画在 canvas 上，按钮沿用 App 的珍珠主按钮 / 玻璃次按钮，
-   亮暗主题都跟着全局变量走。时间线在 WelcomeIntro.tsx 的 T / T_FAST，按钮延迟经 --t-cta / --t-note 传进来。 */
+/* ---------- Welcome / unlock intro (components/welcome/WelcomeIntro, 2026-09-25 pixel version) ----------
+   The background is the global liquid fluid; no base color is laid here. The slogan and cat head render on canvas; buttons reuse the app's pearl primary / glass secondary buttons,
+   light and dark themes both follow global variables. The timeline lives in WelcomeIntro.tsx's T / T_FAST; button delays come in via --t-cta / --t-note. */
 .welcome-stage { position: relative; min-height: 100svh; }
-/* 欢迎页 / 解锁页的 WebGL 流体背景铺在最底下，内容全部抬到它上面 */
+/* The welcome/unlock page's WebGL fluid background sits at the very bottom; all content is lifted above it */
 .welcome-stage > .fluid-bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 .welcome-stage > .welcome-content { position: relative; z-index: 1; }
 .welcome-stage .welcome-brand { padding-block: 1rem 2.5rem; }
-/* 猫头入场（2026-09-29 goat：原来的马赛克显影和整体不搭，改成从上方落下、带弹性和对焦）
-   外层不动，图片做「落下」（位移 + 缩放，弹性缓动）和「对焦」（模糊透明 → 清晰，缓出）两段互不干扰的动画；
-   落定（约第 37% 时刻第一次到位）时脚下柔光扩开、8 颗像素颗粒散开、地面淡影收拢。只动 transform / opacity / filter。 */
+/* Cat-head entrance (2026-09-29 goat: the old mosaic reveal clashed with the overall feel; changed to dropping in from above with elasticity and focus)
+   The outer layer stays still; the image runs two independent animations — "drop" (translate + scale, elastic easing) and "focus" (blurry transparent → sharp, ease-out);
+   on landing (first settled at ~37% of the timeline) the glow beneath spreads, 8 pixel particles scatter, and the ground shadow tightens. Only transform / opacity / filter move. */
 .welcome-cat { position: relative; display: block; flex-shrink: 0; --cat-land: calc(var(--cat-delay, 0s) + var(--cat-dur, .9s) * .34); }
 .welcome-cat-img { position: absolute; inset: 0; width: 100%; height: 100%; }
 .welcome-cat.is-dropping .welcome-cat-img {
@@ -336,25 +336,25 @@ div:has(> [data-chat-image]:only-child) { background: transparent; padding: 0; }
 }
 @keyframes cat-fall { from { transform: translate3d(0, -64px, 0) scale(.84) } to { transform: none } }
 @keyframes cat-focus { from { opacity: 0; filter: blur(9px) saturate(1.4) } 60% { opacity: 1 } to { opacity: 1; filter: none } }
-/* 地面淡影：猫头越近越实，落定时收成一道椭圆 */
+/* Ground shadow: the closer the cat head, the more solid; tightens into an ellipse on landing */
 .welcome-cat-shadow { position: absolute; left: 16%; right: 16%; bottom: -8px; height: 9px; border-radius: 50%;
   background: radial-gradient(closest-side, rgb(0 0 0 / .38), transparent); opacity: 0; transform: scaleX(.35);
   animation: cat-shadow calc(var(--cat-dur, .9s) * .45) cubic-bezier(.2, .7, .2, 1) var(--cat-delay, 0s) forwards; }
 @keyframes cat-shadow { 70% { opacity: .9 } to { opacity: .4; transform: none } }
-/* 落定柔光：品牌四色的一圈光，扩开后散掉 */
+/* Landing glow: a ring of the four brand colors, expands then dissipates */
 .welcome-cat-halo { position: absolute; inset: -45%; border-radius: 50%; pointer-events: none; opacity: 0;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--sg-2) 42%, transparent) 0%, color-mix(in srgb, var(--sg-3) 22%, transparent) 42%, color-mix(in srgb, var(--sg-1) 8%, transparent) 62%, transparent 78%);
   transform: scale(.55); animation: cat-halo 1.1s cubic-bezier(.16, 1, .3, 1) var(--cat-land) forwards; }
 @keyframes cat-halo { 0% { opacity: 0; transform: scale(.55) } 25% { opacity: .7 } 100% { opacity: 0; transform: scale(1.12) } }
-/* 像素颗粒：从猫头底部向两侧扬起、边走边淡（在猫头图片后面出来）；方块不抗锯齿，保持像素感 */
+/* Pixel particles: kick up from under the cat head to both sides, fading as they travel (emerging behind the cat-head image); squares stay un-anti-aliased to keep the pixel feel */
 .welcome-cat-sparks { position: absolute; left: 50%; top: 90%; width: 0; height: 0; pointer-events: none; }
 .welcome-cat-sparks i { position: absolute; left: 0; top: 0; width: var(--s); height: var(--s); background: var(--c); opacity: 0;
   box-shadow: 0 0 6px color-mix(in srgb, var(--c) 60%, transparent);
   animation: cat-spark .72s cubic-bezier(.16, 1, .3, 1) calc(var(--cat-land) + var(--k) * 12ms) forwards; }
 @keyframes cat-spark { 0% { opacity: 0; transform: translate3d(0, 0, 0) } 15% { opacity: 1 } 100% { opacity: 0; transform: translate3d(var(--dx), var(--dy), 0) } }
-/* 本次打开 App 已经播过（被自动锁定后回到解锁页、从引导页返回）：猫头和标语直接在位，整页只做一次轻淡入 */
+/* Intro already played this session (returned to the unlock page after auto-lock, or back from onboarding): cat head and slogan appear in place, the whole page does one light fade-in */
 .welcome-stage.is-replay .welcome-brand { animation: ws-fade .28s ease both; }
-/* 标语占位：宽度撑满（桌面最多 440px），高度按点阵行列比例留好，画布再往四周铺出去给飞入留地方 */
+/* Slogan placeholder: full width (max 440px on desktop), height reserved by pixel-grid row/column ratio, with the canvas spilling outward on all sides to leave room for the fly-in */
 .welcome-title { position: relative; align-self: stretch; max-width: 440px; margin-top: 2.25rem; }
 .welcome-title canvas { position: absolute; pointer-events: none; image-rendering: pixelated; }
 @keyframes ws-fade { from { opacity: 0 } to { opacity: 1 } }
@@ -367,49 +367,49 @@ div:has(> [data-chat-image]:only-child) { background: transparent; padding: 0; }
 .welcome-note { margin-top: 1.5rem; display: flex; align-items: center; justify-content: center; gap: .5rem; font-size: .75rem; color: var(--color-muted);
   animation: ws-fade 1s ease var(--t-note) both; }
 @media (prefers-reduced-motion: reduce) {
-  /* 全局规则只把时长压到 0.01ms，延迟还在；这里把延迟也清掉，直接落在最终画面 */
+  /* The global rule only squashes duration to 0.01ms; delays remain — here the delay is cleared too, landing directly on the final frame */
   .welcome-stage *, .welcome-stage *::before, .welcome-stage *::after { animation-delay: 0s !important; }
   .welcome-cat-img { animation: none !important; }
   .welcome-cat-shadow, .welcome-cat-halo, .welcome-cat-sparks { display: none; }
 }
 
-/* ---------- 工作人员头像发光边框（components/Avatar 的 StaffGlow，2026-09-25） ----------
-   客服 / 管理员头像外圈一道缓慢旋转的品牌渐变描边（蜜桃 → 淡紫 → 冰青 → 金）+ 一层静态柔光。
-   判定只来自服务端（lib/staffBadges），普通用户换同样的头像和昵称拿不到。
-   性能：环的形状是静态 clip-path（圆 / 六边形各一条 evenodd 路径），里面只有一个 conic-gradient 方块在转，
-   只动 transform，走合成层不重绘；柔光层是静态的，只画一次。列表里几十个一起转也不卡。 */
+/* ---------- Staff avatar glow border (components/Avatar's StaffGlow, 2026-09-25) ----------
+   Support / admin avatars get a slowly rotating brand-gradient outline (peach → lavender → ice cyan → gold) + one static glow layer.
+   Determination comes only from the server (lib/staffBadges); ordinary users can't get it by copying the avatar and nickname.
+   Performance: the ring shape is a static clip-path (one evenodd path each for circle / hexagon) with only a conic-gradient square rotating inside,
+   moving only transform on the compositor with no repaints; the glow layer is static and paints once. Dozens rotating in a list won't stutter. */
 :root {
   --sg-1: #ffc9a8; --sg-2: #cdbdff; --sg-3: #8fe0ff; --sg-4: #f6d27a;
   --sg-glow: .75;
 }
-/* 浅底上淡色会发白，换深一档、柔光再加一点 */
+/* Light colors wash out on light backgrounds; go one shade deeper and boost the glow a bit */
 :root[data-theme="light"] {
   --sg-1: #ff9e6e; --sg-2: #9a7cff; --sg-3: #3fb8ec; --sg-4: #e0a92a;
   --sg-glow: .9;
 }
 .staff-glow { position: relative; display: inline-block; flex-shrink: 0; vertical-align: middle; }
 .staff-glow > .sg-ring, .staff-glow > .sg-halo { position: absolute; pointer-events: none; }
-/* 头像本体：块级免得行内基线把它往下顶；定位让它盖在柔光层上面 */
+/* The avatar itself: block-level so the inline baseline doesn't push it down; positioned to sit above the glow layer */
 .staff-glow > :not(.sg-ring, .sg-halo) { display: block; position: relative; z-index: 2; }
-/* 发光环压在头像下面一层：环本身画在头像外圈，不会被头像挡住；头像上的链图标（NFT 所在链）要盖在环上面（2026-09-25 goat） */
+/* The glow ring sits one layer below the avatar: the ring is drawn around the avatar's outer edge so the avatar never covers it; the chain icon on the avatar (the NFT's chain) must sit above the ring (2026-09-25 goat) */
 .staff-glow > .sg-ring { z-index: 1; }
 .staff-glow > .sg-ring { overflow: hidden; }
 .sg-halo { opacity: var(--sg-glow); animation: sg-breathe 2.4s ease-in-out infinite; }
-/* 呼吸：柔光一明一暗。和旋转叠在一起，静态图片（带边框的假头像）做不出来（2026-09-25 goat：边框必须是动的，防冒充） */
+/* Breathing: the glow pulses bright and dim. Stacked with the rotation, static images (fake bordered avatars) can't reproduce it (2026-09-25 goat: the border must be animated, to prevent impersonation) */
 @keyframes sg-breathe { 0%, 100% { opacity: calc(var(--sg-glow) * .45); } 50% { opacity: var(--sg-glow); } }
 .sg-halo > span { position: absolute; inset: 0; background: conic-gradient(from 200deg, var(--sg-1), var(--sg-2), var(--sg-3), var(--sg-4), var(--sg-1)); }
 .sg-spin { position: absolute; inset: -25%; background: conic-gradient(var(--sg-1), var(--sg-2), var(--sg-3), var(--sg-4), var(--sg-1));
   animation: sg-spin 4s linear infinite; will-change: transform; }
 @keyframes sg-spin { to { transform: rotate(1turn); } }
-/* 个人主页名字旁的「官方」/「客服」小标签（components/StaffTag）：同一套渐变做描边 */
+/* The "official" / "support" tag next to names on profile pages (components/StaffTag): same gradient set for the outline */
 .staff-tag { border: 1px solid transparent; color: var(--color-fg);
   background: linear-gradient(var(--color-bg), var(--color-bg)) padding-box, linear-gradient(100deg, var(--sg-1), var(--sg-2), var(--sg-3), var(--sg-4)) border-box; }
-/* 工作人员的名字（components/UserName，2026-09-26 goat）：宜家配色，黄字 + 蓝描边。
-   小字（默认）：八向 text-shadow 描边，偏移用 em 跟字号走（12px ≈ 0.6px），细到不糊；不用 text-stroke，
-   它是往字形里外各画一半，小字会把黄色笔画吃掉。
-   大字（.staff-name-lg，18px 以上）：-webkit-text-stroke 配 paint-order: stroke fill，描边垫在黄字下面只露外半圈。
-   浅色外观：浅底上亮黄发虚，黄色压深一档（#ffcc00）靠蓝描边撑住轮廓；描边反而收细一点，浅底上中文笔画密的字（管、理）描边太粗会把字腔填满。
-   颜色写死不跟主题变量走：要的就是这两个宜家色。 */
+/* Staff names (components/UserName, 2026-09-26 goat): IKEA colors — yellow text + blue outline.
+   Small text (default): eight-direction text-shadow outline, offsets in em so they scale with font size (12px ≈ 0.6px), thin enough not to blur; text-stroke isn't used
+   because it paints half inside / half outside the glyph, eating the yellow strokes at small sizes.
+   Large text (.staff-name-lg, 18px+): -webkit-text-stroke with paint-order: stroke fill, the stroke tucked under the yellow showing only its outer half.
+   Light appearance: bright yellow goes faint on light backgrounds, so yellow is pressed one shade deeper (#ffcc00) and the blue outline holds the silhouette; the outline actually gets thinner — on light backgrounds, thick outlines fill the counters of dense CJK characters.
+   Colors are hardcoded, not theme variables: these two IKEA colors are the point. */
 :root {
   --sn-fill: #ffda1a; --sn-edge: #0051ba; --sn-w: .05em;
 }
@@ -431,52 +431,52 @@ div:has(> [data-chat-image]:only-child) { background: transparent; padding: 0; }
   paint-order: stroke fill;
 }
 @media (prefers-reduced-motion: reduce) {
-  /* 系统开了「减少动态效果」：停掉旋转（位移类动画），但保留呼吸（只变亮度，不引起眩晕），让官方边框始终是动的、没法用静态图冒充。
-     全局规则把所有动画压成 0.01ms，这里用更具体的选择器把呼吸恢复回来 */
+  /* When the system enables "reduce motion": stop the rotation (motion-class animation), but keep the breathing (brightness only, no dizziness risk), so the official border is always animated and can't be faked with a static image.
+     The global rule squashes all animations to 0.01ms; a more specific selector here restores the breathing */
   .sg-spin { animation: none !important; will-change: auto; }
   .staff-glow > .sg-halo { animation-duration: 2.4s !important; animation-iteration-count: infinite !important; }
 }
 
-/* 买卖弹层的余额比例滑杆（2026-09-25 替换快捷数量按钮） */
+/* Balance-percentage slider in the trade sheet (2026-09-25 replaced the quick-amount buttons) */
 .pct-slider { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: var(--color-line); outline: none; }
 .pct-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 999px; background: var(--color-accent); border: 3px solid var(--color-bg); box-shadow: 0 2px 8px rgb(0 0 0 / .3); cursor: pointer; }
 .pct-slider::-moz-range-thumb { width: 22px; height: 22px; border-radius: 999px; background: var(--color-accent); border: 3px solid var(--color-bg); cursor: pointer; }
 .pct-slider:disabled { opacity: .4; }
 
-/* 群名片勋章：群主金色、MOD 蓝紫，亮暗主题都用实色底保证小字号清楚 */
+/* Group card badges: gold for owners, blue-purple for MODs; solid backgrounds in both themes so small text stays legible */
 .group-badge-owner { color: #3b2a00; background: linear-gradient(135deg, #ffe08a, #f5b83d); box-shadow: 0 0 0 1px rgb(245 184 61 / .35); }
 .group-badge-mod { color: #fff; background: linear-gradient(135deg, #7c8cff, #a36bff); box-shadow: 0 0 0 1px rgb(124 140 255 / .35); }
-/* 消息页「发现社区」卡片：左上角一抹淡紫光，和资产卡同一套语言 */
+/* The "Discover communities" card on the messages page: a lavender glow in the top-left corner, same visual language as the assets card */
 .discover-card { background: radial-gradient(120% 100% at 0% 0%, rgb(205 189 255 / .13), transparent 62%), var(--color-card); }
 :root[data-theme="light"] .discover-card { background: radial-gradient(120% 100% at 0% 0%, rgb(107 77 230 / .08), transparent 62%), var(--color-card); }
-/* Holder（持有 Zalien，2026-09-28）：外星绿，深色字；图标里的眼睛用浅绿挖空 */
+/* Holder (holds Zalien, 2026-09-28): alien green, dark text; the eyes in the icon are knocked out in light green */
 .holder-badge { --holder-eye: #c9ffe3; color: #04321f; background: linear-gradient(135deg, #b9ffd8, #34d399); box-shadow: 0 0 0 1px rgb(52 211 153 / .35); }
 
-/* 群主 / MOD 的每条消息气泡都带描边光（2026-09-26 goat：每条都要一眼看出是谁发的，比只在第一条挂勋章清楚）。
-   用 box-shadow 不占布局；图片 / 视频气泡同样生效 */
+/* Every message bubble from owners / MODs carries an outline glow (2026-09-26 goat: every message should show at a glance who sent it, clearer than a badge on only the first message).
+   Uses box-shadow so it takes no layout space; also applies to image / video bubbles */
 .bubble-owner { box-shadow: 0 0 0 1.5px #f5b83d, 0 0 14px rgb(245 184 61 / .45); }
 .bubble-mod { box-shadow: 0 0 0 1.5px #8b7cff, 0 0 14px rgb(139 124 255 / .45); }
 :root[data-theme="light"] .bubble-owner { box-shadow: 0 0 0 1.5px #e0a21f, 0 0 12px rgb(224 162 31 / .35); }
 :root[data-theme="light"] .bubble-mod { box-shadow: 0 0 0 1.5px #6d5cff, 0 0 12px rgb(109 92 255 / .3); }
 
-/* 大号金额输入框：就是一行数字，不要输入框的底色、边框和聚焦光圈（2026-09-26 goat：买入框里那块白底很丑）。
-   浅色主题给 .ui-field 加了白色半透明底，这里要压过它 */
+/* Large amount input: just a line of digits — no input background, border, or focus ring (2026-09-26 goat: the white block in the buy box is ugly).
+   The light theme gives .ui-field a white translucent base; this must outrank it */
 .ui-field.ui-field-bare, :root[data-theme="light"] .ui-field.ui-field-bare { background: transparent; border-color: transparent; box-shadow: none; outline: none; }
 .ui-field.ui-field-bare:focus, .ui-field.ui-field-bare:focus-visible { border-color: transparent; box-shadow: none; outline: none; }
 
-/* ===== 按键光晕（lib/tapRipple.ts 按下加 .tap-halo，松手换 .tap-halo-out 淡出）=====
-   drop-shadow 画在按钮渲染结果外面：不占布局、不被 overflow 裁、不覆盖按钮自己的阴影 */
+/* ===== Tap halo (lib/tapRipple.ts adds .tap-halo on press, swaps to .tap-halo-out on release to fade) =====
+   drop-shadow is painted outside the button's render result: takes no layout space, isn't clipped by overflow, doesn't cover the button's own shadow */
 :root { --tap-halo: rgb(184 166 255 / .55); }
 :root[data-theme="light"] { --tap-halo: rgb(124 96 230 / .45); }
 .tap-halo { filter: drop-shadow(0 0 2px var(--tap-halo)) drop-shadow(0 0 12px var(--tap-halo)) brightness(1.04); transition: filter .12s ease; }
 .tap-halo-out { filter: none; transition: filter .5s ease; }
 
-/* ---------- 首页顶栏官方滚动公告（components/HomeBrand，2026-09-29） ----------
-   logo 右边一条胶囊：左边珍珠色小喇叭，中间标题。多条轮流从下往上换入；标题放不下时先停一下再匀速滚到末尾，两端淡出。
-   宽度吃掉 logo 和右边四个图标按钮之间剩下的空间（flex-basis 0 + min-width 0），不会把按钮挤到下一行。 */
+/* ---------- Home top-bar official scrolling announcements (components/HomeBrand, 2026-09-29) ----------
+   A capsule right of the logo: small pearl megaphone on the left, title in the middle. Multiple announcements rotate in from below; when a title doesn't fit, it pauses first then scrolls evenly to the end, fading at both ends.
+   Width consumes the leftover space between the logo and the four icon buttons on the right (flex-basis 0 + min-width 0), so it never pushes buttons onto the next line. */
 .home-brand { display: flex; flex: 1 1 0%; min-width: 0; align-items: center; gap: 8px; }
-/* 首页顶栏像素字标「Øx4」：Pixelify Sans 600（main.tsx 引入），这款字自带的字宽已经比较松，字距再收一点更紧凑；
-   前景色过渡到品牌淡紫、冰青，和猫头 logo 的渐变同一组颜色；字形本身有下沉，往下挪 1px 和猫头视觉中线对齐 */
+/* Home top-bar pixel wordmark "Øx4": Pixelify Sans 600 (imported in main.tsx); the face already runs wide, so tracking is tightened a touch for compactness;
+   foreground transitions into brand lavender and ice cyan, the same color group as the cat-head logo's gradient; the glyphs sit low by design, nudged down 1px to align with the cat head's visual centerline */
 .brand-wordmark { font-family: "Pixelify Sans", var(--font-sans); font-weight: 600; font-size: 1.375rem; line-height: 1; letter-spacing: -.01em;
   font-synthesis: none; padding: 2px 0 0 2px; transform: translateY(1px);
   background: linear-gradient(100deg, var(--color-fg) 0 36%, color-mix(in srgb, var(--sg-2) 75%, var(--color-fg)) 68%, color-mix(in srgb, var(--sg-3) 75%, var(--color-fg)));
@@ -506,14 +506,14 @@ div:has(> [data-chat-image]:only-child) { background: transparent; padding: 0; }
 :root[data-theme="light"] .notice-chip { background: rgb(107 77 230 / .09); }
 :root[data-theme="light"] .notice-chip-pin { background: rgb(168 104 15 / .1); }
 
-/* 燃料费页：新加的链淡入展开、移除时淡出收起（2026-09-29）；减弱动态效果时不动 */
+/* Fuel fee page: newly added chains expand with a fade-in, removed ones collapse with a fade-out (2026-09-29); no motion under reduced-motion */
 @keyframes fuel-row-in { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
 @keyframes fuel-row-out { from { opacity: 1; transform: none } to { opacity: 0; transform: translateX(-12px) } }
 .fuel-row-in { animation: fuel-row-in 260ms cubic-bezier(.33, 1, .68, 1) both }
 .fuel-row-out { animation: fuel-row-out 180ms ease-in both }
 @media (prefers-reduced-motion: reduce) { .fuel-row-in, .fuel-row-out { animation: none } }
 
-/* 直播改造（2026-09-30）：点赞飘心、进场横幅、PK 结果弹出。只动 transform / opacity，不占显卡 */
+/* Live revamp (2026-09-30): like floating hearts, entry banners, PK result popups. Only transform / opacity move — cheap on the GPU */
 @keyframes like-float { 0% { transform: translate(-50%, 0) scale(.6); opacity: 0 } 15% { opacity: 1 } 100% { transform: translate(calc(-50% + var(--x, 0px)), -150px) scale(1.15); opacity: 0 } }
 .like-float { animation: like-float 1.35s ease-out forwards }
 @keyframes enter-slide { 0% { transform: translateX(-105%); opacity: 0 } 12% { transform: translateX(0); opacity: 1 } 85% { transform: translateX(0); opacity: 1 } 100% { transform: translateX(-20%); opacity: 0 } }

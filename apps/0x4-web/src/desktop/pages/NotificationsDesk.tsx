@@ -1,6 +1,6 @@
-// 网页版「通知」（/notifications，顶栏铃铛下拉里点「查看全部」进来。2026-09-29 goat：「通知也是（手机页面）」）。
-// 版式：中间一栏 720 宽列表（docs/WEB_DESIGN.md），页签 全部 / 互动 / 系统，右上「全部已读」和「通知设置」。
-// 数据还是社交层 store 里那一份（和手机通知页、铃铛下拉一样），点一条按 ref 跳到对应页面。
+// Web "Notifications" (/notifications, entered via "View all" in the top-bar bell dropdown. 2026-09-29 goat: "notifications too (the phone page)").
+// Layout: one centered 720-wide column list (docs/WEB_DESIGN.md); tabs All / Interactions / System; "Mark all read" and "Notification settings" top-right.
+// The data is still the social layer store's copy (same as the phone notifications page and the bell dropdown); tapping one jumps per ref.
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Bell, CheckCheck, Settings as SettingsIcon } from 'lucide-react'

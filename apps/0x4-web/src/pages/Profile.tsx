@@ -1,5 +1,5 @@
-// 交易者主页：资料、关注、战绩；下面三个标签「动态 · 交易 · 持仓」（2026-09-25 重排）：
-// 标签栏吸顶，只加载当前标签，切换时再加载；记住上次选的标签（0x4.profileTab）
+// Trader profile: bio, follows, track record; three tabs below — "Posts · Trades · Positions" (reordered 2026-09-25):
+// Sticky tab bar; only the active tab loads, others load on switch; remembers the last selected tab (0x4.profileTab)
 import { useEffect, useMemo, useState } from 'react'
 import { BALANCE_FEATURES } from '@/lib/features'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -14,7 +14,7 @@ import TokenLogo from '@/components/TokenLogo'
 import { PostList } from '@/components/Posts'
 import { pnlClass, pnlText } from '@/components/Leaderboard'
 import { toast } from '@/components/Toast'
-// 主页分享链接（2026-10-04 走查：以前是 网页版地址/#/u/…，在 420.meme 上会落到官网首页）
+// Profile share link (2026-10-04 review: it used to be the web address /#/u/…, which landed on the official site's homepage when opened on 420.meme)
 import { SHARE_BASE } from '@/live/share'
 import { api, type Profile as ProfileT } from '@/lib/social'
 import { fmtAmount, fmtUsd, sideLabel, timeAgo, shortId } from '@/lib/format'
@@ -33,7 +33,7 @@ import { useBack } from '@/lib/useBack'
 import { errorText } from '@/lib/errors'
 
 interface Social { handle: string | null; followers: number; following: number; isFollowing: boolean; trades: number; pnl: number; avgHoldMs: number | null; joinedAt: number | null; pnl24h: number ; followsMe?: boolean; isFriend?: boolean
-  /** 2026-09-30：获赞（帖子 + 评论 + 直播，全站通用）、观众 / 主播等级 */
+  /** 2026-09-30: likes (posts + comments + live, site-wide), viewer / streamer levels */
   likes?: number; level?: { viewer: number; streamer: number } }
 interface Pnl { series: { t: number; v: number }[]; realized: number; unrealized: number; total: number }
 interface Position { chain: string; token: string; symbol: string; logo: string | null; qty: number; cost: number; realized: number; last_price: number; last_at: number; trades: number }
@@ -55,14 +55,14 @@ function holdText(ms: number | null) {
 export default function Profile() {
   const { address = '' } = useParams()
   const nav = useNavigate()
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /community
+  // Back: return to the previous page when there is one (its state / scroll are restored); pages opened directly from pushes / deep links go to /community
   const back = useBack('/community')
   const { me, status } = useSocial()
-  // 从群成员、列表点进来时带着已有的资料（router state），先直接显示，不用等接口（2026-09-26 goat：先闪一个错的资料再跳成对的）
+  // When opened from group members or lists, the existing profile rides along (router state) — show it immediately without waiting for the API (2026-09-26 goat: it used to flash a wrong profile before snapping to the right one)
   const seedRaw = (useLocation().state as { profile?: ProfileT } | null)?.profile
   const seed = seedRaw && seedRaw.address === address ? seedRaw : null
   const [p, setP] = useState<ProfileT | null>(seed)
-  // 小精灵的地址：这里没有它的资料，直接去小精灵页（2026-10-05 goat：从动态点进来看到的是一串地址）
+  // A sprite's address: no profile exists for it here — go straight to the sprite page (2026-10-05 goat: opening from a post showed a raw address)
   useEffect(() => { if (p?.sprite) nav(`/fly/${p.sprite.id}`, { replace: true }) }, [p?.sprite?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const [social, setSocial] = useState<Social | null>(null)
   const [gifts, setGifts] = useState<{ totalReceived: number; byGift: { gift_id: string; qty: number }[] } | null>(null)
@@ -71,7 +71,7 @@ export default function Profile() {
   const pickTab = (k: ProfileTab) => { setTab(k); saveProfileTab(k) }
 
   useEffect(() => {
-    // 换了一个人：先清掉上一个人的数据（有带过来的资料就先用它），迟到的旧请求结果丢掉
+    // Switched person: clear the previous person's data first (use the carried-along profile if there is one); discard late results from old requests
     let alive = true
     setP((cur) => (cur && cur.address === address ? cur : seed)); setSocial(null); setGifts(null)
     api<ProfileT>(`/api/users/${address}`).then((v) => { if (alive) setP(v) }).catch((e) => { if (alive) toast.error(errorText(e, t('加载失败'))) })
@@ -86,12 +86,12 @@ export default function Profile() {
         <button onClick={back} className="-ml-2 rounded-full p-2 text-muted"><ArrowLeft size={22} /></button>
         <div className="flex items-center gap-2">
           <button onClick={() => copyText(`${SHARE_BASE}/u/${address}`).then(() => toast.success(t('主页链接已复制')))} className="rounded-full bg-card p-2 text-muted"><Share2 size={18} /></button>
-          {/* 举报 / 拉黑（别人的主页、登录后才有） */}
+          {/* Report / block (other people's profiles, only when logged in) */}
           <UserMore address={address} name={p ? displayName(p) : undefined} className="rounded-full bg-card p-2 text-muted" size={18} />
         </div>
       </div>
-      {/* 头部（2026-09-25 重排）：昵称 + X 标记 / @账号胶囊 / 地址 / 加入时间，各占一行留足间距；关注按钮靠右和昵称对齐 */}
-      {/* 资料还没到：显示骨架，不拿地址拼一个假的名字和默认头像出来 */}
+      {/* Header (reordered 2026-09-25): nickname + X badge / @handle pill / address / join date, each on its own row with roomy spacing; the follow button sits right-aligned with the nickname */}
+      {/* Profile not loaded yet: show a skeleton — never fabricate a name from the address or a default avatar */}
       {!p ? (
         <div className="mt-3 flex items-start gap-4" aria-busy="true" aria-label={t('正在读取中')}>
           <div className="size-[76px] shrink-0 animate-pulse rounded-full bg-card2" />
@@ -106,23 +106,23 @@ export default function Profile() {
         <Avatar address={address} src={p?.avatar} name={p?.nickname} size={76} chainId={p?.avatarNft?.chainId} />
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex items-center gap-2"><UserName size="lg" address={address} name={p ? displayName(p) : shortId(address)} className="truncate text-[22px] font-bold leading-tight" /><XBadge address={address} size={14} /><LevelBadge level={social?.level?.streamer} role="streamer" size={22} /><LevelBadge level={social?.level?.viewer} size={22} /></div>
-          {/* 名字旁只放 X 认证；「官方 / 客服」身份标签放到下一行最前面，和 X 账号胶囊分开，两种认证不挤在一起（2026-09-25 goat）。
-              这一行没有任何内容时 empty:hidden 自动收起 */}
+          {/* Only the X verification goes next to the name; the "official / support" identity badge moves to the front of the next row, separated from the X handle pill — the two verifications never crowd together (2026-09-25 goat).
+              empty:hidden auto-collapses this row when it has nothing */}
           {(
             <div className="mt-2 flex flex-wrap items-center gap-2 empty:hidden">
               <StaffTag address={address} />
-              {/* 自己设的用户名和绑定的 X 账号分开显示：以前绑了 X 就只显示 X，设的用户名看不到，像是没保存 */}
+              {/* The self-set username and the linked X account display separately: previously linking X showed only X and the set username was invisible, as if never saved */}
               {(p?.handle || social?.handle) && <span className="text-sm font-semibold text-muted">@{p?.handle || social?.handle}</span>}
               {p?.xHandle && <a href={`https://x.com/${p.xHandle}`} target="_blank" rel="noreferrer" className="glass-lite inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-fg">𝕏 @{p.xHandle}</a>}
             </div>
           )}
-          {/* 地址和加入时间放一排（2026-09-25 goat） */}
+          {/* Address and join date share one row (2026-09-25 goat) */}
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
             <button onClick={() => copyText(p?.evmAddress || address).then(() => toast.success(t('已复制')))} className="flex items-center gap-1.5 font-mono">{shortId(p?.evmAddress || address)} <Copy size={12} /></button>
             {social?.joinedAt && <span className="flex items-center gap-1.5"><CalendarDays size={13} />{t('{date} 加入', { date: new Date(social.joinedAt).toLocaleDateString(locale(), { year: 'numeric', month: 'long' }) })}</span>}
           </div>
         </div>
-        {/* 关系标签放在按钮左边同一排（2026-09-25 goat）：互关=好友+私聊；我单方面关注=按钮显示「已关注」；对方关注我=「关注了你」+回关 */}
+        {/* Relationship badge sits left of the button on the same row (2026-09-25 goat): mutual = friend + DM; I follow them = button shows "following"; they follow me = "follows you" + follow-back */}
         {me?.address !== address && (
           <div className="flex shrink-0 items-center gap-2">
             {social?.isFriend
@@ -137,7 +137,7 @@ export default function Profile() {
       )}
       {p?.bio && <div className="mt-4"><MoreText text={p.bio} className="text-[15px] leading-relaxed" /></div>}
 
-      {/* 数据卡：一排四格，数字在上、说明在下，不用表情符号 */}
+      {/* Stat card: four cells in a row, numbers on top, labels below, no emoji */}
       <div className="glass-lite mt-4 grid grid-cols-5 rounded-[20px] py-3.5">
         {[
           [String(social?.following ?? 0), t('关注||count')],
@@ -158,8 +158,8 @@ export default function Profile() {
       )}
       {BALANCE_FEATURES && me && me.address !== address && p && <Button className="mt-3 w-full" variant="secondary" onClick={() => setGifting(true)}><Gift size={16} /> {t('送礼物')}</Button>}
 
-      {/* 三个标签：吸顶（贴在状态栏毛玻璃下面），只渲染当前这个，切换时它自己再去拉数据 */}
-      {/* 圆角胶囊分段切换（2026-09-25 goat：原来通栏直角的框不好看），吸顶时浮在内容上 */}
+      {/* Three tabs: sticky (right under the status bar's frosted glass), only the active one renders and fetches its own data on switch */}
+      {/* Rounded-capsule segmented switcher (2026-09-25 goat: the old full-width square box was ugly); floats above content when sticky */}
       <div className="sticky z-20 mt-6 py-2" style={{ top: 'env(safe-area-inset-top)' }}>
         <div className="glass grid grid-cols-3 gap-1 rounded-full p-1" role="tablist" aria-label={t('主页内容')}>
           {PROFILE_TABS.map((k) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => pickTab(k)}
@@ -176,10 +176,10 @@ export default function Profile() {
   )
 }
 
-/** 交易标签：盈亏卡在最上面，下面交易记录分页（每页 20，滚到底加载更多），可筛选 全部 / 买入 / 卖出 / 已平仓 */
+/** Trades tab: PnL card on top, trade history paged below (20 per page, infinite scroll), filterable by All / Buy / Sell / Closed */
 function TradesTab({ address }: { address: string }) {
   const { status } = useSocial()
-  // 盈亏周期、交易筛选、持仓子标签记在会话里：点进币详情再返回还是原样（lib/pageState）
+  // PnL period, trade filter, and position sub-tab persist in the session: drilling into a token and back keeps everything as it was (lib/pageState)
   const [period, setPeriod] = usePageState<(typeof periods)[number][0]>('profile.period', '24h', oneOf(...periods.map((p) => p[0])))
   const [pnl, setPnl] = useState<Pnl | null>(null)
   const [side, setSide] = usePageState<Side>('profile.side', 'all', oneOf(...SIDES.map((s) => s[0])))
@@ -198,10 +198,10 @@ function TradesTab({ address }: { address: string }) {
   const list = usePaged<Trade>(`${address}|${side}|${status}`, async (cursor, signal) => {
     const r = await api<{ trades: Trade[]; nextCursor?: string | null }>(`/api/users/${address}/trades?limit=${TRADE_PAGE}&side=${side}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { signal })
     return { items: r.trades, next: r.nextCursor ?? null }
-  }, (x) => x.id, { cache: 'trades' })   // 后退回来保留已加载的几页
+  }, (x) => x.id, { cache: 'trades' })   // Going back preserves the already-loaded pages
 
   return <>
-    {/* 盈亏：周期切换单独一行（原来挤在数字旁边被压成竖排）；大数字下面已实现 / 未实现分两栏 */}
+    {/* PnL: the period switcher gets its own row (it used to squeeze beside the numbers and collapse vertically); realized / unrealized split into two columns under the big number */}
     <div className="glass mt-4 rounded-[24px] p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[13px] text-muted">{t('盈亏')}</span>
@@ -237,7 +237,7 @@ function TradesTab({ address }: { address: string }) {
   </>
 }
 
-/** 持仓标签：持仓中 / 已平仓 切换；切到这个标签才去拉 */
+/** Positions tab: open / closed switch; fetched only when this tab is opened */
 function HoldingsTab({ address }: { address: string }) {
   const nav = useNavigate()
   const { status } = useSocial()

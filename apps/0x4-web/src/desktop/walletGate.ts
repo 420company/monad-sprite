@@ -1,10 +1,10 @@
-// 网页版（VITE_SURFACE=web）的钱包连接。接口约定 docs/EXTENSION_API.md。
-// · 行情、币详情、流媒体列表、社区公开内容、小精灵公开页：不用钱包直接看。
-// · 「连接钱包」或要签名 / 要账号的操作：弹连接面板（2026-09-30 goat：外部钱包也能连进来用）——
-//   第一个是 0x4 Wallet（推荐，全部功能）；下面列出浏览器里的其它钱包（EIP-6963：MetaMask、Phantom、Rabby、OKX……）；最后是手机钱包扫码。
-//   0x4 Wallet：装了插件就请插件连接（插件自己弹窗）；没装就提示获取。
-//   外部钱包：它自己弹窗确认连接，连上后用 0x 地址登录同一个 0x4 账号；合约交易、网页快捷交易、私信、小精灵全自动、比特币是 0x4 Wallet 专属（desktop/Ox4Only.tsx）。
-// 手机 App 恒为「已有钱包」（路由守卫保证），needWallet() 一律返回 false，行为不变。
+// Web (VITE_SURFACE=web) wallet connection. Interface contract: docs/EXTENSION_API.md.
+// · Market data, coin details, livestream lists, public community content, public sprite pages: viewable without a wallet.
+// · "Connect wallet" or operations needing a signature / account: pop the connect panel (2026-09-30 goat: external wallets can also connect) —
+//   First is 0x4 Wallet (recommended, full features); below list other wallets found in the browser (EIP-6963: MetaMask, Phantom, Rabby, OKX…); last is mobile-wallet QR scan.
+//   0x4 Wallet: if the extension is installed, ask it to connect (it pops its own window); if not, prompt to get it.
+//   External wallets: they pop their own window to confirm; after connecting, sign in to the same 0x4 account with the 0x address; perp trading, web quick-trade, DMs, sprite full-auto and Bitcoin are 0x4 Wallet exclusives (desktop/Ox4Only.tsx).
+// The mobile app always "has a wallet" (guaranteed by the route guard), so needWallet() always returns false — behavior unchanged.
 import { create } from 'zustand'
 import { useTermsGate } from '@/lib/safety'
 import { WEB_SURFACE } from '@/lib/surface'
@@ -19,18 +19,18 @@ import { t } from '@/lib/i18n'
 import { userActing } from '@/lib/userActivation'
 
 interface WalletGateState {
-  /** 连接面板（选钱包）是否打开 */
+  /** Whether the connect panel (wallet picker) is open */
   open: boolean
-  /** 「获取 0x4 Wallet」卡片（插件还没上架时写「即将上线」）是否打开 */
+  /** Whether the "Get 0x4 Wallet" card is open (says "coming soon" while the extension isn't listed yet) */
   getOx4: boolean
-  /** 正在连接（钱包在弹窗等用户确认） */
+  /** Connecting (the wallet is popping a window waiting for user confirmation) */
   connecting: boolean
-  /** 正在等哪个钱包确认（面板上显示「请在 xx 中确认」+ 取消） */
+  /** Which wallet we're waiting on (panel shows "Please confirm in xx" + cancel) */
   connectingName: string
-  /** 面板直接打开在「用 0x4 App 扫码登录」那一页（2026-10-01，没装插件的电脑登录网页版） */
+  /** Panel opens directly on the "Log in by scanning with the 0x4 App" page (2026-10-01, desktop web login without the extension installed) */
   appQr: boolean
   show: () => void
-  /** 打开面板，直接显示 App 扫码登录 */
+  /** Open the panel, showing the app QR-scan login directly */
   showAppQr: () => void
   hide: () => void
 }
@@ -46,72 +46,72 @@ export const useWalletGate = create<WalletGateState>()((set) => ({
   hide: () => set({ open: false, getOx4: false, appQr: false }),
 }))
 
-/** 「获取 0x4 Wallet」的地址（插件上架后在构建环境变量里填 VITE_EXTENSION_URL）；没填就是还没上架 */
+/** The "Get 0x4 Wallet" URL (filled via build env VITE_EXTENSION_URL once the extension is listed); empty means not listed yet */
 export const EXTENSION_URL = ((import.meta.env as Record<string, string | undefined>).VITE_EXTENSION_URL || '').trim()
-/** 「获取 0x4 Wallet」：有商店地址就打开，没有就弹「即将上线」小卡片（不编造链接） */
+/** "Get 0x4 Wallet": open the store URL if set, otherwise pop the "coming soon" card (never fabricate a link) */
 export function getOx4Wallet(): void {
   if (EXTENSION_URL) { window.open(EXTENSION_URL, '_blank', 'noopener'); return }
   useWalletGate.setState({ getOx4: true })
 }
 
-/** 事件监听只挂一次（同一个插件对象） */
+/** Event listeners attach only once (same extension object) */
 let listening: Ox4Provider | null = null
 function listen(p: Ox4Provider) {
   if (listening === p) return
   listening = p
-  // 现在连的是外部钱包时，0x4 插件自己的锁定 / 断开 / 换号事件跟它无关，不能把外部钱包摘掉
+  // When an external wallet is currently connected, the 0x4 extension's own lock / disconnect / account-change events don't concern it — must not drop the external wallet
   const mine = () => useWallet.getState().kind !== 'external'
   const drop = () => { if (mine()) useWallet.getState().detachExtension() }
-  // 插件断开（用户在插件里断开这个网站）：连本机存的网页版登录令牌一起删
+  // Extension disconnected (user disconnected this site inside the extension): also delete the locally stored web login token
   const dropAndForget = () => { if (!mine()) return; forgetWebSession(); drop() }
-  // ★插件锁定：钱包和登录都留着，只记下「锁着」（2026-10-06 goat「睡一觉起来钱包那些就要重新登录」，goat 拍板改掉 9/29 的做法）。
-  //   以前锁定就删登录令牌、摘掉钱包（担心插件锁着时同源脚本拿令牌冒充用户），插件默认 15 分钟自动锁，睡一觉回来就要解锁 + 再签一次登录。
-  //   现在：看资料、余额、动态、小精灵照常；动钱（每一笔都要插件签名）时 ensureFor 请插件弹解锁；私信锁着时不解密（store/wallet.ts）。
-  //   代价：插件锁着时令牌仍在浏览器里，页面混进恶意脚本能冒充用户发动态、看资料，但动不了钱
+  // ★Extension locked: keep wallet and login, only record "locked" (2026-10-06 goat: "wake up and have to re-login everything" — goat decided to change the 9/29 behavior).
+  //   Previously, locking deleted the login token and dropped the wallet (fear: same-origin scripts grabbing the token to impersonate the user while locked); the extension auto-locks after 15 min by default, so after a night's sleep you'd have to unlock + sign in again.
+  //   Now: profile, balance, feed, sprite work as usual while locked; moving money (every tx needs the extension's signature) triggers ensureFor to ask the extension to unlock; DMs aren't decrypted while locked (store/wallet.ts).
+  //   Trade-off: the token stays in the browser while locked, so a malicious script injected into the page could post and read profile as the user — but can't move money
   p.on('lock', () => { if (mine()) useWallet.getState().setExtensionLocked(true) })
   p.on('disconnect', dropAndForget)
-  // 插件里换了账号：按新地址重新挂签名器（已连接，不会再弹窗）。
-  // ★插件每次 connect、每次解锁都会推这个事件，地址其实没变。以前不管变没变都先摘掉钱包再挂上：
-  //   社交层跟着登出、再登录，正在进行的那次登录也被打断 → 登录窗口一个接一个弹（2026-09-29 goat 实测）。现在地址没变就不动
+  // Account switched inside the extension: re-attach the signer for the new address (already connected, no new popup).
+  // ★The extension pushes this event on every connect and every unlock, even when the address didn't change. Previously it dropped and re-attached the wallet regardless:
+  //   the social layer logged out and back in, interrupting the login in progress → login windows popped one after another (2026-09-29 goat verified on device). Now: address unchanged → leave it alone
   p.on('accountsChanged', (payload) => {
     if (!mine()) return
     const next = payload as { address?: string; evmAddress?: string } | null | undefined
     const cur = useWallet.getState()
-    // 地址没变：多半是插件刚解锁（在插件弹窗里解锁、或网站请求连接时解锁，插件都会推这个事件），把「锁着」去掉
+    // Address unchanged: most likely the extension just unlocked (it pushes this event both on in-extension unlock and on website-requested connect), so clear the "locked" flag
     if (cur.wallet && next?.address && next.address === cur.address && (!next.evmAddress || next.evmAddress.toLowerCase() === (cur.evmAddress || '').toLowerCase())) { cur.setExtensionLocked(false); return }
     if (!cur.wallet && !next?.address) return
     drop(); void restoreOx4()
   })
 }
 
-/** 签名前的闸：插件还连着、没锁才放行；锁了就请插件弹解锁（connect 在锁着时会弹），用户取消抛 4001 */
+/** Pre-sign gate: pass only if the extension is still connected and unlocked; if locked, ask the extension to unlock (connect pops while locked); user cancel throws 4001 */
 function ensureFor(p: Ox4Provider) {
   return async () => {
     const s = await p.status()
     if (!s.connected) { useWallet.getState().detachExtension(); throw new Ox4Error(4100, t('钱包已断开，请重新连接 0x4 Wallet')) }
-    // 锁定会结束网页快捷交易，解锁（连接窗口）时顺带问一次要不要开启
+    // Locking ends web quick-trade; when unlocking (the connect window) ask once whether to enable it
     if (!s.unlocked) await p.connect({ perpSession: PERP_SESSION_REQUEST })
-    // 到这里插件一定是解锁的（事件可能还没到，或者网页漏了解锁事件）
+    // The extension is definitely unlocked by this point (the event may not have arrived, or the page missed the unlock event)
     useWallet.getState().setExtensionLocked(false)
   }
 }
 
 /**
- * 连接尝试编号（2026-09-30 goat：点了某个钱包又没在它弹窗里确认 / 拒绝，回到面板点别的钱包都没反应）。
- * 有些钱包关掉弹窗后不会告诉网页「取消了」，网页一直等。现在每点一次算一次新的尝试，旧尝试之后才回来的结果直接丢掉，
- * 按钮不再被锁住；面板上显示「请在 xx 中确认」和「取消」。
+ * Connection attempt counter (2026-09-30 goat: clicked a wallet, then neither confirmed nor rejected in its popup — clicking other wallets in the panel afterwards did nothing).
+ * Some wallets don't tell the page "cancelled" when their popup is closed, so the page waits forever. Now each click starts a new attempt, results arriving for old attempts are dropped,
+ * the button no longer stays stuck; the panel shows "Please confirm in xx" and "Cancel".
  */
 let attempt = 0
 const beginAttempt = (name: string) => { useWalletGate.setState({ connecting: true, connectingName: name }); return ++attempt }
 const endAttempt = (id: number) => { if (id === attempt) useWalletGate.setState({ connecting: false, connectingName: '' }) }
-/** 面板上的「取消」：作废当前尝试（钱包那边的弹窗留着也没关系，回来的结果会被丢掉） */
+/** The panel's "Cancel": voids the current attempt (the wallet-side popup can stay open — its eventual result will be dropped) */
 export function cancelConnect(): void { attempt++; useWalletGate.setState({ connecting: false, connectingName: '' }) }
-/** 钱包里还挂着上一次没处理的请求（MetaMask 的 -32002） */
+/** The wallet still has a pending request from last time (MetaMask's -32002) */
 const pendingInWallet = (e: unknown) => !!e && typeof e === 'object' && (e as { code?: number }).code === -32002
 
 /**
- * 请插件连接并挂上签名器。没装插件就打开说明面板。返回是否连上。
- * 用户在插件里取消（4001）不算错误，不弹提示。
+ * Ask the extension to connect and attach the signer. Opens the explainer panel if the extension isn't installed. Returns whether connected.
+ * User cancel in the extension (4001) is not an error — no toast.
  */
 export async function connectOx4(): Promise<boolean> {
   if (!WEB_SURFACE) return false
@@ -119,12 +119,12 @@ export async function connectOx4(): Promise<boolean> {
   if (!p) { getOx4Wallet(); return false }
   const id = beginAttempt('0x4 Wallet')
   try {
-    // 连接窗口里带「开启网页快捷交易」开关（连接后紧跟的那次登录不再弹窗，开关只能放在连接窗口里）
+    // The connect window carries an "enable web quick-trade" switch (the login right after connecting no longer pops, so the switch can only live in the connect window)
     const acc = await p.connect({ perpSession: PERP_SESSION_REQUEST })
-    if (id !== attempt) return false   // 用户已经取消或换了别的钱包
+    if (id !== attempt) return false   // User already cancelled or switched to another wallet
     if (!acc?.address || !acc?.evmAddress) throw new Ox4Error(5000, t('插件没有返回地址，请更新插件后再试'))
     listen(p)
-    // 之前连的是外部钱包：先断开它（登录令牌按地址存，换钱包要重新登录）
+    // Previously connected an external wallet: disconnect it first (login tokens are stored per address, switching wallets needs a fresh login)
     if (useWallet.getState().kind === 'external') await disconnectExternal()
     useWallet.getState().attachExtension(p, acc, ensureFor(p))
     useWalletGate.setState({ open: false })
@@ -138,9 +138,9 @@ export async function connectOx4(): Promise<boolean> {
 }
 
 /**
- * 打开网页时：插件已经对这个网站连过，直接挂上（不弹窗）。插件锁着也挂上、标成锁着（2026-10-06：插件锁了网页不登出），
- * 登录用本机存的令牌，要签名时再请插件解锁。
- * 插件没连着：本机存的登录令牌删掉（插件是在网页关着的时候断开的，网页没收到事件）
+ * On page open: if the extension already connected to this site, attach directly (no popup). Attach even while locked, flagged as locked (2026-10-06: a locked extension no longer logs web out),
+ * and log in with the locally stored token; ask the extension to unlock only when a signature is needed.
+ * Extension not connected: delete the locally stored login token (it was disconnected while the page was closed, so the page never got the event)
  */
 export async function restoreOx4(): Promise<void> {
   if (!WEB_SURFACE) return
@@ -150,12 +150,12 @@ export async function restoreOx4(): Promise<void> {
   try {
     const s = await p.status()
     if (s.connected && s.address && s.evmAddress) useWallet.getState().attachExtension(p, { address: s.address, evmAddress: s.evmAddress, btcAddress: s.btcAddress }, ensureFor(p), !s.unlocked)
-    // 插件没连：上次用的是插件才删令牌（上次用外部钱包的话，令牌是那个钱包的，留给 restoreExternal）
+    // Extension not connected: only delete the token if the extension was last used (if an external wallet was last, the token is that wallet's — leave it for restoreExternal)
     else if (!readLast()) forgetWebSession()
-  } catch { /* 插件没响应：当作没连，用户点连接时再试 */ }
+  } catch { /* Extension not responding: treat as not connected, retry when the user clicks connect */ }
 }
 
-/** 「解锁」按钮（合约页、资产页、私信里插件锁着时）：请插件弹解锁窗口；用户关掉窗口不算错误 */
+/** "Unlock" button (perp page, asset page, DMs when the extension is locked): ask the extension to pop the unlock window; user closing the window is not an error */
 export async function unlockOx4(): Promise<boolean> {
   const p = getOx4()
   if (!p || useWallet.getState().kind !== 'ox4') return false
@@ -166,23 +166,23 @@ export async function unlockOx4(): Promise<boolean> {
   }
 }
 
-/** 设置里「断开 0x4 Wallet」：请插件断开这个网站，本地清掉签名器和存着的登录令牌（社交层随之登出） */
+/** Settings "Disconnect 0x4 Wallet": ask the extension to disconnect this site, locally clear the signer and stored login token (social layer logs out along) */
 export async function disconnectOx4(): Promise<void> {
   const p = getOx4()
   forgetWebSession()
   useWallet.getState().detachExtension()
-  try { await p?.disconnect() } catch { /* 插件没响应：本地已经断开了 */ }
+  try { await p?.disconnect() } catch { /* Extension not responding: locally already disconnected */ }
 }
 
-// ---------- 外部钱包（MetaMask、Phantom 等，2026-09-30） ----------
+// ---------- External wallets (MetaMask, Phantom, etc., 2026-09-30) ----------
 
-/** 上次连的外部钱包（rdns；手机钱包扫码是 walletconnect），刷新页面后不弹窗地恢复 */
+/** Last connected external wallet (rdns; mobile-wallet scan is walletconnect), restored without a popup after refresh */
 const LAST_EXTERNAL_KEY = '0x4.lastExternal'
 const WALLETCONNECT_RDNS = 'walletconnect'
 const readLast = () => { try { return localStorage.getItem(LAST_EXTERNAL_KEY) } catch { return null } }
-const writeLast = (v: string | null) => { try { if (v) localStorage.setItem(LAST_EXTERNAL_KEY, v); else localStorage.removeItem(LAST_EXTERNAL_KEY) } catch { /* 无痕模式 */ } }
+const writeLast = (v: string | null) => { try { if (v) localStorage.setItem(LAST_EXTERNAL_KEY, v); else localStorage.removeItem(LAST_EXTERNAL_KEY) } catch { /* Incognito mode */ } }
 
-/** 外部钱包的事件：换了账号 → 按新地址重新挂（要重新登录）；全部断开 → 回到没连钱包 */
+/** External wallet events: account switched → re-attach for the new address (needs fresh login); all disconnected → back to no-wallet */
 let externalListening: { provider: Eip1193Provider; onAccounts: (...a: unknown[]) => void; onDisconnect: () => void } | null = null
 function listenExternal(provider: Eip1193Provider, info: Pick<WalletInfo, 'name' | 'icon' | 'rdns'>) {
   unlistenExternal()
@@ -208,26 +208,26 @@ function unlistenExternal() {
   externalListening = null
 }
 
-/** 挂上外部钱包（连接成功、或刷新后恢复）。Phantom 另外把 Solana 接上（接不上不影响 EVM） */
+/** Attach an external wallet (after successful connect, or restore after refresh). Phantom also connects Solana (EVM unaffected if that fails) */
 async function attachExternal(provider: Eip1193Provider, info: Pick<WalletInfo, 'name' | 'icon' | 'rdns'>, evmAddress: string, silent: boolean) {
   const sol = phantomSolana(info.rdns)
   let solana: { provider: NonNullable<typeof sol>; address: string } | null = null
   if (sol) {
-    try { const r = await sol.connect(silent ? { onlyIfTrusted: true } : undefined); solana = { provider: sol, address: r.publicKey.toString() } } catch { /* 用户拒绝了 Solana 或没开：只用 EVM */ }
+    try { const r = await sol.connect(silent ? { onlyIfTrusted: true } : undefined); solana = { provider: sol, address: r.publicKey.toString() } } catch { /* User rejected Solana or it's unavailable: EVM only */ }
   }
-  // 之前连的是 0x4 插件：本地摘掉（插件那边的连接不动，换回来时不用重新授权）
+  // Previously connected the 0x4 extension: detach locally (the extension-side connection stays, so switching back needs no re-authorization)
   if (useWallet.getState().kind === 'ox4') { forgetWebSession(); useWallet.getState().detachExtension() }
   useWallet.getState().attachExternal({ provider, info, evmAddress, solana })
   listenExternal(provider, info)
   writeLast(info.rdns)
 }
 
-/** 连接浏览器里的某个外部钱包（EIP-6963 发现的）：它自己弹窗确认，用户取消不算错误 */
+/** Connect an external wallet found in the browser (EIP-6963 discovery): it pops its own confirmation; user cancel is not an error */
 export async function connectExternal(w: WalletDetail): Promise<boolean> {
   const id = beginAttempt(w.info.name)
   try {
     const accounts = await walletRequest<string[]>(w.provider, 'eth_requestAccounts')
-    if (id !== attempt) return false   // 用户已经取消或换了别的钱包
+    if (id !== attempt) return false   // User already cancelled or switched to another wallet
     const evmAddress = Array.isArray(accounts) ? accounts[0] : null
     if (!evmAddress || !/^0x[0-9a-fA-F]{40}$/.test(evmAddress)) throw new Error(t('这个钱包没有返回地址'))
     await attachExternal(w.provider, { name: w.info.name, icon: safeIcon(w.info.icon) ?? '', rdns: w.info.rdns }, evmAddress, false)
@@ -235,7 +235,7 @@ export async function connectExternal(w: WalletDetail): Promise<boolean> {
     return true
   } catch (e) {
     if (id !== attempt) return false
-    // 钱包里还挂着上一次没处理的请求：告诉用户去钱包里处理
+    // The wallet still has an unhandled request from last time: tell the user to handle it in the wallet
     if (pendingInWallet(e)) { toast.error(t('请先在 {name} 中完成或关闭之前的请求', { name: w.info.name })); return false }
     const msg = errorText(e, t('连接失败'))
     if (msg) toast.error(msg)
@@ -243,13 +243,13 @@ export async function connectExternal(w: WalletDetail): Promise<boolean> {
   } finally { endAttempt(id) }
 }
 
-/** 手机钱包扫码连上之后（界面在 desktop/ConnectWallet.tsx 出二维码）挂上 */
+/** Attach after a mobile wallet connects via QR scan (UI shows the QR in desktop/ConnectWallet.tsx) */
 export async function attachWalletConnect(c: { provider: Eip1193Provider; address: string; name: string }): Promise<void> {
   await attachExternal(c.provider, { name: c.name, icon: '', rdns: WALLETCONNECT_RDNS }, c.address, false)
   useWalletGate.setState({ open: false })
 }
 
-/** 断开外部钱包：本地清掉签名器和登录令牌；MetaMask 等支持的话顺带撤掉网站授权，手机钱包断开会话 */
+/** Disconnect an external wallet: locally clear the signer and login token; revoke the site's authorization too if supported (MetaMask etc.), disconnect the session for mobile wallets */
 export async function disconnectExternal(): Promise<void> {
   const provider = externalListening?.provider
   unlistenExternal()
@@ -258,10 +258,10 @@ export async function disconnectExternal(): Promise<void> {
   const last = readLast()
   writeLast(null)
   if (last === WALLETCONNECT_RDNS) { void import('@/lib/walletConnectLogin').then((m) => m.endWalletConnect()).catch(() => {}); return }
-  if (provider) void walletRequest(provider, 'wallet_revokePermissions', [{ eth_accounts: {} }]).catch(() => { /* 不支持就算了：本地已经断开 */ })
+  if (provider) void walletRequest(provider, 'wallet_revokePermissions', [{ eth_accounts: {} }]).catch(() => { /* If not supported, so be it: locally already disconnected */ })
 }
 
-/** 刷新页面后：上次连的是外部钱包、它还授权着这个网站，就不弹窗地挂回来 */
+/** After refresh: if the last wallet was external and still authorizes this site, re-attach without a popup */
 async function restoreExternal(): Promise<void> {
   const last = readLast()
   if (!last) return
@@ -277,10 +277,10 @@ async function restoreExternal(): Promise<void> {
     const accounts = await walletRequest<string[]>(w.provider, 'eth_accounts')
     if (Array.isArray(accounts) && accounts[0]) await attachExternal(w.provider, { name: w.info.name, icon: safeIcon(w.info.icon) ?? '', rdns: w.info.rdns }, accounts[0], true)
     else { writeLast(null); forgetWebSession() }
-  } catch { /* 钱包没响应：当作没连，用户点连接时再选 */ }
+  } catch { /* Wallet not responding: treat as not connected, let the user pick again on connect */ }
 }
 
-/** 打开网页时恢复钱包：0x4 插件连着就用它；否则看上次连的外部钱包 */
+/** Restore wallet on page open: use the 0x4 extension if connected; otherwise look at the last external wallet */
 export async function restoreWallet(): Promise<void> {
   if (!WEB_SURFACE) return
   discoverWallets()
@@ -288,16 +288,16 @@ export async function restoreWallet(): Promise<void> {
   if (!useWallet.getState().wallet) await restoreExternal()
 }
 
-/** 顶栏 / 设置里「断开钱包」：0x4 插件和外部钱包各走各的 */
+/** Top bar / settings "Disconnect wallet": 0x4 extension and external wallets each take their own path */
 export async function disconnectWallet(): Promise<void> {
   if (useWallet.getState().kind === 'external') await disconnectExternal()
   else await disconnectOx4()
 }
 
-/** 「连接钱包」按钮：打开连接面板（0x4 Wallet 推荐放第一个） */
+/** "Connect wallet" button: open the connect panel (0x4 Wallet recommended first) */
 export function connectWallet(): void { if (WEB_SURFACE) useWalletGate.getState().show() }
 
-/** 网页版：钱包没连就打开连接面板并返回 true，调用方直接 return（连上后用户再点一次）；已连或手机 App 返回 false */
+/** Web: if no wallet is connected, open the connect panel and return true — the caller just returns (user taps again after connecting); returns false if already connected or on the mobile app */
 export function needWallet(): boolean {
   if (!WEB_SURFACE || isWalletConnected(useWallet.getState())) return false
   connectWallet()
@@ -305,8 +305,8 @@ export function needWallet(): boolean {
 }
 
 /**
- * 网页版：会议、直播这类「有账号就行、不用签名」的操作（2026-10-01）：钱包连着，或者用手机 App 扫码登录着，都放行；
- * 都没有就打开连接面板（里面有「用 0x4 App 扫码登录」）并返回 true。
+ * Web: operations like meetings and livestreams that need "an account, no signature" (2026-10-01): pass if a wallet is connected or the user logged in via mobile-app scan;
+ * otherwise open the connect panel (which has "Log in by scanning with the 0x4 App") and return true.
  */
 export function needLogin(): boolean {
   if (!WEB_SURFACE || isWalletConnected(useWallet.getState())) return false
@@ -317,28 +317,28 @@ export function needLogin(): boolean {
 }
 
 /**
- * 网页版：钱包连着但社交层没登录上（用户取消过登录签名、令牌过期、网络失败）时，用户做了要登录的操作 → 这时才请插件登录（用户操作，一个窗口）。
- * 返回 true = 这次操作先不做（登录好后用户再点一次）。正在登录中就只拦下，不重复发起。
- * 网页版登录失败后不自动重试（store/social.ts），这里和页面上的「重新登录」是重新登录的两个入口。
+ * Web: when the wallet is connected but the social layer failed to log in (user cancelled the login signature, token expired, network failed), and the user does something needing login → only then ask the extension to log in (user action, one window).
+ * Returns true = skip this operation for now (user taps again after login). If a login is already in flight, just block without starting another.
+ * No auto-retry after web login failure (store/social.ts); this and the page's "re-login" are the two re-login entry points.
  */
 export function needSocialLogin(): boolean {
   if (!WEB_SURFACE || !isWalletConnected(useWallet.getState())) return false
   const s = useSocial.getState()
   if (s.status === 'ready') return false
-  // 还没同意条款：用户做了要登录的事 → 把条款拿出来（点过「以后再说」也拿）
+  // Terms not yet accepted: user does something needing login → show the terms (even if they tapped "later" before)
   if (s.needTerms) { useTermsGate.getState().show(true); return true }
-  // 只有用户刚点过 / 按过键（浏览器的「用户激活」还在）才发起登录：页面自己在后台发的写请求不许把登录窗口弹出来（用户拒绝过就更不能）
+  // Only start login while the user just clicked / pressed a key (the browser's "user activation" is still live): background write requests from the page must not pop the login window (especially not after the user rejected once)
   if (s.status !== 'logging' && userActing()) void s.login()
   return true
 }
 /**
- * 网页版访客点了要社区账号的东西（点赞、评论、关注、看公告…）：没连钱包就开连接面板，连着但社区没登录上就请插件登录。
- * 返回 true = 这次先不做（2026-10-04 走查：以前这些地方要么没反应、要么只有一句「连接社交服务后可以…」，没有按钮）。手机 App 恒为 false
+ * Web guest tapping things that need a community account (like, comment, follow, read announcements…): open the connect panel if no wallet is connected, ask the extension to log in if connected but the community login didn't go through.
+ * Returns true = skip this time (2026-10-04 walkthrough: these spots previously either did nothing or showed a bare "connect social to…" with no button). Always false on the mobile app
  */
 export function needAccount(): boolean { return needWallet() || needSocialLogin() }
 
 
-// 社交接口的写操作（发帖、点赞、关注、进群、开会议……）没连钱包时在这里拦下：去连钱包，不发请求；连着但没登录上就先登录
+// Social API write ops (post, like, follow, join group, start meeting…) with no wallet connected are blocked here: go connect the wallet, don't send the request; if connected but not logged in, log in first
 if (WEB_SURFACE) setWriteGuard(() => needWallet() || needSocialLogin())
-// 扫码登录的电脑做了要连钱包的事（服务器回 WALLET_REQUIRED）：弹出连接钱包
+// A scan-logged-in desktop doing something that needs a wallet (server returns WALLET_REQUIRED): pop the connect wallet panel
 if (WEB_SURFACE) setWalletRequiredHandler(() => connectWallet())

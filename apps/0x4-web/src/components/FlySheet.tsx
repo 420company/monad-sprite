@@ -1,4 +1,4 @@
-// 养 / 编辑果蝇：起名、选币、性格（解码阈值）、学习开关、观察频率。领养后在详情页选交易方式（confirm / perp），没有纸面
+// Raise / edit a fruit fly: name it, pick tokens, personality (decode threshold), learning toggle, observation frequency. After adoption, pick the trading mode (confirm / perp) on the detail page — no paper trading
 import { useEffect, useState } from 'react'
 import Button from './Button'
 import Sheet from './Sheet'
@@ -14,13 +14,13 @@ import { BALANCE_FEATURES } from '@/lib/features'
 import { nameError } from '@/lib/names'
 import { errorText } from '@/lib/errors'
 
-// 一只果蝇最多观察几个币，和后端 server/src/fly.ts 的 MAX_TOKENS 一致（2026-09-27 定为 5）
+// Max tokens one fly watches — matches the backend's server/src/fly.ts MAX_TOKENS (set to 5 on 2026-09-27)
 const MAX_TOKENS = 5
-// 自动找币默认的 5 条重点链（goat 2026-09-27），和后端 autoPick.ts AUTO_DEFAULT_CHAINS 一致
+// The 5 default focus chains for auto token-picking (goat 2026-09-27) — matches the backend's autoPick.ts AUTO_DEFAULT_CHAINS
 const AUTO_DEFAULT = ['robinhood', 'solana', 'base', 'bsc', 'ethereum']
 
 const STYLES = [[3, '保守', '信号足够强时才交易'], [2, '均衡', '兼顾信号强度与交易频率'], [1, '激进', '信号较弱时也会交易，交易更频繁']] as const
-/** 新领养默认关注的币（服务器 fly.ts 的 DEFAULT_TOKENS 同一个） */
+/** Default watched tokens for new adoptions (same as the server fly.ts's DEFAULT_TOKENS) */
 export const DEFAULT_FLY_TOKENS: FlyParams['tokens'] = [{ chain: 'bsc', address: forQuote('bsc', NATIVE_EVM), symbol: 'BNB' }]
 
 export default function FlySheet({ open, onClose, fly, onSaved, plans, remaining, grant, card, cards }: { open: boolean; onClose: () => void; fly?: Fly | null; onSaved: (f: Fly) => void; plans?: Record<FlyPlan, FlyPlanDef>; remaining?: number; grant?: { plan: FlyPlan; months: number; note: string | null } | null; card?: { tokenId: number; free: boolean } | null; cards?: ZalienCard[] }) {
@@ -28,17 +28,17 @@ export default function FlySheet({ open, onClose, fly, onSaved, plans, remaining
   const [plan, setPlan] = useState<FlyPlan>('basic')
   const [topup, setTopup] = useState(false)
   const [name, setName] = useState('')
-  // 名字规则（2026-09-28 goat 定）：只在新起或改名时检查，原来的名字不受影响；留空用默认名
+  // Name rules (set by goat 2026-09-28): only checked on new names or renames — existing names are unaffected; blank uses the default name
   const nameBad = name.trim() && (!fly || name.trim() !== fly.name) ? nameError(name.trim()) : null
-  // 默认关注 BNB Chain 的 BNB（2026-10-04 goat：现货全自动只做 BNB Chain）。按 WBNB 记、显示叫 BNB，和行情自选一样
+  // Defaults to watching BNB on BNB Chain (2026-10-04 goat: fully-auto spot only does BNB Chain). Stored as WBNB, displayed as BNB — same as the market watchlist
   const [tokens, setTokens] = useState<FlyParams['tokens']>(DEFAULT_FLY_TOKENS)
   const [advanced, setAdvanced] = useState(false)
-  // 选币方式：自己选 / 自动找币（默认只看热门、5 条重点链；一只小精灵最多 5 条链）
+  // Token-picking mode: manual / auto (auto defaults to hot tokens on the 5 focus chains; one sprite watches at most 5 chains)
   const [auto, setAuto] = useState<FlyAutoPick | null>(null)
   const [threshold, setThreshold] = useState(2)
   const [learning, setLearning] = useState(true)
   const [senses, setSenses] = useState<('funding' | 'oi')[]>([])
-  const [calib, setCalib] = useState(false)  // 解码零点校准：decoderBaseline 100 / 0
+  const [calib, setCalib] = useState(false)  // Decode zero-point calibration: decoderBaseline 100 / 0
   const [cadence, setCadence] = useState(5)
   const [budget, setBudget] = useState('100')
   const [picking, setPicking] = useState(false)
@@ -47,11 +47,11 @@ export default function FlySheet({ open, onClose, fly, onSaved, plans, remaining
     if (!open) return
     setName(fly?.name || ''); setAuto(fly?.params.autoPick ?? null); setTokens(fly?.params.tokens || DEFAULT_FLY_TOKENS); setThreshold(fly?.params.thresholdHz || 2)
     setLearning(fly?.params.learning ?? true); setSenses(fly?.params.senses || []); setCalib(!!fly?.params.decoderBaseline); setCadence(fly?.params.cadenceMin || 5); setBudget(String(fly?.params.budget || 100)); setPlan(fly?.plan || 'basic')
-  // 只在打开时（或换了一只小精灵）读一次：小精灵页每次收到新数据都会换一个 fly 对象，原来跟着 fly 变就会把正在改、还没保存的内容冲掉（2026-10-05 goat「为什么不能保存」）
+  // Read once on open (or when switching sprites): the sprite page swaps in a new fly object on every data update — following fly changes used to wipe unsaved edits in progress (2026-10-05 goat: "why can't it save")
   }, [open, fly?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 领养新果蝇且有赠送名额时免费。后端 (fly.ts) 免费分支会强制用 grant 里的套餐，
-  // 前端必须跟着锁定，否则用户选了进阶版、实际拿到的却是基础版。
-  // 用 Zalien 领养：免费领养期（每张卡仅一次）按基础版；否则走赠送名单或付费
+  // Adopting a new fly is free with a gifting slot available. The backend (fly.ts) free branch forces the grant's plan,
+  // so the frontend must lock along — otherwise the user picks Pro but actually gets Basic.
+  // Adopt with Zalien: the free adoption window (once per card) grants Basic; otherwise it's the gifting list or paid
   const cardFree = !fly && !!card?.free
   const cardImg = card ? cards?.find((c) => c.tokenId === card.tokenId)?.image : undefined
   const free = !fly && (cardFree || (!card && !!grant))
@@ -61,10 +61,10 @@ export default function FlySheet({ open, onClose, fly, onSaved, plans, remaining
   const enough = free || (!!wallet && wallet.balance >= price)
   const addToken = (tok: PickedToken) => {
     const chain = chainById(tok.chainId)?.dexKey || 'solana'
-    // 果蝇存的地址只用来查行情，所以原生币要存包装版，否则 dexscreener 查不到
+    // The fly's stored address is only used for quote lookups, so native coins must be stored wrapped — otherwise DexScreener can't find them
     const address = forQuote(chain, tok.address)
     if (tokens.some((x) => x.address === address)) return
-    // 同名币后端会去重（果蝇按符号区分币），这里先拦下来说清楚
+    // Same-name tokens are deduped by the backend (flies tell tokens apart by symbol) — intercept here first and say so clearly
     if (tokens.some((x) => x.symbol.toUpperCase() === tok.symbol.toUpperCase())) return toast.error(t('已添加同名币种 {symbol}', { symbol: tok.symbol }))
     if (tokens.length >= MAX_TOKENS) return toast.error(t('最多可关注 {n} 个币种', { n: MAX_TOKENS }))
     setTokens([...tokens, { chain, address, symbol: tok.symbol }])
@@ -80,7 +80,7 @@ export default function FlySheet({ open, onClose, fly, onSaved, plans, remaining
       onSaved(f)
     } catch (e) { const msg = errorText(e, t('失败')); if (msg.includes('余额不足')) setTopup(true); else toast.error(msg) } finally { setBusy(false) }
   }
-  // 仅调整参数分组和控件呈现，保留套餐、提交参数和模式说明。
+  // Only the parameter grouping and control presentation are adjusted; plans, submit params, and mode descriptions stay.
   return (
     <Sheet open={open} onClose={onClose} title={fly ? t('调整设置') : t('领养小精灵')}>
       <div className="space-y-5">
@@ -102,7 +102,7 @@ export default function FlySheet({ open, onClose, fly, onSaved, plans, remaining
             {tokens.length < MAX_TOKENS && <button onClick={() => setPicking(true)} className="min-h-11 rounded-lg border border-dashed border-line px-3 py-1 text-sm text-muted">+ {t('加一个')}</button>}
           </div>
         </section>}
-        {/* 领养时只问名字和币（2026-10-05 goat：「文字一定要简单」）；选币方式、交易风格、观察频率这些专业设置收进「高级设置」，默认值不变 */}
+        {/* Adoption only asks for name and tokens (2026-10-05 goat: "keep the wording dead simple"); pro settings like picking mode, trading style, and observation frequency go under "Advanced settings" with defaults unchanged */}
         {!fly && <button type="button" onClick={() => setAdvanced((v) => !v)} className="text-sm text-muted" aria-expanded={advanced}>{advanced ? t('收起高级设置') : t('高级设置')}</button>}
         {(fly || advanced) && <div className="space-y-5">
         <section>
@@ -127,8 +127,8 @@ export default function FlySheet({ open, onClose, fly, onSaved, plans, remaining
           <span className="text-sm"><span className="font-semibold">{t('持续学习')}</span><span className="block text-xs text-muted">{t('小精灵会根据交易盈亏调整自身判断。')}</span></span>
           <input type="checkbox" checked={learning} onChange={(e) => setLearning(e.target.checked)} className="h-5 w-5 accent-accent" />
         </label>
-        {/* 实验感官：把永续市场结构画进果蝇看的那张图。默认全关 = 对照组。
-            每个开关只在图上多一条带，不动解码、不动可塑性，小精灵自己决定用不用。 */}
+        {/* Experimental senses: draw perp market structure into the chart the fly sees. All off by default = the control group.
+            Each toggle only adds one band to the chart — decoding and plasticity untouched; the sprite decides whether to use them. */}
         <div className="rounded-xl border border-line/60 bg-card2 p-3">
           <div className="text-sm font-semibold">{t('参考合约市场数据')}<span className="ml-2 text-[11px] font-normal text-muted">{t('仅对有永续合约的币种生效')}</span></div>
           <div className="mt-2 space-y-2">
@@ -141,7 +141,7 @@ export default function FlySheet({ open, onClose, fly, onSaved, plans, remaining
           </div>
           <p className="mt-2 text-[11px] text-muted">{fly ? t('修改后，交易记录将重新开始。') : t('默认关闭。')}</p>
         </div>
-        {/* 解码零点校准：右半脑静息比左高 ~7 Hz，不校准 90% 输出是 BUY。只减去它自己放电历史的中位数，不看盈亏、映射不变（docs/FLY_DECODER.md） */}
+        {/* Decode zero-point calibration: the right hemisphere idles ~7 Hz higher than the left — uncalibrated, 90% of outputs are BUY. Only subtracts the median of its own firing history; PnL ignored, mapping unchanged (docs/FLY_DECODER.md) */}
         <div className="rounded-xl border border-line/60 bg-card2 p-3">
           <label className="flex items-start justify-between gap-3">
             <span className="text-xs"><span className="text-sm font-semibold">{t('方向校准')}</span><span className="block text-muted">{t('避免小精灵长期偏向只买或只卖。')}</span></span>

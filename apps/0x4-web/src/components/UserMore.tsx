@@ -1,4 +1,4 @@
-// 别人的主页 / 私信页上的「…」：举报、拉黑 / 取消拉黑（2026-10-02 goat，上架要求）。自己的主页、没登录时不显示。
+// The "…" on others' profile / DM pages: report, block / unblock (2026-10-02 goat, store requirement). Hidden on my own profile and when logged out.
 import { useState } from 'react'
 import { Ban, Flag, MoreHorizontal, UserCheck } from 'lucide-react'
 import MessageMenu, { type MenuAnchor, type MenuItem } from '@/components/MessageMenu'
@@ -8,7 +8,7 @@ import { useSocial } from '@/store/social'
 import { t } from '@/lib/i18n'
 import { errorText } from '@/lib/errors'
 
-/** 「举报」「拉黑 / 取消拉黑」两项菜单（私信页把它们并进自己的菜单里） */
+/** The "report" and "block / unblock" menu items (DM pages merge them into their own menu) */
 export function useUserSafetyItems(address: string, name: string | undefined, close: () => void, reportKind: ReportKind = 'user'): MenuItem[] {
   const blocked = useBlocks((s) => s.list.some((b) => b.address === address))
   const status = useSocial((s) => s.status)

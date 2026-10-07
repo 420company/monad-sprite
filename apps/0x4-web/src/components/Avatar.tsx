@@ -1,11 +1,11 @@
-// 用户头像：有图用图，没图用地址生成的对称像素图（每个地址独一无二，本地生成不依赖网络）
+// User avatar: photo when available, otherwise a symmetric pixel identicon generated from the address (unique per address, generated locally, no network)
 //
-// 验证过持有的 NFT 头像画成圆角六边形（早年 Twitter 给 NFT 头像用的那种），普通头像是圆的。
-// 判断依据优先用调用方传进来的 chainId；没传的（动态、聊天、排行榜那些列表的接口都不带这个字段）
-// 由组件自己攒一批问服务端，做法与 XBadge 一样，结果缓存在内存里，没绑的也缓存成 null。
+// Verified-held NFT avatars render as rounded hexagons (the shape Twitter once used for NFT avatars); regular avatars are circles.
+// Prefer the caller-passed chainId for the check; when absent (feed, chat, leaderboard list APIs don't carry the field)
+// the component batches its own server query, same as XBadge; results cached in memory, unbound ones cached as null.
 //
-// 工作人员（客服 / 管理员）的头像外圈多一道旋转的渐变发光边框（StaffGlow），圆头像是圆环、NFT 六边形是六边形环。
-// 是不是工作人员只问服务端（lib/staffBadges），防止普通用户换同样的头像和昵称冒充。
+// Staff (support / admins) get an extra rotating gradient glow border (StaffGlow): a ring for round avatars, a hexagon ring for NFT hexagons.
+// Staff status comes from the server only (lib/staffBadges) — stops regular users impersonating with the same avatar and nickname.
 import { useEffect, useState, type ReactNode } from 'react'
 import { create } from 'zustand'
 import { chainById } from '@/lib/chains'
@@ -19,20 +19,20 @@ function hue(addr: string): number {
   return h
 }
 
-// 六个顶点（按边长百分比）：尖角朝上下、左右是竖边，高度与圆头像一致，宽度是高的 86.6%（正六边形）。
-// 横向也撑满的话六边形会变矮胖，不是 Twitter 那个形状。
+// Six vertices (as % of side length): points up/down, vertical edges left/right; same height as round avatars, width 86.6% of height (regular hexagon).
+// Stretching horizontally too would make the hexagon squat — not the Twitter shape.
 const W = .866, L = (1 - W) / 2, R = 1 - L
 const HEX_POINTS: [number, number][] = [[.5, 0], [R, .25], [R, .75], [.5, 1], [L, .75], [L, .25]]
-const ROUND = .13 // 顶点圆角占边长的比例：再大就快成圆的了，再小又是硬尖角
+const ROUND = .13 // Corner radius as a fraction of side length: any bigger is nearly round, any smaller is a hard point
 
 /**
- * 按像素尺寸生成圆角六边形路径：顶点沿两条边各退一段，再用二次贝塞尔绕过去。
- * 尖角直接切出来又硬又有锯齿，小头像上尤其明显。
- * 用 CSS clip-path: path() 而不是 SVG <image>，是因为 <img> 的 onError 才靠得住——
- * NFT 图挂掉时要能落回像素头像，不能留个空壳六边形。
+ * Rounded-hexagon path generated at pixel size: each vertex backs off along both edges, then rounds over
+ * with a quadratic bezier. Sharp-cut corners look hard and jaggy, especially on small avatars.
+ * CSS clip-path: path() instead of SVG <image> because <img>'s onError is the reliable one —
+ * a dead NFT image must fall back to the pixel avatar, not leave an empty hexagon shell.
  */
 const cache = new Map<string, string>()
-/** off：整体往右下平移多少像素（画发光环时内圈要套在外圈正中） */
+/** off: how many px the whole thing shifts down-right (the glow ring's inner edge must center on the outer when drawn) */
 function hexPath(size: number, off = 0): string {
   const key = `${size}@${off}`
   const hit = cache.get(key)
@@ -57,13 +57,14 @@ function hexPath(size: number, off = 0): string {
   return d
 }
 
-/** 圆（圆心在 c）的路径，两段半圆弧 */
+/** Path of a circle (center c), two semicircular arcs */
 const circlePath = (c: number, r: number) => `M${c - r} ${c} A${r} ${r} 0 1 0 ${c + r} ${c} A${r} ${r} 0 1 0 ${c - r} ${c} Z`
 
 /**
- * 发光环的几何：外框边长 box、相对头像往外扩 off、环的 evenodd 路径 d。
- * 环的内沿压进头像边缘半像素（免得中间漏一道缝），外沿在头像外 thick - 0.5 像素。
- * 六边形是正六边形，绕中心等比放大时每条边外移的距离一样，所以按内切圆半径（高的 0.433）换算高度。
+ * Glow-ring geometry: outer frame side length box, expansion off from the avatar, ring's evenodd path d.
+ * The ring's inner edge sinks half a pixel into the avatar edge (no hairline gap), the outer edge sits
+ * thick - 0.5 px outside the avatar. A hexagon is regular, so scaling about the center moves every edge
+ * outward equally — height is converted via the inradius (0.433 × height).
  */
 function ringGeometry(shape: 'circle' | 'hex', size: number, thick: number) {
   const inE = -0.5, outE = thick - 0.5
@@ -78,7 +79,7 @@ function ringGeometry(shape: 'circle' | 'hex', size: number, thick: number) {
   return { box, off: r2((box - size) / 2), d: `${hexPath(box)} ${hexPath(inner, r2((box - inner) / 2))}` }
 }
 
-/** 环的粗细：20~32px 的小头像 1.5~2px 只勾个边，大头像逐渐加粗 */
+/** Ring thickness: 1.5–2px just outlines 20–32px avatars, thickening on larger ones */
 function ringThickness(size: number) {
   if (size <= 24) return 1.5
   if (size <= 40) return 2
@@ -87,14 +88,15 @@ function ringThickness(size: number) {
 }
 
 /**
- * 工作人员发光边框：静态柔光层（模糊后的同形状渐变环，只画一次）+ 旋转描边层（静态裁剪里转一个渐变方块）。
- * 占位尺寸和头像一样，环画在头像外侧，不挤动列表布局。
+ * Staff glow border: a static soft-glow layer (blurred same-shape gradient ring, painted once) + a rotating
+ * stroke layer (a gradient square rotating inside a static clip). Same footprint as the avatar; the ring sits
+ * outside the avatar without disturbing list layout.
  */
 function StaffGlow({ role, shape, size, children }: { role: StaffBadge; shape: 'circle' | 'hex'; size: number; children: ReactNode }) {
   const thick = ringThickness(size)
   const { box, off, d } = ringGeometry(shape, size, thick)
   const clip = `path(evenodd, '${d}')`
-  // 小头像的柔光收着点，只是一圈微光；大头像（个人主页）明显一些
+  // Subtle glow on small avatars — just a faint ring; more pronounced on large ones (profile pages)
   const blur = size <= 32 ? 2 : Math.min(7, Math.round(size * 0.07))
   const pos = { left: -off, top: -off, width: box, height: box }
   return (
@@ -107,7 +109,7 @@ function StaffGlow({ role, shape, size, children }: { role: StaffBadge; shape: '
 }
 
 interface NftAvatarState {
-  /** 地址 → 头像所在链；null = 头像不是验证过的 NFT（已问过） */
+  /** Address → chain of the avatar; null = avatar isn't a verified NFT (already asked) */
   chains: Record<string, number | null>
   ensure: (address: string) => void
   set: (address: string, chainId: number | null) => void
@@ -133,21 +135,21 @@ export const useNftAvatars = create<NftAvatarState>()((set, get) => ({
         for (const a of batch) next[a] = r[a]?.chainId ?? null
         set({ chains: { ...get().chains, ...next } })
       } catch {
-        // 没问到就不写缓存，下次进页面再问
+        // Don't cache a miss; ask again next page visit
       }
     }, 120)
   },
 }))
 
 export default function Avatar({ address, src: rawSrc, size = 36, chainId }: { address: string; src?: string | null; name?: string | null; size?: number; chainId?: number | null }) {
-  // 群头像是我们服务器上传的图片，存的是相对地址 /files/…（2026-10-07 群主能自己换头像）：补上接口域名，不然网页版、App 里都显示不出来；
-  // 这种不是 NFT，也不去查 NFT
+  // Group avatars are images uploaded to our server, stored as relative /files/… paths (group owners can change them since 2026-10-07): prepend the API host or they won't render on web or in the app;
+  // these aren't NFTs — skip the NFT lookup
   const uploaded = !!rawSrc && rawSrc.startsWith('/files/')
   const src = uploaded ? SOCIAL_API + rawSrc : rawSrc
   const [err, setErr] = useState(false)
   const ensure = useNftAvatars((s) => s.ensure)
   const known = useNftAvatars((s) => s.chains[address])
-  // 有头像图又没人告诉我它是不是 NFT，才值得去问；没设头像的用户不占请求
+  // Only ask when there's an avatar image and nobody told us whether it's an NFT; users without avatars cost no requests
   const needLookup = !!src && !err && chainId == null && !uploaded
   useEffect(() => { if (needLookup) ensure(address) }, [needLookup, address, ensure])
 
@@ -159,11 +161,11 @@ export default function Avatar({ address, src: rawSrc, size = 36, chainId }: { a
   if (!staffRole) return face
   return <StaffGlow role={staffRole} shape={src && !err && nftChain ? 'hex' : 'circle'} size={size}>{face}</StaffGlow>
 
-  // 头像本体（原来的写法原样保留）；工作人员再在外面套发光环
+  // The avatar itself (original markup kept as-is); staff get the glow ring wrapped outside
   function renderFace() {
-    // NFT 头像：图片 + 右下角所在链的小图标（自动识别）
+    // NFT avatar: image + auto-detected chain badge at bottom-right
     if (src && !err) {
-      // 链徽标在小头像上要占掉三分之一还糊住一个角，动态、聊天那些列表里满屏都是图标；只在大头像上给
+      // The chain badge would eat a third of a small avatar and blur a corner — and feed/chat lists would be full of badges; large avatars only
       const chain = nftChain && size >= 44 ? chainById(nftChain) : undefined
       const badge = Math.round(size * 0.3)
       const path = hexPath(size)
@@ -177,19 +179,19 @@ export default function Avatar({ address, src: rawSrc, size = 36, chainId }: { a
                   width={size} height={size} className="block object-cover"
                   style={{ width: size, height: size, clipPath: `path('${path}')` }}
                 />
-                {/* 极细描边只为在深色背景上勾出轮廓；粗色边框每个头像都戴一圈，列表里会很吵 */}
+                {/* Hairline stroke only outlines against dark backgrounds; a thick colored border on every avatar would be noisy in lists */}
                 <svg width={size} height={size} className="pointer-events-none absolute inset-0" style={{ overflow: 'visible' }} aria-hidden>
                   <path d={path} fill="none" stroke="rgb(255 255 255 / .22)" strokeWidth="1.5" />
                 </svg>
               </>
             )
             : <img src={src} alt="" width={size} height={size} onError={() => setErr(true)} className="rounded-full object-cover" style={{ width: size, height: size }} />}
-          {/* 链徽标往右下挪出去（2026-09-28 goat：原来圆心在六边形里面，挡住太多 NFT）。现在圆心落在右下斜边外侧，只压住边缘约 6% */}
+          {/* Chain badge shifted down-right (2026-09-28 goat: its center used to sit inside the hexagon, covering too much NFT). Now the center lands outside the bottom-right edge, overlapping only ~6% of the rim */}
           {chain && <img src={chain.logo} alt={chain.name} title={chain.name} className="absolute rounded-full border-2 border-bg bg-bg" style={{ width: badge, height: badge, right: '-1%', bottom: '-5%' }} />}
         </span>
       )
     }
-    // 5×5 左右对称像素：取地址哈希的 15 位决定点亮格子，两种色调交替
+    // 5×5 mirrored pixels: 15 bits of the address hash pick the lit cells, two alternating tones
     const h = hue(address)
     const seed = hash(address)
     const cells: { x: number; y: number; on: boolean; alt: boolean }[] = []
@@ -207,7 +209,7 @@ export default function Avatar({ address, src: rawSrc, size = 36, chainId }: { a
   }
 }
 
-// 32 位 FNV 风格哈希，保证同一地址永远得到同一张图
+// 32-bit FNV-style hash, so one address always yields the same image
 function hash(s: string): number {
   let x = 2166136261
   for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0 }

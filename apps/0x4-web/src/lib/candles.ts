@@ -1,9 +1,9 @@
-// DEX 现货历史 K 线。只按「链 + 交易对地址」取，不按 symbol 猜。
-// 契约见 docs/CANDLE_DATA_INTERFACE.md：没成交的时段留缺口，不插值；不支持的链返回 supported:false；网络/限流失败抛错。
-// ★走哪几条路、什么顺序由后台「数据源」页决定（src/lib/candleConfig.ts，2026-09-29 goat：换 K 线商家不用发 App）：
-//   首屏快速图 loadFastCandles、完整历史 loadDexCandles 各按设置的顺序试，谁先拿到用谁；
-//   路：server = 我们的服务器通道（数据商在服务器上换）；dexpaprika = 直连免密钥快线（只有 1 小时）；geckoterminal = 直连完整历史。
-//   默认（后台没改）= 首屏先服务器再免密钥直连，完整历史直连 GeckoTerminal，和以前一样。
+// DEX spot historical candles. Fetched strictly by "chain + pair address" — never guessed from symbol.
+// Contract: docs/CANDLE_DATA_INTERFACE.md. Periods with no trades stay as gaps (no interpolation); unsupported chains return supported:false; network/rate-limit failures throw.
+// ★ Which routes to use and in what order is decided by the backend "Data sources" page (src/lib/candleConfig.ts; 2026-09-29 goat: switching candle vendors must not require an app release):
+//   loadFastCandles (first-screen fast chart) and loadDexCandles (full history) each try routes in the configured order — first one to deliver wins;
+//   routes: server = our server channel (vendors are swapped server-side); dexpaprika = direct keyless fast lane (1h only); geckoterminal = direct full history.
+//   default (backend untouched) = first screen tries server then keyless direct; full history goes direct to GeckoTerminal — same as before.
 import type { Candle } from './aster'
 import { GECKO_NETWORK } from './chains'
 import { API_BASE } from './env'
@@ -26,17 +26,17 @@ export interface DexCandles {
   supported: boolean
 }
 
-/** DexScreener 链标识 → GeckoTerminal 网络 id：统一用 chains.ts 的 GECKO_NETWORK（2026-09-25 起，发现页榜单也用它）；不在表里的链就是不支持 */
+/** DexScreener chain key → GeckoTerminal network id: always via chains.ts GECKO_NETWORK (since 2026-09-25 the Discover lists use it too); chains not in the table are unsupported */
 const TIMEFRAME: Record<DexInterval, [string, number]> = { '15m': ['minute', 15], '1h': ['hour', 1], '4h': ['hour', 4], '1d': ['day', 1] }
 const CACHE_MS = 60_000
 const cache = new Map<string, { at: number; value: DexCandles }>()
 
-// ---- 秒开（2026-09-29 goat：点开币种 K 线总是不能秒出）----
-// 实测 GeckoTerminal 同一个交易对第一次请求约 2.5 秒（它那边现算），紧接着再请求 0.1~0.2 秒。三招：
-// 1. 上次看过的 K 线存在本机（localStorage，最多 STORE_MAX 份），再打开同一个币先把旧图画出来，后台换成最新的
-// 2. 同一个交易对同一个周期正在请求时不重复发，页面打开时直接接上手指按下时已经发出的那一次
-// 3. 预取（列表上手指按下、发现页停留）有额度：GeckoTerminal 免费接口按 IP 每分钟 30 次，
-//    预取每分钟最多 PREFETCH_PER_MIN 次，碰到过 429 的一分钟内不预取，把额度留给用户真正点开的请求
+// ---- Instant open (2026-09-29 goat: opening a token's candles never rendered instantly) ----
+// Measured: GeckoTerminal takes ~2.5 s on the first request for a pair (computed on their side), then 0.1–0.2 s right after. Three tricks:
+// 1. Cache last-viewed candles on device (localStorage, up to STORE_MAX entries); reopening the same token draws the old chart first, then swaps in fresh data in the background
+// 2. Never duplicate an in-flight request for the same pair+interval; when the page opens it attaches to the request already fired on press-down
+// 3. Prefetch (press-down on lists, dwell on Discover) has a quota: GeckoTerminal's free API allows 30 req/min per IP,
+//    prefetch is capped at PREFETCH_PER_MIN per minute; for one minute after any 429, prefetch pauses so the quota stays for requests the user actually opens
 const STORE_KEY = '0x4.candles.v1'
 const STORE_MAX = 24
 const PREFETCH_PER_MIN = 10
@@ -58,21 +58,21 @@ function writeStore(key: string, entry: { at: number; value: DexCandles }) {
     all[key] = entry
     for (const k of Object.keys(all).sort((a, b) => all[b].at - all[a].at).slice(STORE_MAX)) delete all[k]
     localStorage.setItem(STORE_KEY, JSON.stringify(all))
-  } catch { /* 存不下 / 无痕模式：只是少了秒开，不影响正常加载 */ }
+  } catch { /* Storage full / incognito: only loses instant-open, normal loading is unaffected */ }
 }
 const validStored = (e: unknown): e is { at: number; value: DexCandles } => {
   const x = e as { at?: unknown; value?: { candles?: unknown; supported?: unknown } } | null
   return !!x && typeof x.at === 'number' && !!x.value && Array.isArray(x.value.candles) && typeof x.value.supported === 'boolean'
 }
 type CandleInput = { chain: string; address: string; pairAddress: string; interval: DexInterval; bars?: number }
-/** 任何一条路认得的链都算支持（完整历史不一定走 GeckoTerminal 了）；原型上的键不算 */
+/** A chain counts as supported if any route recognizes it (full history doesn't necessarily go through GeckoTerminal anymore); inherited prototype keys don't count */
 const knownChain = (chain: string) => Object.hasOwn(GECKO_NETWORK, chain) || Object.hasOwn(PAPRIKA_NETWORK, chain)
 function keyOf(input: CandleInput): string | null {
   if (!knownChain(input.chain) || !input.pairAddress) return null
   return `${input.chain}:${input.pairAddress}:${input.interval}:${input.bars ?? 300}:${input.address}`
 }
 
-/** 手上已有的 K 线（内存或本机存的，不管多旧），用来先把图画出来；没有返回 null */
+/** Candles already on hand (in memory or on device, however stale), used to draw the chart first; null when there's none */
 export function peekDexCandles(input: CandleInput): DexCandles | null {
   const key = keyOf(input)
   if (!key) return null
@@ -80,13 +80,13 @@ export function peekDexCandles(input: CandleInput): DexCandles | null {
   if (hit) return hit.value
   const stored = readStore()[key]
   if (!validStored(stored)) return null
-  cache.set(key, stored)   // 带着原来的时间放进内存：是不是新鲜照原来的时间算，下一次加载照样去拿最新的
+  cache.set(key, stored)   // Stored in memory with its original timestamp: freshness is judged by the original time, and the next load still fetches the latest
   return stored.value
 }
 
 /**
- * 预取：列表上手指按下、发现页停留时调用。已有新鲜的、正在拉、超出预取额度都直接跳过，失败不提示。
- * 只在完整历史的第一条路是直连时预取（直连的免费额度按 IP 算）；第一条是服务器通道时由 prefetchServerCandles 只读服务器缓存
+ * Prefetch: called on list press-down / Discover dwell. Skips silently when fresh data exists, a fetch is in flight, or the prefetch quota is exceeded; failures stay silent.
+ * Only prefetches when the first full-history route is a direct connection (direct free quotas are per-IP); when the first route is the server channel, prefetchServerCandles reads the server cache only.
  */
 export function prefetchDexCandles(input: CandleInput): void {
   if (candleConfig().full[0] !== 'geckoterminal') return
@@ -102,7 +102,7 @@ export function prefetchDexCandles(input: CandleInput): void {
   loadDexCandles(input).catch(() => {})
 }
 
-/** 测试用：清空内存缓存、在途请求和预取额度 */
+/** For tests: clear the memory cache, in-flight requests, and prefetch quota */
 export function resetCandleCache() {
   cache.clear(); inflight.clear(); prefetchTimes.length = 0; limitedUntil = 0
 }
@@ -115,7 +115,7 @@ interface GtResponse {
   errors?: { title?: string }[]
 }
 
-/** GeckoTerminal 最近被限流过（一分钟内不再直连它，完整历史改问我们的服务器） */
+/** GeckoTerminal was rate-limited recently (no direct calls for one minute; full history falls back to our server) */
 const geckoLimited = () => Date.now() < limitedUntil
 
 async function fetchSide(network: string, pool: string, interval: DexInterval, bars: number, side: 'base' | 'quote'): Promise<GtResponse> {
@@ -124,9 +124,9 @@ async function fetchSide(network: string, pool: string, interval: DexInterval, b
   let r: Response
   try { r = await fetch(url, { headers: { accept: 'application/json;version=20230302' } }) }
   catch {
-    // ★GeckoTerminal 免费接口按 IP 限流，回的 429 不带跨域头：浏览器里看不到 429，只有「Failed to fetch」。
-    // 以前这里原样抛出，不知道是限流，预取和轮播接着打它，币种页一直「K 线加载失败」（2026-09-29 goat 现货页 BTCB）。
-    // 连不上当限流处理：一分钟内不再直连，完整历史改问我们的服务器（fetchFull）
+    // ★ GeckoTerminal's free API is rate-limited per IP, and its 429s carry no CORS headers: the browser never sees a 429, only "Failed to fetch".
+    // It used to rethrow as-is; with no rate-limit signal, prefetch and carousels kept hammering it and token pages were stuck on "candles failed to load" (2026-09-29 goat, spot page BTCB).
+    // Treat connection failures as rate-limiting: no direct calls for one minute; full history goes to our server instead (fetchFull)
     limitedUntil = Date.now() + 60_000
     throw new Error(t('行情刷新太频繁，请稍后再试'))
   }
@@ -137,8 +137,8 @@ async function fetchSide(network: string, pool: string, interval: DexInterval, b
 }
 
 /**
- * 拉 K 线。signal 只用来让调用方知道自己已经不要结果了（页面自己判断），网络请求本身不跟着取消：
- * 同一个交易对的请求会被页面、预取共用，一方离开不能把另一方要的结果掐掉，拉到的结果照样进缓存
+ * Fetches candles. `signal` only lets the caller know it no longer wants the result (the page decides); the network request itself is never cancelled:
+ * requests for the same pair are shared between the page and prefetch — one side leaving must not kill the other's result, and fetched results still enter the cache
  */
 export async function loadDexCandles(input: CandleInput, signal?: AbortSignal): Promise<DexCandles> {
   void signal
@@ -156,12 +156,12 @@ export async function loadDexCandles(input: CandleInput, signal?: AbortSignal): 
   return job
 }
 
-/** 服务器通道当完整历史用时等久一点：服务器那边可能在轮备用数据商（最慢的一家最多等 10 秒） */
+/** Wait longer when the server channel serves full history: the server may be polling fallback vendors (slowest one waits up to 10 s) */
 const FULL_SERVER_TIMEOUT_MS = 12_000
 
 /**
- * 完整历史：按后台设置的顺序走（默认只有直连 GeckoTerminal），谁先拿到用谁。
- * 某条路说「这个交易对没有 / 对不上」先记着再试下一条；都没拿到时：有路说没有就回 supported:false，否则把最后一个错误抛出去（页面显示重试）
+ * Full history: follows the backend-configured order (default is direct GeckoTerminal only) — first to deliver wins.
+ * When a route says "no such pair / pair mismatch", note it and try the next; if all fail: return supported:false when some route said so, otherwise throw the last error (page shows retry)
  */
 async function fetchFull(input: CandleInput, key: string, base: Omit<DexCandles, 'candles' | 'asOf' | 'supported'>): Promise<DexCandles> {
   let lastErr: unknown = null
@@ -169,7 +169,7 @@ async function fetchFull(input: CandleInput, key: string, base: Omit<DexCandles,
   const routes = candleConfig().full
   for (const route of routes) {
     try {
-      // 限流过的一分钟里用户点开的照常直连试一次（预取才停），失败了由下面退到我们的服务器
+      // During the one-minute rate-limit window, user-initiated opens still try direct once (only prefetch pauses); on failure it falls back to our server below
       const got = route === 'geckoterminal' ? await fetchGecko(input, base)
         : route === 'server' ? (serverUsable(input) ? await askServer(input, false, FULL_SERVER_TIMEOUT_MS, true) : null)
           : await loadQuickCandles(input)
@@ -182,8 +182,8 @@ async function fetchFull(input: CandleInput, key: string, base: Omit<DexCandles,
     } catch (e) { lastErr = e }
   }
   if (unsupported) return unsupported
-  // 设置里的路都失败了（多半是直连 GeckoTerminal 被按 IP 限流）：再问一次我们自己的服务器通道（设置里已经有它的不重复问）。
-  // 只退到我们自己的服务器，不去直连设置里没勾的第三方。服务器没开通 / 被限速时拿不到，照旧报错让页面显示重试
+  // All configured routes failed (usually direct GeckoTerminal hit by per-IP rate limiting): ask our own server channel once more (skipped if it's already in the configured routes).
+  // Only falls back to our own server — never direct to third parties not enabled in settings. When the server channel isn't provisioned / is throttled, it still fails and the page shows retry.
   if (lastErr && !routes.includes('server')) {
     const got = await loadServerCandles(input, FULL_SERVER_TIMEOUT_MS).catch(() => null)
     if (got?.supported && got.candles.length) {
@@ -197,19 +197,19 @@ async function fetchFull(input: CandleInput, key: string, base: Omit<DexCandles,
   return { ...base, candles: [], asOf: Date.now(), supported: false }
 }
 
-/** 直连 GeckoTerminal 取完整历史；这条链它不认返回 null（换下一条路）；网络 / 限流失败抛错 */
+/** Full history via direct GeckoTerminal; returns null for chains it doesn't recognize (move to the next route); network / rate-limit failures throw */
 async function fetchGecko(input: CandleInput, base: Omit<DexCandles, 'candles' | 'asOf' | 'supported'>): Promise<DexCandles | null> {
   const { address, pairAddress, interval } = input
   const bars = input.bars ?? 300
   if (!Object.hasOwn(GECKO_NETWORK, input.chain)) return null
   const network = GECKO_NETWORK[input.chain]
   const src = { ...base, source: 'GeckoTerminal' }
-  // 先按池子的 base 取；如果这个币其实是池子的 quote（比如 USDC/XXX 的顺序反了），换 quote 再取一次
+  // Try the pool's base first; if this token is actually the pool's quote (e.g. USDC/XXX order flipped), retry with quote
   let res = await fetchSide(network, pairAddress, interval, bars, 'base')
   const meta = res.meta
   if (meta?.base?.address && !sameAddress(meta.base.address, address)) {
     if (meta.quote?.address && sameAddress(meta.quote.address, address)) res = await fetchSide(network, pairAddress, interval, bars, 'quote')
-    else return { ...src, candles: [], asOf: Date.now(), supported: false } // 交易对和代币对不上，宁可不画
+    else return { ...src, candles: [], asOf: Date.now(), supported: false } // If the pair and the token don't match, draw nothing rather than the wrong chart
   }
   if (res.errors?.length && !res.data?.attributes?.ohlcv_list?.length && res.errors[0]?.title === 'not found') return { ...src, candles: [], asOf: Date.now(), supported: false }
 
@@ -217,7 +217,7 @@ async function fetchGecko(input: CandleInput, base: Omit<DexCandles, 'candles' |
   const candles: Candle[] = []
   for (const row of list) {
     const [t, o, h, l, c, v] = row.map(Number)
-    // GeckoTerminal 给的是 Unix 秒、最新在前；这里只做校验和排序，不补缺口
+    // GeckoTerminal returns Unix seconds, newest first; here we only validate and sort — never fill gaps
     if (![t, o, h, l, c, v].every(Number.isFinite) || t <= 0 || l <= 0 || h < Math.max(o, c) || l > Math.min(o, c)) continue
     candles.push({ time: Math.floor(t), open: o, high: h, low: l, close: c, volume: Math.max(0, v) })
   }
@@ -225,11 +225,11 @@ async function fetchGecko(input: CandleInput, base: Omit<DexCandles, 'candles' |
   return { ...src, candles: dedup, asOf: Date.now(), supported: true }
 }
 
-// ---- 首屏快速 K 线：DexPaprika（2026-09-29）----
-// 实测同一个冷门 BSC 交易对：GeckoTerminal 3.9 秒，DexPaprika 0.5 秒；热门的 0.27~0.65 秒；同一小时收盘价两家相差约 0.1~0.2%（取样时刻不同）。
-// DexPaprika 不要密钥只给最近 24 小时、1 小时及以上周期（15 分钟要密钥，密钥不能放进 App），
-// 所以只在 1 小时周期上先把最近 24 根画出来，GeckoTerminal 的完整历史到了再整张换掉。拿不到、超时、格式不对都返回 null，不影响正常加载。
-// 链标识是我们 / DexScreener 的 key → DexPaprika 的网络 id（只列两边都有的）
+// ---- First-screen fast candles: DexPaprika (2026-09-29) ----
+// Measured on the same obscure BSC pair: GeckoTerminal 3.9 s vs DexPaprika 0.5 s; popular ones 0.27–0.65 s; same-hour closes differ ~0.1–0.2% between vendors (different sampling moments).
+// DexPaprika's keyless tier only gives the last 24h at 1h+ intervals (15m needs a key, and keys can't ship in the app),
+// so it only draws the latest 24 hourly candles, replaced wholesale once GeckoTerminal's full history arrives. Returns null on failure/timeout/bad format — never blocks normal loading.
+// Chain keys are ours / DexScreener's → DexPaprika network ids (only chains present on both sides are listed)
 const PAPRIKA_NETWORK: Record<string, string> = {
   solana: 'solana', ethereum: 'ethereum', base: 'base', arbitrum: 'arbitrum', bsc: 'bsc', polygon: 'polygon', optimism: 'optimism',
   avalanche: 'avalanche', linea: 'linea', zksync: 'zksync', scroll: 'scroll', blast: 'blast', mantle: 'mantle', sonic: 'sonic',
@@ -239,11 +239,11 @@ const PAPRIKA_NETWORK: Record<string, string> = {
 
 export async function loadQuickCandles(input: CandleInput): Promise<DexCandles | null> {
   const network = PAPRIKA_NETWORK[input.chain]
-  // 网页版不直连：这家数据商不给网页来源回跨域头，浏览器必拦，还会在控制台报错；网页版只走服务器 /api/candles（安全头也没放行它）
+  // Web never connects directly: this vendor sends no CORS headers for web origins, so browsers always block it (and log console errors); web only uses the server /api/candles (which doesn't allowlist it either)
   if (WEB_SURFACE || !network || !input.pairAddress || input.interval !== '1h') return null
   const start = Math.floor(Date.now() / 1000) - 23 * 3600
   try {
-    // 0x 地址转小写：数据商只认小写，带校验大小写的地址会回空数组（2026-09-29 实测，服务器通道也同样处理）
+    // Lowercase 0x addresses: the vendor only accepts lowercase — checksummed addresses return empty arrays (measured 2026-09-29; the server channel does the same)
     const pair = /^0x[0-9a-fA-F]{40}$/.test(input.pairAddress) ? input.pairAddress.toLowerCase() : input.pairAddress
     const r = await fetch(`https://api.dexpaprika.com/networks/${network}/pools/${encodeURIComponent(pair)}/ohlcv?start=${start}&interval=1h&limit=24`, { signal: AbortSignal.timeout(2500) })
     if (!r.ok) return null
@@ -262,14 +262,14 @@ export async function loadQuickCandles(input: CandleInput): Promise<DexCandles |
   } catch { return null }
 }
 
-// ---- 服务器 K 线通道：DexPaprika 带密钥（2026-09-29 goat 同意先用 DexPaprika）----
-// 服务器配了 DEXPAPRIKA_API_KEY 时，所有周期（15 分钟、1 小时、4 小时、日线）都先从服务器拿一份秒出，GeckoTerminal 的完整历史到了再整张换掉；
-// GeckoTerminal 慢或失败时就留着这一份。服务器没开通会回 enabled:false，记 5 分钟不再问，退回上面的免密钥 1 小时直连。
-// 带上 token：服务器按交易对的 base / quote 判断方向，对不上就不给，宁可不画。
+// ---- Server candle channel: DexPaprika with API key (2026-09-29 goat approved DexPaprika first) ----
+// When the server has DEXPAPRIKA_API_KEY, every interval (15m, 1h, 4h, 1d) first grabs an instant copy from the server, replaced wholesale once GeckoTerminal's full history arrives;
+// if GeckoTerminal is slow or fails, this copy stays. A non-provisioned server replies enabled:false — remembered for 5 minutes, falling back to the keyless 1h direct route above.
+// Include the token: the server judges direction by the pair's base / quote and withholds on mismatch — better to draw nothing.
 const SERVER_OFF_MS = 5 * 60_000
 let serverOffUntil = 0
-// 预取（列表按下、发现页停留）带 prefetch=1：服务器只给已经缓存的（别人刚看过的币），不向 DexPaprika 发请求、不花额度；
-// 拿到的在本机记 60 秒（和服务器缓存一样长），点开币种页直接用。预取每分钟最多 20 次，不挤占服务器按 IP 的额度（每分钟 60 次）
+// Prefetch (list press-down, Discover dwell) sends prefetch=1: the server only serves what's already cached (tokens others just viewed) — no DexPaprika requests, no quota spent;
+// fetched data is cached on device for 60 s (same as the server cache) and used directly when the token page opens. Prefetch is capped at 20/min so it never eats the server's per-IP quota (60/min).
 const SERVER_FAST_MS = 60_000
 const SERVER_PREFETCH_PER_MIN = 20
 const serverFast = new Map<string, { at: number; data: DexCandles }>()
@@ -281,34 +281,34 @@ async function askServer(input: CandleInput, prefetch: boolean, timeoutMs = 3000
   try {
     const q = new URLSearchParams({ chain: input.chain, pair: input.pairAddress, interval: input.interval, token: input.address })
     if (prefetch) q.set('prefetch', '1')
-    // 完整历史：服务器先问历史深的那家并缓存，所有用户共用（2026-09-30：浏览器直连会被按 IP 限流，日线只剩 7 天）
+    // Full history: the server asks the deeper-history vendor first and caches it for all users (2026-09-30: direct browser calls get per-IP rate-limited, leaving only 7 days of daily candles).
     if (full) q.set('full', '1')
     const r = await fetch(`${API_BASE}/api/candles?${q}`, { signal: AbortSignal.timeout(timeoutMs) })
     if (!r.ok) return null
     const d = await r.json() as { enabled?: boolean; source?: unknown; candles?: Candle[] }
     if (d.enabled === false) { serverOffUntil = Date.now() + SERVER_OFF_MS; return null }
-    // 服务器被限速（limited:true）或上游出错时 candles 是空的，这里返回 null，由调用方退回直连
+    // When the server is throttled (limited:true) or upstream errors, candles comes back empty — return null here and let the caller fall back to direct.
     const candles = (Array.isArray(d.candles) ? d.candles : [])
       .filter((c) => [c.time, c.open, c.high, c.low, c.close, c.volume].every(Number.isFinite) && c.time > 0 && c.low > 0 && c.high >= Math.max(c.open, c.close) && c.low <= Math.min(c.open, c.close))
       .sort((a, b) => a.time - b.time)
     if (!candles.length) return null
-    // source 是服务器用的数据商（内部标识，界面不显示）
+    // source is the vendor the server used (internal identifier, never shown in UI)
     const data: DexCandles = { chain: input.chain, address: input.address, pairAddress: input.pairAddress, interval: input.interval, candles, source: typeof d.source === 'string' ? d.source : 'server', asOf: Date.now(), quoteCurrency: 'USD', volumeUnit: 'USD', supported: true }
     if (!full) serverFast.set(serverKey(input), { at: Date.now(), data })
     return data
   } catch { return null }
 }
 
-/** 设置里有没有用到服务器通道 */
+/** Whether the settings use the server channel at all */
 const usesServer = () => { const c = candleConfig(); return c.fast.includes('server') || c.full.includes('server') }
-/** 服务器通道这次能不能问：服务器没说自己用不了（设置里 serverReady=false 或刚回过 enabled:false）、链认得、有交易对 */
+/** Whether the server channel can be asked this time: the server hasn't declared itself unavailable (serverReady=false in settings or a recent enabled:false), the chain is recognized, and there's a pair */
 const serverUsable = (input: CandleInput) => Date.now() >= serverOffUntil && candleConfig().serverReady !== false && knownChain(input.chain) && !!input.pairAddress
 const serverFresh = (input: CandleInput) => {
   const hit = serverFast.get(serverKey(input))
   return hit && Date.now() - hit.at < SERVER_FAST_MS ? hit.data : null
 }
 
-/** 预取服务器通道里已经缓存的 K 线（只读缓存，不花 DexPaprika 额度） */
+/** Prefetch candles already cached in the server channel (cache-read only, spends no DexPaprika quota) */
 export function prefetchServerCandles(input: CandleInput) {
   if (!usesServer() || !serverUsable(input) || serverFresh(input)) return
   const key = serverKey(input)
@@ -321,9 +321,9 @@ export function prefetchServerCandles(input: CandleInput) {
   serverPending.set(key, job)
 }
 
-/** 币种页打开：先用预取到的，预取正在路上就等它（服务器只查缓存，很快），都没有再正式问服务器 */
+/** Token page opens: use prefetched data first; wait for it if prefetch is in flight (server only checks cache, so it's fast); otherwise ask the server properly */
 export async function loadServerCandles(input: CandleInput, timeoutMs?: number): Promise<DexCandles | null> {
-  // 设置正在从服务器拉：等它（本机存的可能是服务器开通前的旧设置，见 freshCandleConfig）
+  // Settings are being pulled from the server: wait for them (the on-device copy may predate the server channel's provisioning, see freshCandleConfig)
   await freshCandleConfig()
   if (!serverUsable(input)) return null
   const fresh = serverFresh(input)
@@ -332,15 +332,15 @@ export async function loadServerCandles(input: CandleInput, timeoutMs?: number):
   const pending = serverPending.get(key)
   if (pending && await pending) return serverFresh(input)
   if (Date.now() < serverOffUntil) return null
-  // 首屏快速图和完整历史的兜底可能同时来问同一个交易对：共用一次请求
+  // The first-screen fast chart and the full-history fallback may ask for the same pair simultaneously: share one request
   const job = askServer(input, false, timeoutMs).finally(() => { if (serverPending.get(key) === job) serverPending.delete(key) })
   serverPending.set(key, job)
   return job
 }
 
 /**
- * 首屏快速 K 线：按后台设置的顺序走（默认先问服务器通道——全部周期，没开通或没拿到再用免密钥直连——只有 1 小时周期），
- * 谁先拿到用谁；都没拿到返回 null（等完整历史）
+ * First-screen fast candles: follow the backend-configured order (default: server channel first — all intervals; keyless direct — 1h only — when unprovisioned or empty),
+ * first to deliver wins; null when nothing arrives (wait for full history).
  */
 export async function loadFastCandles(input: CandleInput): Promise<DexCandles | null> {
   for (const route of candleConfig().fast) {
@@ -353,5 +353,5 @@ export async function loadFastCandles(input: CandleInput): Promise<DexCandles | 
   return null
 }
 
-/** 测试用：清掉「服务器没开通」的记忆、预取缓存和预取额度 */
+/** For tests: clear the "server not provisioned" memory, prefetch cache, and prefetch quota */
 export function resetServerCandleChannel() { serverOffUntil = 0; serverFast.clear(); serverPending.clear(); serverPrefetchTimes = [] }

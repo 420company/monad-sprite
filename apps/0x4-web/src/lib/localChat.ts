@@ -1,18 +1,18 @@
-// 本机聊天记录（「只存在这台手机」模式用）：群聊和私信都存在 IndexedDB，每条用本机密钥 AES-GCM 加密。
-// 本机密钥：App 里放系统钥匙串（iOS 钥匙串 / Android Keystore，条目 chat-key），网页版是存在 IndexedDB 里的不可导出 CryptoKey。
-// 换手机、删 App、重置钱包后密钥没了，记录也就读不出来了（这是用户选这个模式时确认过的）。
+// On-device chat history (for the "only on this phone" mode): groups and DMs both live in IndexedDB, each message AES-GCM-encrypted with the device key.
+// Device key: kept in the OS keychain in the app (iOS Keychain / Android Keystore, entry chat-key); on web it's a non-exportable CryptoKey stored in IndexedDB.
+// Switch phones, delete the app, or reset the wallet and the key is gone — the history becomes unreadable (the user acknowledged this when choosing the mode).
 import { secureStore, persistentSession } from './secureStore'
 import { idbAvailable, req, tx } from './idb'
 
-/** 存储后端：库里只有密文。测试用内存实现，正式用 IndexedDB */
+/** Storage backend: only ciphertext in the store. In-memory for tests, IndexedDB in production */
 export interface EncRec { k: string; conv: string; ts: number; iv: Uint8Array; ct: Uint8Array }
 export interface ChatBackend {
   put(recs: EncRec[]): Promise<void>
   byConv(conv: string): Promise<EncRec[]>
-  /** 以 prefix 开头的全部会话 */
+  /** All conversations starting with prefix */
   convs(prefix: string): Promise<string[]>
   remove(keys: string[]): Promise<void>
-  /** 删掉以 prefix 开头的所有会话 */
+  /** Delete all conversations starting with prefix */
   removePrefix(prefix: string): Promise<void>
   getMeta(k: string): Promise<EncRec | undefined>
   putMeta(r: EncRec): Promise<void>
@@ -23,7 +23,7 @@ const bound = (prefix: string) => IDBKeyRange.bound(prefix, prefix + '￿')
 export const idbBackend: ChatBackend = {
   put: (recs) => tx('msgs', 'readwrite', (t) => { const s = t.objectStore('msgs'); for (const r of recs) s.put(r) }),
   byConv: (conv) => tx('msgs', 'readonly', (t) => req(t.objectStore('msgs').index('conv').getAll(conv) as IDBRequest<EncRec[]>)),
-  // 只走索引键、每个会话一次（nextunique），不把密文读出来
+  // Walk index keys only, once per conversation (nextunique) — ciphertext is never read out
   convs: (prefix) => tx('msgs', 'readonly', (t) => new Promise<string[]>((resolve, reject) => {
     const out: string[] = []
     const c = t.objectStore('msgs').index('conv').openKeyCursor(bound(prefix), 'nextunique')
@@ -50,13 +50,13 @@ export function memoryBackend(): ChatBackend & { raw: Map<string, EncRec>; meta:
   }
 }
 
-// ---------- 本机密钥 ----------
+// ---------- Device key ----------
 
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u))
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
 const importRaw = (raw: Uint8Array) => crypto.subtle.importKey('raw', raw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt'])
 
-/** 网页版：不可导出的密钥存在 IndexedDB（结构化克隆能存 CryptoKey，JS 拿不到原始字节） */
+/** Web: the non-exportable key lives in IndexedDB (structured clone can store a CryptoKey; JS never sees the raw bytes) */
 async function idbKey(): Promise<CryptoKey> {
   const saved = await tx('keys', 'readonly', (t) => req(t.objectStore('keys').get('chat') as IDBRequest<CryptoKey | undefined>))
   if (saved) return saved
@@ -65,7 +65,7 @@ async function idbKey(): Promise<CryptoKey> {
   return k
 }
 
-/** App：原始密钥放钥匙串，读出来导入成不可导出的 CryptoKey。钥匙串写不进去（老版本原生层不认这个条目）就退回网页的办法 */
+/** App: the raw key goes in the keychain, read out and imported as a non-exportable CryptoKey. When the keychain is unwritable (old native builds don't recognize this entry), fall back to the web approach */
 async function nativeKey(): Promise<CryptoKey> {
   const saved = await secureStore.get('chat-key')
   if (saved) return importRaw(unb64(saved))
@@ -80,16 +80,16 @@ export function chatKey(): Promise<CryptoKey> {
   keyPromise ||= (persistentSession ? nativeKey() : idbKey()).catch((e) => { keyPromise = null; throw e })
   return keyPromise
 }
-/** 重置钱包后密钥作废 */
+/** The key is voided after a wallet reset */
 export const forgetChatKey = () => { keyPromise = null }
 
-// ---------- 加解密的会话存储 ----------
+// ---------- Encrypted conversation store ----------
 
 export interface LocalMsg { id: string; ts: number }
 
 /**
- * 按「所有者地址」分开存：同一台设备换了钱包，互相看不到。
- * 会话键：<owner>|g|<群id>、<owner>|d|<对方地址>
+ * Stored separately per "owner address": switching wallets on the same device keeps them mutually invisible.
+ * Conversation keys: <owner>|g|<group id>, <owner>|d|<peer address>
  */
 export class LocalChat {
   constructor(private backend: ChatBackend, private key: () => Promise<CryptoKey>) {}
@@ -115,15 +115,15 @@ export class LocalChat {
     await this.backend.put(recs)
   }
 
-  /** 一个会话的全部记录，按时间正序；解不开的（密钥换了）跳过 */
+  /** A conversation's full history, chronological; undecryptable entries (key changed) are skipped */
   async load<T extends LocalMsg>(conv: string): Promise<T[]> {
     const recs = await this.backend.byConv(conv)
     const out: T[] = []
-    for (const r of recs) { try { out.push(await this.open<T>(r)) } catch { /* 密钥不对，跳过 */ } }
+    for (const r of recs) { try { out.push(await this.open<T>(r)) } catch { /* Key mismatch — skip */ } }
     return out.sort((a, b) => a.ts - b.ts || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   }
 
-  /** owner 名下某类会话的 id 列表（私信 = 对方地址） */
+  /** ID list of one conversation kind under an owner (DMs = peer addresses) */
   async list(owner: string, kind: 'g' | 'd'): Promise<string[]> {
     const prefix = `${owner}|${kind}|`
     return (await this.backend.convs(prefix)).map((c) => c.slice(prefix.length))
@@ -131,7 +131,7 @@ export class LocalChat {
 
   remove(conv: string, ids: string[]) { return this.backend.remove(ids.map((id) => `${conv}|${id}`)) }
   clearConv(conv: string) { return this.backend.removePrefix(`${conv}|`) }
-  /** 清掉 owner 名下全部记录和附加信息 */
+  /** Clear all records and extras under an owner */
   clearOwner(owner: string) { return this.backend.removePrefix(`${owner}|`) }
 
   async getMeta<T>(owner: string, name: string): Promise<T | null> {
@@ -145,5 +145,5 @@ export class LocalChat {
   }
 }
 
-/** 正式用的实例：IndexedDB + 本机密钥。没有 IndexedDB 的环境（测试、极老的浏览器）为 null */
+/** The production instance: IndexedDB + device key. Null in environments without IndexedDB (tests, ancient browsers) */
 export const localChat: LocalChat | null = idbAvailable() ? new LocalChat(idbBackend, chatKey) : null

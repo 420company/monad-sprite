@@ -1,9 +1,9 @@
-// 网页版顶部公告条（2026-10-01 goat：FTC 横幅撤掉，「这个通知功能保留并且和后台连上，以后网页版的公告就在这里显示」）。
-// 内容就是后台 lord「首页公告」（server/src/homeNotices.ts），和手机 App 首页 logo 旁边的滚动公告是同一批：
-// 上架中、到了开始时间、没过结束时间的才显示，置顶在前。没有生效的公告就整条不出现。
-// 多条时每 6 秒轮换一次；点标题打开全文弹窗（和 App 同一个 NoticeDialog，正文按纯文本显示）；右边「×」收起这一条，
-// 记在本机（按公告 id），同一条公告改了标题也不会再冒出来，新公告照常显示。页面一直开着时每 5 分钟拉一次。
-// 配色只用网页版自己的深色和中性色（goat：原来 FTC 横幅的绿色和网页背景不搭）。
+// Web top announcement strip (2026-10-01 goat: the FTC banner is removed — "keep this notice feature and wire it to the backend; web announcements will show here from now on").
+// The content is the backend lord's "home announcements" (server/src/homeNotices.ts) — the same batch as the scrolling announcement beside the phone app's home logo:
+// Only show announcements that are published, past their start time, and before their end time — pinned ones first. If no announcement is active, the whole strip hides.
+// Multiple ones rotate every 6 seconds; tapping a title opens the full-text modal (the same NoticeDialog as the app, body rendered as plain text); the "×" on the right dismisses that one,
+// Remembered locally (by announcement id) — an announcement that only changed its title won't pop again; new announcements show as usual. Re-pulled every 5 minutes while the page stays open.
+// Palette uses only the web build's own dark and neutral colors (goat: the old FTC banner green clashed with the web background).
 import { useEffect, useMemo, useState } from 'react'
 import { Megaphone, X } from 'lucide-react'
 import { NoticeDialog } from '@/components/HomeBrand'
@@ -17,7 +17,7 @@ function readHidden(): number[] {
   try { const v = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => Number.isInteger(x)) : [] } catch { return [] }
 }
 function saveHidden(ids: number[]) {
-  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(ids.slice(-50))) } catch { /* 隐私模式写不进去，只是这次会话里收起 */ }
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(ids.slice(-50))) } catch { /* Private mode can't write — just dismissed for this session */ }
 }
 
 export default function DeskNotices() {
@@ -26,7 +26,7 @@ export default function DeskNotices() {
   const [index, setIndex] = useState(0)
   const [open, setOpen] = useState<number | null>(null)
 
-  // 进来拉一次，之后每 5 分钟拉一次（缓存过期才真的发请求）
+  // Pull once on entry, then every 5 minutes (a request is only really sent when the cache expires)
   useEffect(() => {
     let alive = true
     const pull = () => { void loadHomeNotices().then((l) => { if (alive) setAll(l) }) }
@@ -40,7 +40,7 @@ export default function DeskNotices() {
   const i = count ? index % count : 0
   const cur = list[i]
 
-  // 多条轮换；弹窗开着时停住
+  // Multiple ones rotate; pause while the modal is open
   useEffect(() => {
     if (count < 2 || open !== null) return
     const id = window.setTimeout(() => setIndex((n) => (n + 1) % count), ROTATE_MS)

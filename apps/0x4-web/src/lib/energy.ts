@@ -1,8 +1,8 @@
-// 能量打赏（2026-09-30 goat，设计见 docs/GIFT_ENERGY_DESIGN.md）：网页版 / 电脑端的充值、余额、礼物目录、送礼队列。
-// 手机 App（和 app.420.meme 手机网页版）不出现余额、价格、充值、送礼按钮（苹果规则），只播别人送的礼物动画：ENERGY_GIFTS 为 false。
-// 送礼：每点一下签一张「这个通道累计送了多少」的小票（EIP-712 Tip）交给服务器；服务器按钱包排队、验签、扣能量，成功才广播动画。
-// 本机不先播、被拒也不播，只给点的人一句提示。同一个通道的小票一张一张交（上一张确认了才签下一张，累计永远对得上），
-// 服务器说「累计对不上 / 通道换了 / 比例更新了」就重新准备、重签一次。
+// Energy gifting (2026-09-30 goat, design in docs/GIFT_ENERGY_DESIGN.md): top-ups, balances, gift catalog and gifting queue on web / desktop.
+// The mobile app (and the app.420.meme mobile web) never shows balances, prices, top-ups or gifting buttons (Apple rules) — it only plays others' gift animations: ENERGY_GIFTS is false.
+// Gifting: each tap signs a ticket stating "this channel's cumulative gifted total" (EIP-712 Tip) and hands it to the server; the server queues per wallet, verifies the signature, deducts energy, and only broadcasts the animation on success.
+// Never play locally first, and never play on rejection — the tapper just gets a hint. Tickets for one channel are handed in one at a time (the next is signed only after the previous is confirmed, so the cumulative total always lines up),
+// and if the server says "cumulative mismatch / channel changed / rate updated", re-prepare and re-sign.
 import type { Account, Hex } from 'viem'
 import { create } from 'zustand'
 import { api, SOCIAL_API } from '@/lib/social'
@@ -16,7 +16,7 @@ import { t } from '@/lib/i18n'
 import { getOx4, type Ox4GiftSession } from '@/lib/vault/extension'
 import { externalOf, walletRequest } from '@/lib/vault/external'
 
-/** 送礼、充值、能量余额、礼物价格只在网页版出现（手机 App / 手机网页版恒为 false） */
+/** Gifting, top-ups, energy balances and gift prices only appear on web (always false on the mobile app / mobile web) */
 export const ENERGY_GIFTS = WEB_SURFACE && !isNative
 
 export interface EnergyGift { id: string; nameZh: string; nameEn: string; icon: string | null; anim: string | null; fx: string | null; sound: string | null; price: number; sort: number; active: boolean }
@@ -28,14 +28,14 @@ export interface EnergyMe {
 export interface EnergyEarnings { enabled: boolean; wallet?: string | null; today: string; pending: string; todayGifts?: number; nextSettleAt?: number | null; chainId?: number; recent: { from: string; nickname?: string | null; avatar?: string | null; gift: string; price: number; feeBps: number; room: string; at: number }[] }
 export interface EnergyHistory { enabled: boolean; chainId?: number; items: { tx: string; block: number; at: number; amount: string; tips: number }[] }
 
-/** /files/xxx → 能直接加载的地址 */
+/** /files/xxx → a directly loadable URL */
 export const energyFile = (u: string | null | undefined) => (!u ? null : /^(https?:|data:|blob:)/.test(u) ? u : SOCIAL_API + u)
-/** 能量数（服务器给的十进制字符串，整数能量）→ 数字 */
+/** Energy amount (decimal string from the server, whole energy units) → number */
 export const energyNum = (s: string | null | undefined) => { const n = Number(s || 0); return Number.isFinite(n) ? n : 0 }
-/** 余额里某个礼物还能送几个（向下取整） */
+/** How many of a gift the balance still covers (rounded down) */
 export const canSend = (available: number, price: number) => (price > 0 ? Math.max(0, Math.floor(available / price)) : 0)
 
-// ---------- 礼物目录（公开，60 秒内共用一份） ----------
+// ---------- Gift catalog (public, shared for 60 seconds) ----------
 let catalog: { at: number; gifts: EnergyGift[]; enabled: boolean } | null = null
 let catalogReq: Promise<{ gifts: EnergyGift[]; enabled: boolean }> | null = null
 export async function energyGifts(force = false): Promise<{ gifts: EnergyGift[]; enabled: boolean }> {
@@ -47,15 +47,15 @@ export async function energyGifts(force = false): Promise<{ gifts: EnergyGift[];
   }
   return catalogReq
 }
-/** 目录里的一个礼物（飘屏 / 动画用；没在目录里返回 null） */
+/** One gift from the catalog (for floating-screen / animation use; returns null when not in the catalog) */
 export const giftById = (id: string) => catalog?.gifts.find((g) => g.id === id) ?? null
 
-// ---------- 我的能量（实时推送更新） ----------
+// ---------- My energy (updated by realtime push) ----------
 interface EnergyState {
   me: EnergyMe | null
   loading: boolean
   refresh(): Promise<EnergyMe | null>
-  /** 服务器推送 energy_balance / 送礼成功回来的新余额 */
+  /** Server pushes energy_balance / the new balance after a successful gift */
   setAvailable(available: string, onchain?: string): void
 }
 export const useEnergy = create<EnergyState>()((set, get) => ({
@@ -72,46 +72,46 @@ export const useEnergy = create<EnergyState>()((set, get) => ({
   },
 }))
 
-/** 服务器推的消息里挑能量相关的（在实时连接的消息回调里调用）：余额变了所有设备跟着变 */
+/** Pick energy-related messages out of server pushes (called in the realtime connection's message callback): all devices follow balance changes */
 export function onEnergyMessage(d: Record<string, unknown>, myWallet: string | null | undefined): void {
   if (d.type !== 'energy_balance') return
   if (myWallet && typeof d.wallet === 'string' && d.wallet.toLowerCase() !== myWallet.toLowerCase()) return
   useEnergy.getState().setAvailable(String(d.available ?? '0'), typeof d.onchain === 'string' ? d.onchain : undefined)
 }
 
-// ---------- 充值 ----------
-/** 充值：只收整数 USDT（合约也会拒小数）。先授权（不够才授），再调 deposit。返回交易哈希 */
+// ---------- Top-ups ----------
+/** Top-up: whole USDT only (the contract also rejects decimals). Approve first (only if allowance is insufficient), then call deposit. Returns the transaction hash */
 export async function depositEnergy(account: Account, me: EnergyMe, amount: number, onApproving?: () => void): Promise<Hex> {
   if (!Number.isSafeInteger(amount) || amount < 1) throw new Error(t('只能充值整数 USDT'))
   if (!me.contract || !me.usdt || !me.chainId) throw new Error(t('送礼暂未开放'))
   if (!me.depositsOpen) throw new Error(t('充值暂停中'))
-  // 两笔交易的内容和电脑端会议同一份（lib/energyDepositCore.ts）：授权只授这次的数量
+  // The two transactions share their content with desktop meetings (lib/energyDepositCore.ts): approval covers only this top-up's amount
   const c = depositCalls(me, amount)
   const bal = await getEvmTokenBalance(me.chainId, account.address, me.usdt)
   if (bal < c.units) throw new Error(t('BNB Chain 上的 USDT 不够'))
   await ensureAllowance(account, me.chainId, me.usdt, me.contract, c.units, onApproving)
   return sendEvmTx(account, me.chainId, c.deposit)
 }
-/** 钱包里 BNB Chain 的 USDT（充值页显示「可充」） */
+/** BNB Chain USDT in the wallet (the top-up page shows it as "available") */
 export async function usdtOf(me: EnergyMe, address: string): Promise<number> {
   if (!me.usdt || !me.chainId) return 0
   try { return Number((await getEvmTokenBalance(me.chainId, address, me.usdt)) / (ENERGY / 100n)) / 100 } catch { return 0 }
 }
 
-// ---------- 送礼队列 ----------
+// ---------- Gifting queue ----------
 
 export type { GiftPrep, GiftSendResult, GiftQueueDeps } from './giftQueue'
 export { GiftQueue, type TapResult } from './giftQueue'
 
-// ---------- 签小票 ----------
+// ---------- Signing tickets ----------
 
-/** 现在的钱包是不是 0x4 Wallet 插件（能开打赏授权、免逐次确认）。外部钱包每一下都要在钱包里确认 */
+/** Whether the current wallet is the 0x4 Wallet extension (supports tipping authorization, skipping per-gift confirmations). External wallets confirm every tap in the wallet */
 export const giftWalletKind = (account: Account | null | undefined): 'ox4' | 'external' | 'none' => (!account ? 'none' : externalOf(account) ? 'external' : 'ox4')
 
 /**
- * 签一张送礼小票：
- *   外部钱包：eth_signTypedData_v4（钱包每次弹窗确认）；
- *   0x4 Wallet：signGiftTip（开了打赏授权就不弹）；插件太老没有这个方法就退回通用的 EIP-712 签名（逐次确认）。
+ * Sign one gifting ticket:
+ *   External wallets: eth_signTypedData_v4 (wallet pops a confirmation every time);
+ *   0x4 Wallet: signGiftTip (no popup once tipping authorization is on); if the extension is too old to have this method, fall back to the generic EIP-712 signature (confirm each time).
  */
 export async function signGiftTip(account: Account, typed: ReturnType<typeof tipTypedData>): Promise<Hex> {
   const ext = externalOf(account)
@@ -125,13 +125,13 @@ export async function signGiftTip(account: Account, typed: ReturnType<typeof tip
   return account.signTypedData(typed as unknown as Parameters<NonNullable<Account['signTypedData']>>[0])
 }
 
-/** 打赏授权的状态（不是 0x4 Wallet / 插件太老 = 没开） */
+/** Tipping authorization status (not 0x4 Wallet / extension too old = disabled) */
 export async function giftSessionStatus(): Promise<Ox4GiftSession> {
   const ox = getOx4()
   if (!ox?.giftSessionStatus) return { active: false }
   try { return await ox.giftSessionStatus() } catch { return { active: false } }
 }
-/** 开启打赏授权：插件弹一次窗口（写明单次最多 = 目录里最贵礼物的价格，可选 7 天 / 24 小时） */
+/** Enable tipping authorization: the extension pops one window (stating the per-gift max = the priciest gift in the catalog, choice of 7 days / 24 hours) */
 export async function startGiftSession(me: EnergyMe, maxTip: number): Promise<Ox4GiftSession> {
   const ox = getOx4()
   if (!ox?.giftSessionStart) throw new Error(t('请更新 0x4 Wallet 到最新版'))
@@ -140,17 +140,17 @@ export async function startGiftSession(me: EnergyMe, maxTip: number): Promise<Ox
 }
 export async function endGiftSession(): Promise<void> { await getOx4()?.giftSessionEnd?.().catch(() => {}) }
 
-/** 服务器 /api/energy/prepare */
+/** Server /api/energy/prepare */
 export const prepareGift = (room: string, device: string, to?: string | null) =>
   api<GiftPrep>('/api/energy/prepare', { method: 'POST', body: JSON.stringify({ room, device, ...(to ? { to } : {}) }) })
-/** 服务器 /api/energy/send（实时连接不可用时的备用路） */
+/** Server /api/energy/send (fallback when the realtime connection is unavailable) */
 export const sendGiftHttp = (body: Record<string, unknown>) => api<GiftSendResult>('/api/energy/send', { method: 'POST', body: JSON.stringify(body) })
 export const energyEarnings = () => api<EnergyEarnings>('/api/energy/earnings')
 export const energyHistory = () => api<EnergyHistory>('/api/energy/earnings/history')
 
 /**
- * 这一页的设备标识（通道 = 房间 × 设备 × 收礼人 × 比例）。每次打开页面新生成一个、不存本机：
- * 保证一条通道只有这一页的一个队列在写（复制标签页也不会共用），送礼队列才能放心地把「服务器已确认 ≥ 这张」当成这张已送成（防重复扣）
+ * This page's device identity (channel = room × device × recipient × rate). Freshly generated on every page open, never stored locally:
+ * guarantees only this page's single queue writes to a channel (duplicated tabs don't share), so the gifting queue can safely treat "server confirmed ≥ this ticket" as this ticket being sent (prevents double deduction)
  */
 const PAGE_DEVICE = 'web' + Array.from(globalThis.crypto?.getRandomValues?.(new Uint8Array(12)) ?? Array.from({ length: 12 }, () => Math.floor(Math.random() * 256)), (b) => b.toString(16).padStart(2, '0')).join('')
 export function giftDevice(): string { return PAGE_DEVICE }

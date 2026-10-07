@@ -1,9 +1,9 @@
-// 网页版「手机钱包扫码」连接（2026-09-30 goat：外部钱包也能连进来用）。只在用户点这一项时动态加载，主包里没有它。
+// Web "scan with mobile wallet" connection (2026-09-30 goat: external wallets can connect too). Dynamically loaded only when the user picks this option — not in the main bundle.
 //
-// 和 lib/walletConnect.ts（关联钱包拿 NFT 头像，只签一条消息就断开）是两件事，各用各的连接实例：
-// 这里连上后一直保持，登录签名、现货买卖都通过它请手机钱包确认。包成 EIP-1193 的样子交给 lib/vault/external 那套，
-// 上层（钱包状态、登录、发交易）和浏览器扩展钱包走同一条路。
-// 只要 EVM：登录签名、结构化数据、发交易、切链。私信、合约、比特币这些 0x4 Wallet 专属功能本来就不给外部钱包。
+// Separate from lib/walletConnect.ts (linking a wallet to grab an NFT avatar — signs one message then disconnects); each uses its own connection instance:
+// this one stays connected, routing login signatures and spot trades to the mobile wallet for confirmation. Wrapped as EIP-1193 and handed to the lib/vault/external flow,
+// so upper layers (wallet state, login, sending) follow the same path as browser extension wallets.
+// EVM only: login signatures, structured data, sending, chain switching. DMs, perps, and Bitcoin are 0x4 Wallet exclusives and were never offered to external wallets anyway.
 import UniversalProvider from '@walletconnect/universal-provider'
 import { WALLETCONNECT_ID as PROJECT_ID } from '@/lib/env'
 import { currentWebDomain } from '@/lib/siwx'
@@ -12,7 +12,7 @@ import { ExternalWalletError, type Eip1193Provider } from '@/lib/vault/external'
 
 type UP = Awaited<ReturnType<typeof UniversalProvider.init>>
 
-/** 请手机钱包开放的链（BNB Chain 排第一）。钱包不支持的链会被它自己去掉 */
+/** Chains requested from the mobile wallet (BNB Chain first). Chains the wallet doesn't support are dropped by the wallet itself */
 const CHAINS = [56, 1, 8453, 42161, 137, 10, 43114]
 const METHODS = ['personal_sign', 'eth_signTypedData_v4', 'eth_sendTransaction', 'eth_chainId', 'eth_accounts', 'wallet_switchEthereumChain']
 
@@ -25,7 +25,7 @@ async function provider(): Promise<UP> {
     metadata: {
       name: '0x4',
       description: '0x4',
-      // 必须是网页版当前所在的域名：手机钱包拿它和登录消息里的网站比对（lib/siwx currentWebDomain，登录取题也带同一个）
+      // Must be the web client's current domain: the mobile wallet compares it against the site in the login message (lib/siwx currentWebDomain — the login challenge carries the same one)
       url: `https://${currentWebDomain()}`,
       icons: ['https://app.420.meme/icons/icon.svg'],
     },
@@ -35,7 +35,7 @@ async function provider(): Promise<UP> {
 
 export interface WcConnected { provider: Eip1193Provider; address: string; name: string }
 
-/** 把连接实例包成 EIP-1193：请求带上当前链（chainId 由切链请求维护，只能在会话开放的链之间切） */
+/** Wrap the connection instance as EIP-1193: requests carry the current chain (chainId maintained by chain-switch requests; switching only within session-approved chains) */
 function asEip1193(p: UP, address: string, chains: number[]): Eip1193Provider {
   let current = chains.includes(56) ? 56 : chains[0]
   return {
@@ -44,7 +44,7 @@ function asEip1193(p: UP, address: string, chains: number[]): Eip1193Provider {
       if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [address]
       if (method === 'wallet_switchEthereumChain') {
         const want = parseInt(String((params as { chainId?: string }[] | undefined)?.[0]?.chainId ?? ''), 16)
-        // 会话里没开放这条链：手机钱包那边加不了，照 EIP-3326 回 4902，界面提示换用别的钱包
+        // Chain not approved in the session: the mobile wallet can't add it — reply 4902 per EIP-3326, and the UI suggests switching wallets
         if (!chains.includes(want)) throw new ExternalWalletError(4902, t('手机钱包没有开放这条链'))
         current = want
         return null
@@ -57,7 +57,7 @@ function asEip1193(p: UP, address: string, chains: number[]): Eip1193Provider {
   }
 }
 
-/** 已有的连接（刷新页面后恢复用）；没有返回 null，不弹任何东西 */
+/** Existing connection (for restoring after refresh); null when none — pops nothing */
 export async function restoreWalletConnect(): Promise<WcConnected | null> {
   if (!PROJECT_ID) return null
   const p = await provider()
@@ -68,7 +68,7 @@ function fromSession(p: UP): WcConnected | null {
   const s = p.session
   const accounts = s?.namespaces.eip155?.accounts || []
   if (!s || !accounts.length) return null
-  // 账号格式 eip155:<链号>:<地址>
+  // Account format eip155:<chain id>:<address>
   const address = accounts[0].split(':')[2]
   const chains = [...new Set(accounts.map((a) => Number(a.split(':')[1])))].filter((n) => Number.isFinite(n))
   return { provider: asEip1193(p, address, chains), address, name: s.peer.metadata.name || t('手机钱包') }
@@ -76,7 +76,7 @@ function fromSession(p: UP): WcConnected | null {
 
 export interface WcHandle { uri: string; done: Promise<WcConnected>; cancel: () => void }
 
-/** 发起连接：返回连接串给界面出二维码，done 在手机钱包确认后给出地址和包好的 EIP-1193 */
+/** Initiate connection: return the connection URI for the UI's QR code; done yields the address and the wrapped EIP-1193 after the mobile wallet confirms */
 export async function beginWalletConnect(): Promise<WcHandle> {
   const p = await provider()
   if (p.session) await p.disconnect().catch(() => {})
@@ -100,7 +100,7 @@ export async function beginWalletConnect(): Promise<WcHandle> {
   return { uri: await uriReady!, done, cancel: () => { p.removeListener('display_uri', onUri); void p.disconnect().catch(() => {}) } }
 }
 
-/** 断开手机钱包 */
+/** Disconnect the mobile wallet */
 export async function endWalletConnect(): Promise<void> {
   if (up?.session) await up.disconnect().catch(() => {})
 }

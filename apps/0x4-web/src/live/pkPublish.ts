@@ -1,6 +1,6 @@
-// PK 时主播把自己的摄像头和麦克风同时推进对面的直播间（2026-09-30，见 docs/LIVE_PK_PLAN.md 第四节）。
-// 令牌由服务器只发给主播本人（身份 pk:<账号>，只推不看）；两边观众都只连自己房间，就能同时看到两个主播。
-// 推的是本机轨道的副本（clone）：连线结束时关掉副本，不影响自己房间里那一路。
+// During PK, the streamer pushes their camera and mic into the opponent's live room simultaneously (2026-09-30, see docs/LIVE_PK_PLAN.md section 4).
+// The token is issued by the server to the streamer only (identity pk:<account> — publish only, no viewing); both sides' viewers connect only to their own room, yet see both streamers.
+// What's pushed is a clone of the local tracks: the clone is closed when the PK ends, leaving the streamer's own room feed untouched.
 import { useEffect } from 'react'
 import type { Room as LKRoom } from 'livekit-client'
 import type { PkLink } from './pk'

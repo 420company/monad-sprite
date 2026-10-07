@@ -1,5 +1,5 @@
-// 钱包密钥学：助记词生成/派生、私钥导入导出、密码加密存储
-// 派生路径与 Phantom / Solflare 一致：m/44'/501'/{index}'/0'
+// Wallet key management: mnemonic generation/derivation, private-key import/export, password-encrypted storage
+// Derivation paths match Phantom / Solflare: m/44'/501'/{index}'/0'
 import { Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39'
@@ -15,7 +15,7 @@ import { HDKey } from '@scure/bip32'
 
 const PBKDF2_ITERATIONS = 250_000
 
-/** 生成 12 个单词的助记词 */
+/** Generate a 12-word mnemonic */
 export function newMnemonic(): string {
   return generateMnemonic(wordlist, 128)
 }
@@ -30,15 +30,15 @@ export function normalizeMnemonic(m: string): string {
 
 const WORD_SET = new Set(wordlist)
 
-/** BIP-39 允许的助记词长度：128~256 位熵，每 32 位多 3 个词 */
+/** BIP-39 mnemonic lengths: 128–256 bits of entropy, 3 more words per 32 bits */
 export const MNEMONIC_LENGTHS = [12, 15, 18, 21, 24] as const
 
-/** 词是否在 BIP-39 英文词表里。空串返回 true，方便「还没填」不算错 */
+/** Whether a word is in the BIP-39 English wordlist. Empty string returns true so "not filled yet" doesn't count as wrong */
 export function isMnemonicWord(w: string): boolean {
   return !w || WORD_SET.has(w)
 }
 
-/** 按前缀给候选词。BIP-39 词表里前 4 个字母已足够唯一 */
+/** Suggest candidate words by prefix. In the BIP-39 wordlist the first 4 letters are already unique */
 export function suggestMnemonicWords(prefix: string, limit = 4): string[] {
   const p = prefix.trim().toLowerCase()
   if (!p) return []
@@ -52,7 +52,7 @@ export function suggestMnemonicWords(prefix: string, limit = 4): string[] {
   return out
 }
 
-/** SLIP-0010 ed25519 硬化派生（Solana 只使用硬化路径） */
+/** SLIP-0010 ed25519 hardened derivation (Solana only uses hardened paths) */
 function slip10Derive(seed: Uint8Array, path: number[]): Uint8Array {
   const master = hmac(sha512, new TextEncoder().encode('ed25519 seed'), seed)
   let key = master.slice(0, 32)
@@ -70,29 +70,29 @@ function slip10Derive(seed: Uint8Array, path: number[]): Uint8Array {
   return key
 }
 
-/** 助记词 → Solana Keypair（默认第 0 个账户） */
+/** Mnemonic → Solana Keypair (account 0 by default) */
 export function keypairFromMnemonic(mnemonic: string, accountIndex = 0): Keypair {
   return keypairFromSeed(seedFromMnemonic(mnemonic), accountIndex)
 }
 
-/** 助记词 → BIP39 种子（同一组助记词派生多个钱包时只算一次，PBKDF2 2048 轮） */
+/** Mnemonic → BIP39 seed (computed once per mnemonic when deriving multiple wallets; PBKDF2 2048 rounds) */
 export function seedFromMnemonic(mnemonic: string): Uint8Array {
   return mnemonicToSeedSync(normalizeMnemonic(mnemonic))
 }
 
-/** BIP39 种子 → 第 accountIndex 个 Solana Keypair：m/44'/501'/{index}'/0'（Phantom 多账户同一规则） */
+/** BIP39 seed → Solana Keypair #accountIndex: m/44'/501'/{index}'/0' (same rule as Phantom multi-account) */
 export function keypairFromSeed(seed: Uint8Array, accountIndex = 0): Keypair {
   return Keypair.fromSeed(slip10Derive(seed, [44, 501, accountIndex, 0]))
 }
 
-/** BIP39 种子 → 第 accountIndex 个 EVM 私钥：m/44'/60'/0'/0/{index}（MetaMask、Phantom 多账户同一规则；第 0 个 = evmKeyFromMnemonic） */
+/** BIP39 seed → EVM private key #accountIndex: m/44'/60'/0'/0/{index} (same as MetaMask/Phantom multi-account; #0 = evmKeyFromMnemonic) */
 export function evmKeyFromSeed(seed: Uint8Array, accountIndex = 0): Hex {
   const priv = HDKey.fromMasterSeed(seed).derive(`m/44'/60'/0'/0/${accountIndex}`).privateKey
   if (!priv) throw new Error(t('EVM 派生失败'))
   return `0x${Array.from(priv).map((b) => b.toString(16).padStart(2, '0')).join('')}`
 }
 
-/** 导入私钥：支持 base58 字符串（Phantom 导出格式）或 JSON 数字数组（solana-cli 格式） */
+/** Import private key: accepts a base58 string (Phantom export format) or a JSON number array (solana-cli format) */
 export function keypairFromSecret(input: string): Keypair {
   const s = input.trim()
   if (s.startsWith('[')) {
@@ -109,9 +109,9 @@ export function exportSecretBase58(kp: Keypair): string {
   return bs58.encode(kp.secretKey)
 }
 
-// ---------- EVM 账户（与 MetaMask 一致的路径 m/44'/60'/0'/0/0） ----------
+// ---------- EVM account (MetaMask-compatible path m/44'/60'/0'/0/0) ----------
 
-/** 助记词 → EVM 私钥（hex） */
+/** Mnemonic → EVM private key (hex) */
 export function evmKeyFromMnemonic(mnemonic: string): Hex {
   const hd = mnemonicToAccount(normalizeMnemonic(mnemonic)).getHdKey()
   const priv = hd.privateKey
@@ -119,20 +119,21 @@ export function evmKeyFromMnemonic(mnemonic: string): Hex {
   return `0x${Array.from(priv).map((b) => b.toString(16).padStart(2, '0')).join('')}`
 }
 
-/** EVM 私钥：64 位十六进制，可带 0x（MetaMask / OKX 等导出的格式） */
+/** EVM private key: 64 hex chars, 0x prefix optional (MetaMask / OKX export format) */
 export function isEvmPrivateKey(input: string): boolean {
   return /^(0x)?[0-9a-fA-F]{64}$/.test(input.trim())
 }
 
-/** 统一成 0x 开头的小写 EVM 私钥 */
+/** Normalize to a lowercase 0x-prefixed EVM private key */
 export function normalizeEvmKey(input: string): Hex {
   const h = input.trim().toLowerCase()
   return (h.startsWith('0x') ? h : `0x${h}`) as Hex
 }
 
 /**
- * 判断用户粘贴的私钥是哪种：evm / solana / null（都不是）。
- * 先认 EVM：64 位十六进制几乎不可能同时是合法的 Solana 私钥（Solana 私钥 Base58 后 44 或 88 位，且不含数字 0）
+ * Detect which kind of private key the user pasted: evm / solana / null (neither).
+ * EVM first: 64 hex chars are virtually never a valid Solana private key too (Solana keys are 44 or 88
+ * base58 chars and never contain the digit 0)
  */
 export function classifySecret(input: string): 'evm' | 'solana' | null {
   const s = input.trim()
@@ -142,42 +143,43 @@ export function classifySecret(input: string): 'evm' | 'solana' | null {
 }
 
 /**
- * 随机一把 EVM 私钥。只给测试造样本用：导入私钥时另一条链的钥匙必须用下面的固定派生，不能用它
+ * A random EVM private key. For test fixtures only: when importing a key, the other chain's key must use
+ * the deterministic derivation below, never this
  */
 export function randomEvmKey(): Hex {
   return generatePrivateKey()
 }
 
-// ---------- 私钥导入：另一条链的钥匙固定派生 ----------
+// ---------- Private-key import: the other chain's key is derived deterministically ----------
 //
-// 只导入一种私钥时，另一条链的钥匙由导入的这把固定算出（2026-09-29 goat：「导入一次钱包小精灵就会丢，这个不行」）。
-// 以前是随机生成：0x4 账号按 Solana 地址认，同一把 EVM 私钥每导入一次就得到一个新的 Solana 地址、一个新账号，
-// 换手机或重装后小精灵、好友、聊天全都对不上。现在同一把私钥在任何设备、导入多少次，都是同一组地址。
-// 规则（原生 native/Ox4Vault/Sources/Ox4Vault/Derivation.swift 的 ImportDerivation 逐字节一致，
-// 测试向量 native/Ox4Vault/scripts/import-fixture.json 由 make-import-fixture.py 用第三方库独立生成）：
-//   EVM 私钥 → Solana：ed25519 种子 = HMAC-SHA256(key = UTF-8("0x4-wallet/solana-from-evm/v1"), data = 32 字节 EVM 私钥)
-//   Solana 私钥 → EVM：k = HMAC-SHA256(key = UTF-8("0x4-wallet/evm-from-solana/v1"), data = 32 字节 Solana 种子，即 64 字节私钥的前 32 字节)；
-//     k 按大端整数不在 [1, n-1]（n 为 secp256k1 的阶）时，data 末尾追加 1 字节计数 1、2、…、255 依次重算，取第一个合法的
-//   比特币：私钥钱包沿用 EVM 私钥本身（btcKeyFor），随之固定
-// 已有的金库不受影响：解锁照旧读存着的两把私钥，地址不变。只有新导入（以及没有 EVM 私钥的 v1 老金库补 EVM）走这套规则。
+// When only one private key is imported, the other chain's key is deterministically derived from it (2026-09-29 goat: "importing once loses the wallet sprite — unacceptable").
+// Previously random: 0x4 accounts are keyed by Solana address, so each import of the same EVM key produced a new Solana address — a new account,
+// and after switching phones or reinstalling, sprites, friends, and chats no longer matched. Now the same key yields the same addresses on any device, however many times it's imported.
+// Rules (byte-identical with native's ImportDerivation in native/Ox4Vault/Sources/Ox4Vault/Derivation.swift;
+// test vectors in native/Ox4Vault/scripts/import-fixture.json generated independently by make-import-fixture.py with third-party libs):
+//   EVM key → Solana: ed25519 seed = HMAC-SHA256(key = UTF-8("0x4-wallet/solana-from-evm/v1"), data = 32-byte EVM key)
+//   Solana key → EVM: k = HMAC-SHA256(key = UTF-8("0x4-wallet/evm-from-solana/v1"), data = 32-byte Solana seed, i.e. the first 32 bytes of the 64-byte key);
+//     if k as a big-endian integer falls outside [1, n-1] (n = secp256k1 order), append a 1-byte counter 1, 2, …, 255 to data and recompute, taking the first valid one
+//   Bitcoin: key-imported wallets reuse the EVM private key itself (btcKeyFor), hence also fixed
+// Existing vaults are unaffected: unlock still reads the two stored keys, addresses unchanged. Only fresh imports (and v1 vaults backfilling a missing EVM key) follow these rules.
 export const SOLANA_FROM_EVM_DOMAIN = '0x4-wallet/solana-from-evm/v1'
 export const EVM_FROM_SOLANA_DOMAIN = '0x4-wallet/evm-from-solana/v1'
 const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
 const utf8 = (s: string) => new TextEncoder().encode(s)
 const toHex = (b: Uint8Array) => Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('')
 
-/** EVM 私钥 → Solana 的 32 字节 ed25519 种子 */
+/** EVM private key → Solana's 32-byte ed25519 seed */
 export function solanaSeedFromEvmKey(evmKey: string): Uint8Array {
   if (!isEvmPrivateKey(evmKey)) throw new Error(t('EVM 私钥格式不对'))
   return hmac(sha256, utf8(SOLANA_FROM_EVM_DOMAIN), hexToBytes(normalizeEvmKey(evmKey)))
 }
 
-/** 导入 EVM 私钥时配套的 Solana 钥匙 */
+/** The Solana key paired with an imported EVM private key */
 export function keypairFromEvmKey(evmKey: string): Keypair {
   return Keypair.fromSeed(solanaSeedFromEvmKey(evmKey))
 }
 
-/** Solana 32 字节种子 → EVM 私钥 */
+/** Solana 32-byte seed → EVM private key */
 export function evmKeyFromSolanaSeed(seed: Uint8Array): Hex {
   if (seed.length !== 32) throw new Error(t('私钥长度不正确'))
   const key = utf8(EVM_FROM_SOLANA_DOMAIN)
@@ -190,7 +192,7 @@ export function evmKeyFromSolanaSeed(seed: Uint8Array): Hex {
   throw new Error(t('EVM 派生失败'))
 }
 
-/** 导入 Solana 私钥时配套的 EVM 私钥（用 64 字节私钥的前 32 字节种子） */
+/** The EVM private key paired with an imported Solana key (uses the 64-byte key's first 32 bytes as seed) */
 export function evmKeyFromKeypair(kp: Keypair): Hex {
   return evmKeyFromSolanaSeed(kp.secretKey.slice(0, 32))
 }
@@ -199,7 +201,7 @@ export function evmAccountFromKey(key: Hex): PrivateKeyAccount {
   return privateKeyToAccount(key)
 }
 
-// ---------- 密码加密（WebCrypto：PBKDF2-SHA256 + AES-256-GCM） ----------
+// ---------- Password encryption (WebCrypto: PBKDF2-SHA256 + AES-256-GCM) ----------
 
 const enc = new TextEncoder()
 const dec = new TextDecoder()
@@ -250,14 +252,14 @@ export async function decryptText(blob: CipherBlob, password: string): Promise<s
 }
 
 /**
- * 比特币私钥：有助记词走 BIP84（m/84'/0'/0'/0/0，和 MetaMask / Trust 同一个地址），
- * 没有助记词（私钥导入的钱包）就用 EVM 那把私钥本身。原生 Keyring.swift 规则相同。
+ * Bitcoin private key: mnemonics go BIP84 (m/84'/0'/0'/0/0, same address as MetaMask / Trust);
+ * key-imported wallets (no mnemonic) reuse the EVM private key itself. Native Keyring.swift follows the same rule.
  */
 export function btcKeyFor(evmKey: string, mnemonic?: string): Uint8Array {
   return mnemonic ? btcKeyFromMnemonic(normalizeMnemonic(mnemonic)) : btcKeyFromEvmKey(evmKey)
 }
 
-/** 用密码把 Solana Keypair、EVM 私钥（和可选的助记词）打包成可持久化的金库 */
+/** Pack the Solana Keypair, EVM private key (and optional mnemonic) into a persistable vault with the password */
 export async function buildVault(kp: Keypair, evmKey: Hex, password: string, mnemonic?: string): Promise<Vault> {
   const vault: Vault = {
     version: 2,
@@ -275,9 +277,9 @@ export async function buildVault(kp: Keypair, evmKey: Hex, password: string, mne
 export interface Unlocked {
   keypair: Keypair
   evm: PrivateKeyAccount
-  /** 比特币私钥。派生出错时为 null（不挡解锁，比特币功能提示不可用） */
+  /** Bitcoin private key. null when derivation fails (never blocks unlock; Bitcoin features show as unavailable) */
   btcKey: Uint8Array | null
-  /** 旧版金库升级后需要回写（含 2026-09-25 起补写比特币地址） */
+  /** Upgraded legacy vaults need a write-back (including backfilled Bitcoin addresses since 2026-09-25) */
   upgraded?: Vault
 }
 
@@ -285,25 +287,25 @@ function safeBtcKey(evmKey: string, mnemonic?: string): Uint8Array | null {
   try { return btcKeyFor(evmKey, mnemonic) } catch { return null }
 }
 
-/** 解锁金库；v1 金库（只有 Solana 私钥）会自动补齐 EVM 私钥并升级到 v2 */
+/** Unlock the vault; v1 vaults (Solana key only) auto-backfill the EVM key and upgrade to v2 */
 export async function unlockVault(vault: Vault, password: string): Promise<Unlocked> {
   const secret = await decryptBytes(vault.secret, password)
   const keypair = Keypair.fromSecretKey(secret)
   if (keypair.publicKey.toBase58() !== vault.publicKey) throw new Error(t('金库数据损坏'))
 
   if (vault.evmSecret) {
-    // 有助记词的钱包，比特币走 BIP84，要把助记词也解开（和 EVM 私钥并行解，少等一轮 PBKDF2）
+    // Mnemonic wallets derive Bitcoin via BIP84, so the mnemonic must be decrypted too (in parallel with the EVM key, saving one PBKDF2 round)
     const [evmKey, mnemonic] = await Promise.all([
       decryptText(vault.evmSecret, password),
       vault.mnemonic ? decryptText(vault.mnemonic, password) : Promise.resolve(undefined),
     ])
     const btcKey = safeBtcKey(evmKey, mnemonic)
     const btcAddress = btcKey ? btcAddressFromKey(btcKey) : undefined
-    // 老金库没有比特币地址（或明文地址被改过）：补上 / 纠正后回写
+    // Old vaults without a Bitcoin address (or with a tampered plaintext address): backfill / correct, then write back
     const upgraded = btcAddress && vault.btcAddress !== btcAddress ? { ...vault, btcAddress } : undefined
     return { keypair, evm: evmAccountFromKey(evmKey as Hex), btcKey, upgraded }
   }
-  // 升级：有助记词就按标准路径派生，否则由 Solana 私钥固定派生（和私钥导入同一条规则，见上方「私钥导入」）
+  // Upgrade: mnemonics derive via the standard path, otherwise deterministic derivation from the Solana key (same rule as private-key import, see "private-key import" above)
   const mnemonic = vault.mnemonic ? await decryptText(vault.mnemonic, password) : undefined
   const evmKey = mnemonic ? evmKeyFromMnemonic(mnemonic) : evmKeyFromKeypair(keypair)
   const upgraded = await buildVault(keypair, evmKey, password, mnemonic)

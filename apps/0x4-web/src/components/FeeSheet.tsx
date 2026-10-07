@@ -1,4 +1,4 @@
-// 「我」页 → 账户种类（2026-09-27，goat：入口叫「账户种类：普通 / VIP」）：当前等级、各项手续费（用户总共付的）、离 VIP 还差多少
+// "Me" page → account tier (2026-09-27, goat: the entry is called "Account tier: Regular / VIP"): current tier, each fee (what the user pays in total), how far from VIP
 import { useEffect } from 'react'
 import { Crown } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -12,7 +12,7 @@ const pct = (n: number) => `${Number(n.toFixed(4))}%`
 export default function FeeSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const f = useFees((s) => s.fees)
   useEffect(() => { if (open) useFees.getState().load(true) }, [open])
-  // 用户总共付的：现货 Solana = 我们的；EVM = 我们的 + LI.FI；合约市价单 = 我们的 + Aster 吃单 0.04%
+  // What the user pays in total: spot Solana = ours; EVM = ours + LI.FI; perp market orders = ours + Aster taker 0.04%
   const rows: [string, string][] = [
     [t('现货（Solana）'), pct(f.solBps / 100)],
     [t('现货（BNB Chain、以太坊等）'), pct((f.evmBps + LIFI_FEE_BPS) / 100)],
@@ -21,7 +21,7 @@ export default function FeeSheet({ open, onClose }: { open: boolean; onClose: ()
   const bars: [string, number, number][] = [[t('现货累计交易额'), f.volume.spot, f.target.spot], ...(PERP_ENABLED ? [[t('合约累计交易额'), f.volume.perp, f.target.perp]] as [string, number, number][] : [])]
   return (
     <Sheet open={open} onClose={onClose} title={t('账户种类')}>
-      {/* VIP 用和首页勋章同一套金色（2026-09-29） */}
+      {/* VIP uses the same gold as the home badge (2026-09-29) */}
       <div className={`flex items-center gap-3 rounded-2xl p-4 ${f.vip ? 'tier-card-vip' : 'bg-card2'}`}>
         <Crown size={22} className={f.vip ? 'tier-gold' : 'text-muted'} aria-hidden="true" />
         <div>

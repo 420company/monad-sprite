@@ -1,5 +1,5 @@
-// 关联外部钱包的界面：电脑扫码，手机直接跳钱包 App。
-// 只请求一次签名，签完就断开连接，不保留任何会话。
+// Link-an-external-wallet UI: desktop scans a code, phones jump straight to the wallet app.
+// Requests exactly one signature, then disconnects — no session kept.
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { Copy, Smartphone } from 'lucide-react'
@@ -29,7 +29,7 @@ export default function WalletLinkSheet({ open, onClose, onLinked }: { open: boo
         cancelRef.current = h.cancel
         setUri(h.uri)
         QRCode.toDataURL(h.uri, { width: 480, margin: 1, color: { dark: '#0b0f0c', light: '#ffffff' } }).then((d) => { if (alive) setQr(d) }).catch(() => {})
-        // 手机上直接把连接串交给钱包 App，省去扫码
+        // On phones the connection string goes straight to the wallet app, skipping the scan
         if (isNative || /iPhone|Android/i.test(navigator.userAgent)) openInWallet(h.uri)
         await h.done
         if (!alive) return

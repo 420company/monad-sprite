@@ -1,4 +1,4 @@
-// 注册后的推荐关注（借鉴 DeBox「Social butterfly」）：勾选几位活跃交易者，好友流一开始就不空
+// Post-signup suggested follows (borrowed from DeBox's "Social butterfly"): check a few active traders so the friend feed isn't empty from the start
 import { useEffect, useState } from 'react'
 import { Check } from 'lucide-react'
 import Avatar from './Avatar'
@@ -26,7 +26,7 @@ export default function SuggestFollow() {
   useEffect(() => {
     if (!show) return
     api<Suggested[]>('/api/users/suggested').then((l) => {
-      if (!l.length) setFollowSuggested(true) // 没人可推荐就直接跳过，不打扰
+      if (!l.length) setFollowSuggested(true) // Skip silently when there's no one to suggest
       setList(l); setPicked(new Set(l.map((u) => u.address)))
     }).catch(() => setFollowSuggested(true))
   }, [show, setFollowSuggested])

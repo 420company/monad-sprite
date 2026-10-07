@@ -1,6 +1,6 @@
-// 交易方式（没有纸面；领养后必须二选一，否则 worker 不派单）：
-//  confirm = 现货模式（2026-09-28 起界面叫「现货模式」，存储值仍是 confirm）：果蝇提案，主人在手机上用自己的钱包确认下单；开了全自动后 BNB Chain 上自动执行
-//  perp    = BSC 永续（Aster）代理密钥合约：本金留在用户自己的合约账户，密钥只能交易不能提币，杠杆 ≤ 100 倍（2026-09-27 起，原 3 倍）
+// Trading mode (no paper trading; must pick one after adoption or the worker dispatches nothing):
+//  confirm = spot mode (UI calls it "spot mode" since 2026-09-28, stored value stays confirm): the fly proposes, the owner confirms orders on the phone with their own wallet; auto-executes on BNB Chain once full-auto is on
+//  perp    = BSC perps (Aster) API-key contract: principal stays in the user's own perp account, the key can trade but not withdraw, leverage ≤ 100x (since 2026-09-27, was 3x)
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Check } from 'lucide-react'
 import { PERP_ENABLED } from '@/lib/features'
@@ -27,24 +27,24 @@ const PRESETS = [1, 3, 5, 10, 20, 50, 100]
 
 export default function RealModeSheet({ open, onClose, fly, onSaved, onAutoSheet }: {
   open: boolean; onClose: () => void; fly: Fly
-  /** started = 在「现货交易」页里直接开始的（已经选过自动 / 每次先问我，别再弹全自动面板） */
+  /** started = launched directly from the "spot trading" page (already chose auto / ask-me-each-time — don't pop the full-auto panel again) */
   onSaved: (f: Fly, o?: { started?: boolean }) => void
-  /** 自动交易要用完整面板处理时打开它 */
+  /** Open it when auto-trading needs the full panel */
   onAutoSheet: () => void
 }) {
   const [mode, setMode] = useState<FlyMode>(fly.mode === 'pending' ? 'confirm' : fly.mode)
   const { evmAccount, evmAddress, address } = useWallet()
   const refreshPortfolio = usePortfolio((s) => s.refresh)
-  // 「添加资金」看收款码时先把这一层收起来，关掉再回来
+  // Collapse this layer while "add funds" shows the receive code; come back when closed
   const [receiving, setReceiving] = useState(false)
   const [agentKey, setAgentKey] = useState('')
-  // 主账户就是用户自己的钱包地址，没有理由让他手打一遍
+  // The main account IS the user's own wallet address — no reason to make them type it
   const [mainAddress, setMainAddress] = useState(fly.perp?.mainAddress || evmAddress || '')
   const [authorizing, setAuthorizing] = useState(false)
-  /** 已经授权过、或这次刚授权完 */
+  /** Already authorized, or just authorized this time */
   const authorized = !!fly.perp || !!agentKey
   const [leverage, setLeverage] = useState(fly.leverage || 1)
-  // 自定义倍数单独一个输入框（2026-09-28 goat：原来和预设按钮长得一样，分不清）。输入过程中的文字自己存，清空再输入不会被立刻改回 1
+  // Custom multiplier gets its own input (2026-09-28 goat: it used to look like the preset buttons). In-progress text is kept locally; clearing and retyping isn't snapped back to 1
   const [custom, setCustom] = useState(PRESETS.includes(fly.leverage || 1) ? '' : String(fly.leverage))
   const [margin, setMargin] = useState(String(fly.marginUsd || 50))
   const [busy, setBusy] = useState(false)
@@ -58,13 +58,13 @@ export default function RealModeSheet({ open, onClose, fly, onSaved, onAutoSheet
     setCustom(String(n > 100 ? 100 : digits.replace(/^0+(?=\d)/, '')))
     setLeverage(v)
   }
-  // 离开输入框：空着或是 0 就回到当前倍数（是预设就清空，让预设按钮高亮）
+  // On blur: empty or 0 reverts to the current multiplier (clears if it's a preset, so the preset button highlights)
   const onCustomBlur = () => setCustom(PRESETS.includes(leverage) ? '' : String(leverage))
   const customOn = !PRESETS.includes(leverage) || custom !== ''
   const marginNum = Math.min(1_000_000, Number(margin))
 
-  /** 一键授权：本地生成一把 agent 密钥 → 主钱包签一次 approveAgent → 存进果蝇。
-   *  私钥不显示、不落地，只在内存里待到提交为止。 */
+  /** One-tap authorize: generate an agent key locally → main wallet signs approveAgent once → stored into the fly.
+   *  The private key is never displayed or persisted; it lives in memory only until submitted. */
   const authorize = async () => {
     if (!evmAccount) return toast.error(t('钱包已锁定'))
     setAuthorizing(true)
@@ -85,7 +85,7 @@ export default function RealModeSheet({ open, onClose, fly, onSaved, onAutoSheet
       toast.success(mode === 'confirm' ? t('已保存') : t('已开启合约交易。下一步：在「合约」页存入 USDT')); onSaved(f); onClose()
     } catch (e) { toast.error(errorText(e, t('保存失败'))) } finally { setBusy(false) }
   }
-  // 2026-09-28 goat：两个模式只放按钮不放说明；杠杆下面固定一句风险提示；自定义倍数做成明显的输入框；保证金下面并排显示保证金和仓位价值
+  // 2026-09-28 goat: the two modes show buttons only, no descriptions; a fixed risk line under leverage; custom multiplier as an obvious input; margin and position value side by side under margin
   return (
     <>
     <Sheet open={open && !receiving} onClose={onClose} title={fly.mode === 'pending' ? t('开始交易') : t('交易方式')}>
@@ -108,7 +108,7 @@ export default function RealModeSheet({ open, onClose, fly, onSaved, onAutoSheet
                 <Button variant="secondary" className="w-full" loading={authorizing} onClick={authorize}>{t('确认交易授权')}</Button>
               )}
             </div>
-            {/* 杠杆 1~100 倍（2026-09-27 goat 定）。实际不超过该币种在交易所的上限 */}
+            {/* Leverage 1–100x (set by goat 2026-09-27). Never above the exchange's cap for the coin */}
             <div role="group" aria-labelledby="fly-lev-label">
               <div className="mb-2 flex items-baseline justify-between"><span id="fly-lev-label" className="ui-label mb-0">{t('杠杆')}</span><span className="text-[15px] font-bold tabular-nums">{leverage}x</span></div>
               <div className="grid grid-cols-7 gap-1">
@@ -124,7 +124,7 @@ export default function RealModeSheet({ open, onClose, fly, onSaved, onAutoSheet
               <p className="mt-2 flex items-center gap-1.5 text-xs text-muted"><AlertTriangle size={13} className="shrink-0" aria-hidden="true" />{t('高倍数杠杆可能会提高仓位清算风险')}</p>
             </div>
             <div><Label htmlFor="fly-margin">{t('单次保证金（最少 10 USDT）')}</Label><Input id="fly-margin" className="text-base" type="number" inputMode="decimal" value={margin} onChange={(e) => setMargin(e.target.value)} />
-              {/* 填的是实际投入的保证金，不是仓位；仓位价值 = 保证金 × 杠杆（2026-09-27 goat） */}
+              {/* Fill in the actual margin committed, not the position; position value = margin × leverage (2026-09-27 goat) */}
               {marginNum >= 10 && (
                 <dl className="mt-2 grid grid-cols-2 overflow-hidden rounded-xl bg-card2 text-center">
                   <div className="px-3 py-2.5"><dt className="text-[11px] text-muted">{t('保证金')}</dt><dd className="mt-0.5 text-[15px] font-semibold tabular-nums">{fmtNum(marginNum)} <span className="text-xs font-normal text-muted">USDT</span></dd></div>
@@ -134,11 +134,11 @@ export default function RealModeSheet({ open, onClose, fly, onSaved, onAutoSheet
             </div>
           </div>
         )}
-        {/* 现货交易：还没在用现货（刚领养 / 从合约换过来）就直接在这里开始：每天额度 + 开启自动交易 / 每次先问我（2026-10-05 goat） */}
+        {/* Spot trading: not on spot yet (just adopted / switching from perps) — start right here: daily quota + enable auto-trading / ask me each time (2026-10-05 goat) */}
         {mode === 'confirm' && fly.mode !== 'confirm' && <SpotStart open={open} fly={fly} onStarted={(f) => onSaved(f, { started: true })} onDone={onClose} onAutoSheet={onAutoSheet} onAddFunds={() => setReceiving(true)} />}
         {mode === 'confirm' && fly.mode === 'confirm' && <p className="text-sm text-muted">{t('小精灵想买卖时会问你，开了自动交易就自动买卖。')}</p>}
         {(mode === 'perp' || fly.mode === 'confirm') && <Button size="lg" className="w-full" loading={busy} onClick={save}>{fly.mode === 'pending' ? t('开始') : t('保存')}</Button>}
-        {/* 2026-10-05 goat「文字一定要简单」：协议不整段摆出来，点「交易协议」才展开；点按钮即同意 */}
+        {/* 2026-10-05 goat "keep the words simple": the agreement isn't shown in full — tap "trading agreement" to expand; tapping a button counts as consent */}
         <p className="-mt-2 text-center text-xs text-muted">{t('开启即同意')}<button type="button" className="text-accent underline-offset-2 hover:underline" aria-expanded={showTerms} onClick={() => setShowTerms((v) => !v)}>{t('交易协议')}</button></p>
         {showTerms && <ol className="list-decimal space-y-1 rounded-xl bg-card2 py-3 pl-8 pr-4 text-xs leading-relaxed text-muted">{AGREEMENT.map((l, i) => <li key={i}>{t(l)}</li>)}</ol>}
       </div>

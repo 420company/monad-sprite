@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 代币搜索的排序、别名、冒牌过滤、同名门槛、「新创建」标记（2026-09-30 goat：「搜 btc 出来这么多」「BTC、PEPE 的冒牌也要处理」）
+// Token search: ranking, aliases, impersonator filtering, same-name bar, "newly created" tag (2026-09-30 goat: "searching btc returns this many", "BTC/PEPE impersonators need handling too")
 import { describe, expect, it } from 'vitest'
 import { isAddressQuery, isNewPool, rankSearch, sameNameVisible } from './market'
 import { assetForSymbol, mainstreamLookalike, officialAssetOf, OFFICIAL_ASSETS } from './officialTokens'
@@ -13,9 +13,9 @@ const tok = (chain: string, address: string, symbol: string, liq: number, vol = 
 const BTCB = tok('bsc', '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c', 'BTCB', 1_900_000, 6_000_000)
 const WBTC_ARB = tok('arbitrum', '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', 'WBTC', 38_000_000, 18_000_000)
 const CBBTC_SOL = tok('solana', 'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij', 'cbBTC', 5_700_000, 10_000_000)
-// 仿冒：Solana 上随便发的「BTC」
+// Impersonation: a random "BTC" minted on Solana
 const fakeBtc = (i: number, liq = 20_000) => tok('solana', `FakeBtc${i}xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`, 'BTC', liq, 5_000)
-// 官方表里（市值前 200 生成的）PEPE 的一个官方地址
+// One official PEPE address from the official list (generated from the top 200 by mcap)
 const PEPE_OFFICIAL = OFFICIAL_ASSETS.find((a) => a.symbol === 'PEPE')!.tokens[0]
 
 describe('官方币表', () => {
@@ -53,7 +53,7 @@ describe('rankSearch', () => {
     const official = tok(PEPE_OFFICIAL[0], PEPE_OFFICIAL[1], 'PEPE', 31_000_000, 1_700_000)
     const copies = [tok('solana', 'PepeCopy1xxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'PEPE', 80_000_000, 9_000_000), tok('base', '0xPepe2', 'PEPE2', 5_000_000, 500_000)]
     expect(rankSearch([...copies, official], 'pepe', NOW).tokens.map((x) => x.address)).toEqual([official.address])
-    // 搜别的词（比如 frog）时混进来的冒牌 PEPE 也不显示
+    // Impersonator PEPEs sneaking in when searching other terms (e.g. frog) don't show either
     expect(rankSearch([...copies, tok('base', '0xFrog', 'FROGZ', 100_000, 50_000)], 'frog', NOW).tokens.map((x) => x.symbol)).toEqual(['FROGZ'])
   })
   it('稳定币只显示官方：冒牌的 USDT / USDe 都不显示', () => {
@@ -68,7 +68,7 @@ describe('rankSearch', () => {
     const usdcBsc = tok('bsc', '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 'USDC', 16_000_000, 3_000_000)
     const meme = tok('polygon', '0x' + '1'.repeat(40), 'AIPF', 900_000, 50_000)
     expect(rankSearch([usdcBsc, meme, usdtBsc], 'usdt', NOW).tokens.map((x) => x.symbol)).toEqual(['USDT'])
-    expect(rankSearch([meme], 'aipf', NOW).tokens).toHaveLength(1)   // 对照：搜不相干的词照常显示
+    expect(rankSearch([meme], 'aipf', NOW).tokens).toHaveLength(1)   // Control: unrelated queries display as usual
   })
 
   describe('不在官方表里的普通币：同名门槛', () => {
@@ -140,7 +140,7 @@ describe('rankSearch', () => {
   it('自动收录的短符号（宽松资产）：官方排第一，别家同名的不算冒牌，过门槛就显示', async () => {
     const { OFFICIAL_ASSETS } = await import('./officialTokens')
     const loose = OFFICIAL_ASSETS.find((a) => a.loose)
-    if (!loose) return   // 表里没有短符号就跳过
+    if (!loose) return   // Skip when the list has no short symbol
     const [chain, addr] = loose.tokens[0]
     const off = tok(chain, addr, loose.symbol, 5_000_000, 1_000_000)
     const other = tok('solana', 'Othr1111111111111111111111111111111111111111', loose.symbol, 200_000, 50_000, { createdAt: Date.now() - 30 * 86400_000 } as Partial<MarketToken>)

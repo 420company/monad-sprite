@@ -1,5 +1,5 @@
-// 跨链聚合器 LI.FI：任意链任意代币 → 任意链任意代币（桥 + DEX 一笔完成）
-// 文档：https://docs.li.fi/  接口无需 API Key（有限流），生产环境建议申请 integrator 与 key
+// LI.FI cross-chain aggregator: any token on any chain → any token on any chain (bridge + DEX in one shot)
+// Docs: https://docs.li.fi/ — the API needs no key (rate-limited); production should apply for an integrator and key
 import { VersionedTransaction } from '@solana/web3.js'
 import type { SolanaWallet } from '@/lib/vault/signers'
 import { Buffer } from 'buffer'
@@ -18,10 +18,10 @@ const API = ENV.lifiApi
 const headers: Record<string, string> = ENV.lifiApiKey ? { 'x-lifi-api-key': ENV.lifiApiKey } : {}
 
 /**
- * 问 LI.FI：平时浏览器直连（不带 Key，按访客 IP 限流）。被限流（同一出口 IP 用多了会被封约 1 小时，
- * 2026-10-05 goat 截图闪兑报「HTTP 429 Rate limit exceeded, retry in 51 minutes」）就改走我们服务器的备用通道
- * /api/lifi/*（服务器带 Key 转发，Key 不出服务器，server/src/lifiProxy.ts），之后一小时都直接走服务器，不再先撞一次 429。
- * 两边都不行才报错，报错用一句中文，不把英文原文甩给用户。
+ * Asking LI.FI: normally the browser talks to it directly (no key, rate-limited by visitor IP). When rate-limited (too much use from one egress IP gets banned ~1 hour;
+ * 2026-10-05 goat's screenshot showed the swap quoting "HTTP 429 Rate limit exceeded, retry in 51 minutes"), switch to our server's fallback channel
+ * /api/lifi/* (the server forwards with a key; the key never leaves the server, server/src/lifiProxy.ts), and go straight to the server for the next hour instead of hitting a 429 first.
+ * Only errors when both fail, and the error is a single line of Chinese — the raw English is never thrown at the user.
  */
 let viaServerUntil = 0
 const BUSY = () => t('报价服务繁忙，请过几分钟再试')
@@ -48,22 +48,22 @@ export interface QuoteParams {
   fromToken: string
   toChain: number
   toToken: string
-  /** 最小单位 */
+  /** Smallest unit */
   fromAmount: bigint
   fromAddress: string
   toAddress: string
   /** 0.01 = 1% */
   slippage: number
   order?: 'RECOMMENDED' | 'FASTEST' | 'CHEAPEST'
-  /** 平台手续费（万分之几，见 lib/fees.ts）；不传 = 不收（比如合约充值时的 BNB 换 USDT） */
+  /** Platform fee (basis points, see lib/fees.ts); omitted = not charged (e.g. the BNB→USDT swap when funding perps) */
   feeBps?: number
-  /** LI.FI 集成方标识（portal.li.fi 注册的 0x4），手续费按它打到我们的收费钱包 */
+  /** LI.FI integrator id (the 0x4 registered at portal.li.fi); fees are paid to our fee wallet against it */
   integrator?: string
-  /** 顺便把一部分换成目标链 Gas（fromToken 的最小单位） */
+  /** Also convert part of it into the destination chain's gas (in fromToken's smallest unit) */
   fromAmountForGas?: bigint
 }
 
-/** 获取一条可直接执行的路线 */
+/** Fetch a directly executable route */
 export async function getLifiQuote(p: QuoteParams): Promise<LiFiStep> {
   const q = new URLSearchParams({
     fromChain: String(p.fromChain),
@@ -77,7 +77,7 @@ export async function getLifiQuote(p: QuoteParams): Promise<LiFiStep> {
     order: p.order || 'RECOMMENDED',
     integrator: p.integrator || ENV.lifiIntegrator,
   })
-  // 平台费：2026-09-30 已在跨链服务后台给比特币链配好收费地址，卖出 BTC 也照常带（报价交易里多一个打到 BTC_PLATFORM_FEE_ADDRESS 的输出，lib/btcSwap.ts 核对）
+  // Platform fee: on 2026-09-30 the cross-chain service backend configured the fee address for the Bitcoin chain — selling BTC carries it as usual (the quoted tx gets one extra output to BTC_PLATFORM_FEE_ADDRESS, verified in lib/btcSwap.ts)
   if (p.feeBps && p.feeBps > 0 && p.integrator) q.set('fee', String(p.feeBps / 10_000))
   if (p.fromAmountForGas && p.fromAmountForGas > 0n) q.set('fromAmountForGas', p.fromAmountForGas.toString())
   return lifiGet<LiFiStep>('quote', q.toString(), 20_000)
@@ -85,19 +85,19 @@ export async function getLifiQuote(p: QuoteParams): Promise<LiFiStep> {
 
 export type ExecPhase = 'approving' | 'signing' | 'sent'
 
-/** 执行路线：EVM 链先授权再发交易；Solana 链直接签名发送；比特币走 lib/btcSwap.ts。返回源链交易哈希 */
+/** Execute the route: EVM chains approve first, then send the tx; Solana chains sign and send directly; Bitcoin goes through lib/btcSwap.ts. Returns the source-chain tx hash */
 export async function executeLifiStep(
   step: LiFiStep,
-  signers: { solana: SolanaWallet | null; evm: Account | null; solanaRpc: string; /** 卖出 BTC 用（lib/btcSwap.ts 核对后签名） */ btc?: BtcSigner | null },
+  signers: { solana: SolanaWallet | null; evm: Account | null; solanaRpc: string; /** For selling BTC (verified then signed by lib/btcSwap.ts) */ btc?: BtcSigner | null },
   onPhase?: (phase: ExecPhase) => void,
-  /** 源链交易发出（还没确认）时给出哈希，界面可以先放区块浏览器链接 */
+  /** Emit the hash once the source-chain tx is sent (unconfirmed); the UI can show the block-explorer link early */
   onHash?: (hash: string) => void,
 ): Promise<string> {
   const tx = step.transactionRequest
   if (!tx) throw new Error(t('路线没有可执行的交易数据'))
   const fromChain = step.action.fromChainId
 
-  // 从比特币发起：跨链服务给的是 PSBT，逐项核对后用比特币签名器签、广播，返回比特币 txid（lib/btcSwap.ts）
+  // Initiated from Bitcoin: the cross-chain service returns a PSBT; after item-by-item verification, sign with the Bitcoin signer, broadcast, and return the Bitcoin txid (lib/btcSwap.ts)
   if (fromChain === BTC_CHAIN_ID) return executeBtcSwap(step, signers.btc ?? null, onPhase)
 
   if (fromChain === SOLANA_CHAIN_ID) {
@@ -123,14 +123,14 @@ export async function executeLifiStep(
   return hash
 }
 
-/** 查询跨链转账状态（源链 → 目标链） */
+/** Query cross-chain transfer status (source → destination) */
 export async function getLifiStatus(txHash: string, fromChain: number, toChain: number, tool?: string): Promise<StatusResponse> {
   const q = new URLSearchParams({ txHash, fromChain: String(fromChain), toChain: String(toChain) })
   if (tool) q.set('bridge', tool)
   return lifiGet<StatusResponse>('status', q.toString())
 }
 
-/** 按链搜索代币（名称 / 符号 / 地址） */
+/** Search tokens by chain (name / symbol / address) */
 export async function searchLifiTokens(chainId: number | undefined, search: string, limit = 25): Promise<ChainToken[]> {
   const q = new URLSearchParams({ limit: String(limit) })
   if (chainId) q.set('chains', String(chainId))
@@ -139,7 +139,7 @@ export async function searchLifiTokens(chainId: number | undefined, search: stri
   return Object.values(res.tokens).flat().map(lifiToChainToken)
 }
 
-/** 单个代币信息（含价格） */
+/** Single token info (with price) */
 export async function getLifiToken(chainId: number, address: string): Promise<ChainToken> {
   const t = await lifiGet<LifiToken>('token', `chain=${chainId}&token=${encodeURIComponent(address)}`)
   return lifiToChainToken(t)
@@ -149,7 +149,7 @@ function lifiToChainToken(t: LifiToken): ChainToken {
   return { chainId: t.chainId, address: t.address, symbol: t.symbol, name: t.name, decimals: t.decimals, logo: t.logoURI, priceUsd: Number(t.priceUSD || 0) || undefined }
 }
 
-/** 路线摘要，供 UI 展示 */
+/** Route summary, for UI display */
 export function summarizeStep(step: LiFiStep) {
   const est = step.estimate
   const feeUsd = (est.feeCosts || []).filter((f) => !f.included).reduce((s, f) => s + Number(f.amountUSD || 0), 0)

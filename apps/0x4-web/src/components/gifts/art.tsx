@@ -1,28 +1,28 @@
-// 礼物贴纸插画：每个礼物一张 64×64 的内联 SVG。
-// 每张图分两部分：sil 是外轮廓（只有形状，不写颜色），外层包装拿它描一圈深色投影和一圈白边做成贴纸感；
-// art 是真正的彩色画面。p 是本实例的 id 前缀，所有渐变 / 裁剪的 id 都要带上，同页多个实例才不会串。
+// Gift sticker art: one inline 64×64 SVG per gift.
+// Each artwork has two parts: sil is the silhouette (shape only, no colors); the outer wrapper strokes it with a dark drop shadow and a white edge for a sticker feel;
+// art is the real full-color artwork. p is this instance's id prefix — every gradient / clip id must carry it so multiple instances on one page don't collide.
 import type { ReactNode } from 'react'
 
 export interface GiftArt {
-  /** 外轮廓。sw = 描边宽度（64 坐标系下），带缩放的子元素要自己除以缩放倍数 */
+  /** Outer contour. sw = stroke width (in the 64-unit coordinate system); scaled children must divide by their own scale factor */
   sil: (sw: number) => ReactNode
   art: ReactNode
 }
 
 const INK = '#1a1b20'
 
-/** 四角闪光 */
+/** Corner sparkles */
 export const star = (cx: number, cy: number, r: number) =>
   `M${cx} ${cy - r}Q${cx} ${cy} ${cx + r} ${cy}Q${cx} ${cy} ${cx} ${cy + r}Q${cx} ${cy} ${cx - r} ${cy}Q${cx} ${cy} ${cx} ${cy - r}Z`
 
-// ---------- 0x4 飞机耳猫头（沿用 public/icons/cat.svg 的原始路径，120 坐标系，中心约在 60,65） ----------
+// ---------- 0x4 airplane-ear cat head (reuses the original paths from public/icons/cat.svg, 120 coordinate system, center around 60,65) ----------
 const EAR_L = 'M33 34 L12 44 Q9 46 12 48 L25 55 Z'
 const EAR_R = 'M87 34 L108 44 Q111 46 108 48 L95 55 Z'
 const FACE = 'M60 26 C85 26 102 42 102 64 C102 88 84 104 60 104 C36 104 18 88 18 64 C18 42 35 26 60 26 Z'
 
 function catTf(x: number, y: number, s: number) { return `translate(${x} ${y}) scale(${s}) translate(-60 -65)` }
 
-/** 猫头轮廓（给 sil 用） */
+/** Cat-head outline (for sil) */
 function CatSil({ x, y, s, sw }: { x: number; y: number; s: number; sw: number }) {
   return (
     <g transform={catTf(x, y, s)} strokeWidth={sw / s}>
@@ -31,8 +31,8 @@ function CatSil({ x, y, s, sw }: { x: number; y: number; s: number; sw: number }
   )
 }
 
-/** 猫头本体。bold：小尺寸时加粗五官 */
-function Cat({ p, x, y, s, bold, dy = 0, children }: { p: string; x: number; y: number; s: number; bold?: boolean; /** 五官整体下移（给头带腾位置） */ dy?: number; children?: ReactNode }) {
+/** The cat head itself. bold: thicken facial features at small sizes */
+function Cat({ p, x, y, s, bold, dy = 0, children }: { p: string; x: number; y: number; s: number; bold?: boolean; /** Facial features shift down as a whole (making room for the headband) */ dy?: number; children?: ReactNode }) {
   const w = bold ? 8 : 5
   return (
     <g transform={catTf(x, y, s)}>
@@ -55,7 +55,7 @@ function Cat({ p, x, y, s, bold, dy = 0, children }: { p: string; x: number; y: 
   )
 }
 
-// ---------- 韭菜：一捆被割过的韭菜，切口平平的，还在傻笑 ----------
+// ---------- Harvested leeks: a bundle of cut leeks with a flat cut, still grinning ----------
 const LEEK_TOPS = [0, 1, 2, 3, 4].map((i) => {
   const tx = 13 + i * 9.5, ty = 11 + Math.abs(i - 2) * 1.6
   const bx = 25.2 + i * 3.4
@@ -77,25 +77,25 @@ const leek = (p: string): GiftArt => ({
         <linearGradient id={`${p}w`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f4ffe6" /><stop offset="1" stopColor="#d6ecc4" /></linearGradient>
         <linearGradient id={`${p}r`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ff6b81" /><stop offset="1" stopColor="#d9214a" /></linearGradient>
       </defs>
-      {/* 白色根部 */}
+      {/* White roots */}
       <path d="M24.5 44 H39.5 L38.5 57 Q32 59.5 25.5 57 Z" fill={`url(#${p}w)`} />
       <path d="M28 46 V56.5 M32 46 V57.5 M36 46 V56.5" stroke="#b9d9a0" strokeWidth="1" strokeLinecap="round" />
-      {/* 叶片：中间的压在两边上面 */}
+      {/* Blades: the middle one overlaps the two sides */}
       {[0, 4, 1, 3, 2].map((i) => {
         const b = LEEK_TOPS[i]
         return (
           <g key={i}>
             <path d={b.d} fill={`url(#${i % 2 ? `${p}g2` : `${p}g`})`} stroke="#1f7a33" strokeOpacity=".35" strokeWidth=".8" strokeLinejoin="round" />
             <path d={`M${b.tx - 2.2} ${b.ty + 2} L${b.bx - 1.2} 39`} stroke="#fff" strokeOpacity=".45" strokeWidth="1.3" strokeLinecap="round" />
-            {/* 切口 */}
+            {/* Cut */}
             <ellipse cx={b.tx} cy={b.ty} rx="5.4" ry="1.7" fill="#e9ffd2" stroke="#7cc85a" strokeWidth=".7" />
           </g>
         )
       })}
-      {/* 捆绳 */}
+      {/* Binding rope */}
       <rect x="22" y="37" width="20" height="8" rx="3" fill={`url(#${p}r)`} />
       <rect x="24" y="38.3" width="16" height="1.8" rx=".9" fill="#fff" opacity=".45" />
-      {/* 脸：眯眼傻笑 + 腮红 + 一滴汗 */}
+      {/* Face: squinting grin + blush + one sweat drop */}
       <g fill="none" stroke={INK} strokeWidth="2" strokeLinecap="round">
         <path d="M24.6 25.5 Q27.2 22 29.8 25.5" />
         <path d="M34.2 25.5 Q36.8 22 39.4 25.5" />
@@ -109,7 +109,7 @@ const leek = (p: string): GiftArt => ({
   ),
 })
 
-// ---------- 大阳线：一根粗壮发亮的绿 K 线 ----------
+// ---------- Big green candle: one thick glowing green K-line ----------
 const candle = (p: string): GiftArt => ({
   sil: () => (
     <>
@@ -136,9 +136,9 @@ const candle = (p: string): GiftArt => ({
   ),
 })
 
-// ---------- 冲：绑「冲」字头带的飞机耳猫，眼神坚定，背后速度线 ----------
+// ---------- Charge: plane-ear cat wearing a "charge" headband, determined stare, speed lines behind ----------
 const CX = 38, CY = 35, CS = 0.48
-/** 「冲」字，猫头坐标系（120）里，中心约在 60,39 */
+/** The glyph being drawn, in the cat-head coordinate system (120), centered around 60,39 */
 const CHONG = 'M49.5 31.2 L52 33.2 M49 39.6 L52.3 36.3 M55.5 32.6 H69.5 V38.2 H55.5 Z M62.5 29.4 V41.4'
 const fire = (p: string): GiftArt => ({
   sil: (sw) => (
@@ -158,26 +158,26 @@ const fire = (p: string): GiftArt => ({
       </defs>
       <g fill="#ff9f43"><rect x="2" y="27" width="11" height="3.2" rx="1.6" /><rect x="0.5" y="35" width="10" height="3.2" rx="1.6" /><rect x="3" y="43" width="9" height="3.2" rx="1.6" /></g>
       <g transform={catTf(CX, CY, CS)}>
-        {/* 头带飘带（在头后面） */}
+        {/* Headband ribbons (behind the head) */}
         <path d="M21 36 L-8 23 L-3 35 L-15 40 L19 45 Z" fill={`url(#${p}r)`} stroke="#8e0b20" strokeOpacity=".4" strokeWidth="1.5" strokeLinejoin="round" />
       </g>
       <Cat p={p} x={CX} y={CY} s={CS} dy={5}>
-        {/* 头带 */}
+        {/* Headband */}
         <g clipPath={`url(#${p}c)`}>
           <path d="M10 31 Q60 19 110 31 L110 48 Q60 36 10 48 Z" fill={`url(#${p}r)`} />
           <path d="M10 33 Q60 21.5 110 33" stroke="#fff" strokeOpacity=".4" strokeWidth="2" fill="none" />
         </g>
         <path d={CHONG} stroke="#fff" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        {/* 结 */}
+        {/* Knot */}
         <circle cx="21" cy="40" r="6" fill="#c8102e" stroke="#8e0b20" strokeOpacity=".4" strokeWidth="1.5" />
-        {/* 倒八字眉：认真 */}
+        {/* Angled-down brows: serious */}
         <path d="M30 46.5 L46 53 M74 53 L90 46.5" stroke={INK} strokeWidth="6" strokeLinecap="round" />
       </Cat>
     </>
   ),
 })
 
-// ---------- 火箭：舷窗里坐着 0x4 猫 ----------
+// ---------- Rocket: the 0x4 cat sits in the porthole ----------
 const ROCKET_BODY = 'M32 5 C40 10 43 20 43 32 L43 44 Q32 48 21 44 L21 32 C21 20 24 10 32 5 Z'
 const rocket = (p: string): GiftArt => ({
   sil: () => (
@@ -223,7 +223,7 @@ const rocket = (p: string): GiftArt => ({
   ),
 })
 
-// ---------- 登月：月亮上插一面猫头旗 ----------
+// ---------- Moon landing: a cat-head flag planted on the moon ----------
 const FLAG = 'M36 6 Q47 2.5 59 6.5 L59 23 Q47 19 36 22.5 Z'
 const moon = (p: string): GiftArt => ({
   sil: () => (
@@ -256,7 +256,7 @@ const moon = (p: string): GiftArt => ({
   ),
 })
 
-// ---------- 钻石手：握拳的钻石手 ----------
+// ---------- Diamond hands: a clenched diamond hand ----------
 const FINGERS = [13.5, 23, 32.5, 42]
 const THUMB = 'M12 40 Q12 33.5 18 33.5 L38 35.5 Q44.5 36.3 44.5 41 Q44.5 46 38.5 46 L18 46 Q12 46 12 40 Z'
 const diamond = (p: string): GiftArt => ({
@@ -275,13 +275,13 @@ const diamond = (p: string): GiftArt => ({
         <linearGradient id={`${p}d`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f2fdff" /><stop offset=".45" stopColor="#8fdcff" /><stop offset="1" stopColor="#3f8cf0" /></linearGradient>
         <linearGradient id={`${p}d2`} x1="1" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#dff8ff" /><stop offset=".5" stopColor="#74c8ff" /><stop offset="1" stopColor="#3a7fe0" /></linearGradient>
       </defs>
-      {/* 手腕 */}
+      {/* Wrist */}
       <rect x="21" y="44" width="22" height="16" rx="3" fill={`url(#${p}d2)`} />
       <path d="M21 52 L32 46 L43 53 M32 46 V60" stroke="#fff" strokeOpacity=".6" strokeWidth=".9" fill="none" />
-      {/* 手背 */}
+      {/* Back of hand */}
       <rect x="12" y="22" width="40" height="28" rx="8" fill={`url(#${p}d)`} />
       <path d="M12.5 44 L24 30 L40 48 L52 30" stroke="#fff" strokeOpacity=".55" strokeWidth=".9" fill="none" />
-      {/* 四根手指，每根切出亮面和暗面 */}
+      {/* Four fingers, each cut with a lit face and a dark face */}
       {FINGERS.map((x, i) => (
         <g key={x}>
           <rect x={x} y="12" width="9.5" height="24" rx="4.75" fill={`url(#${i % 2 ? `${p}d2` : `${p}d`})`} stroke="#2f74cf" strokeOpacity=".45" strokeWidth=".8" />
@@ -290,7 +290,7 @@ const diamond = (p: string): GiftArt => ({
           <path d={`M${x + 1} ${20} L${x + 4.75} ${25} L${x + 4.75} ${35.4}`} stroke="#fff" strokeOpacity=".7" strokeWidth=".8" fill="none" />
         </g>
       ))}
-      {/* 拇指 */}
+      {/* Thumb */}
       <path d={THUMB} fill={`url(#${p}d2)`} stroke="#2f74cf" strokeOpacity=".45" strokeWidth=".8" />
       <path d="M14 38.5 L22 35 L30 40.5 L38 36.2 L43.5 40.5" stroke="#fff" strokeOpacity=".85" strokeWidth="1" fill="none" strokeLinejoin="round" />
       <path d="M16 36.2 L22 35 L19 40 Z" fill="#fff" opacity=".8" />
@@ -301,7 +301,7 @@ const diamond = (p: string): GiftArt => ({
   ),
 })
 
-// ---------- 巨鲸：圆滚滚的蓝鲸，喷出来的是金币 ----------
+// ---------- Whale: a chubby blue whale spouting gold coins ----------
 const WHALE = 'M6 43 C6 32 16 26 29 26 C41 26 50 33 51 42 C54 40 56 35 55 31 C52 30 50 27.5 50.5 24.5 C53.5 25.5 56 27.5 57.5 29.5 C58.5 26.5 60.5 24.5 63 24 C63 29 61 33 58.5 35 C58 46 50 57 30 57 C15 57 6 52 6 43 Z'
 const coin = (p: string, cx: number, cy: number, r: number, rot: number) => (
   <g transform={`rotate(${rot} ${cx} ${cy})`}>
@@ -327,7 +327,7 @@ const whale = (p: string): GiftArt => ({
         <clipPath id={`${p}k`}><path d={WHALE} /></clipPath>
         <radialGradient id={`${p}h`} cx=".3" cy=".25" r=".6"><stop offset="0" stopColor="#fff" stopOpacity=".55" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
       </defs>
-      {/* 水柱 */}
+      {/* Water jet */}
       <path d="M24.5 27 Q22 19 17 14 L21 13 Q25 17 27 22 Q28.5 16 33 12 L37 13.5 Q31 19 30 27 Z" fill="#9ee0ff" />
       <path d="M26 25 Q24 19 20 15" stroke="#fff" strokeOpacity=".8" strokeWidth="1" fill="none" strokeLinecap="round" />
       <path d={WHALE} fill={`url(#${p}b)`} />
@@ -336,7 +336,7 @@ const whale = (p: string): GiftArt => ({
         <path d="M10 51.5 Q26 55 42 51.5 M12 54.5 Q26 58 40 54.5" stroke="#9ccbee" strokeWidth=".9" fill="none" />
         <ellipse cx="20" cy="34" rx="14" ry="8" fill={`url(#${p}h)`} />
       </g>
-      {/* 眼睛、笑、腮红 */}
+      {/* Eyes, smile, blush */}
       <circle cx="18.5" cy="40" r="3" fill={INK} />
       <circle cx="19.5" cy="38.9" r="1.1" fill="#fff" />
       <path d="M10.5 45.5 Q15 49 20 46.5" stroke={INK} strokeWidth="1.7" fill="none" strokeLinecap="round" />
@@ -349,9 +349,9 @@ const whale = (p: string): GiftArt => ({
   ),
 })
 
-// ---------- 兰博：金紫低趴超跑侧面（无任何车标） ----------
+// ---------- Lambo: gold-purple low-slung supercar side profile (no badges) ----------
 const CAR = 'M2 41 L3.2 38.4 L20 34 L31.5 28.4 Q34 27.6 42 27.8 L57 32 Q61 33 61.8 35.5 L61.8 41.2 Q61.8 44 58.8 44 L5 44 Q2 44 2 41 Z'
-// 车头朝右（镜像），整体略微抬头；车身缩一点给车尾的速度线腾位置
+// Nose pointing right (mirrored), the whole car tilting slightly up; the body shrinks a bit to make room for the speed lines at the tail
 const CAR_TF = 'translate(64 -4) scale(-1 1) rotate(7 32 36)'
 const CAR_S = 'translate(29 38) scale(.94) translate(-30 -38)'
 const lambo = (p: string): GiftArt => ({
@@ -376,20 +376,20 @@ const lambo = (p: string): GiftArt => ({
       <g transform={CAR_TF}>
         <g fill="#c084fc"><rect x="58.5" y="30.5" width="7.5" height="2.6" rx="1.3" /><rect x="60" y="36.5" width="5.5" height="2.6" rx="1.3" /></g>
         <g transform={CAR_S}>
-        {/* 尾翼 */}
+        {/* Tail fin */}
         <rect x="56.2" y="28.6" width="2" height="4" fill="#5b21b6" />
         <rect x="53" y="26.6" width="9.5" height="3" rx="1.2" fill={`url(#${p}s)`} />
         <path d={CAR} fill={`url(#${p}g)`} stroke="#a86400" strokeOpacity=".45" strokeWidth=".8" strokeLinejoin="round" />
-        {/* 车窗 */}
+        {/* Windows */}
         <path d="M23 34.2 L32.2 29.4 Q34.6 28.7 41.6 28.9 L52.6 32.4 L23.5 34.8 Z" fill={`url(#${p}v)`} />
         <path d="M31 30.6 L28.5 33.4" stroke="#fff" strokeOpacity=".7" strokeWidth="1.2" strokeLinecap="round" />
         <path d="M42 29 L41 33.4" stroke="#ffcf2e" strokeWidth="1.1" />
-        {/* 腰线 + 进气口 */}
+        {/* Waistline + air intakes */}
         <path d="M5.5 39 L58 36.4 L61 38.4 L5.5 41.4 Z" fill={`url(#${p}s)`} />
         <path d="M44 35.2 L54.5 34.4 L52 37.2 Z" fill="#3b0764" opacity=".75" />
         <path d="M6 37.4 L19.5 34.4" stroke="#fff" strokeOpacity=".8" strokeWidth="1.2" strokeLinecap="round" />
         <path d="M3.8 39.2 L8 38.5" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
-        {/* 轮子 */}
+        {/* Wheels */}
         {[16, 50].map((x) => (
           <g key={x}>
             <circle cx={x} cy="44" r="7.2" fill={INK} />
@@ -406,7 +406,7 @@ const lambo = (p: string): GiftArt => ({
   ),
 })
 
-// ---------- 通用礼盒（未知 id 时用） ----------
+// ---------- Generic gift box (used for unknown ids) ----------
 const box = (p: string): GiftArt => ({
   sil: () => (
     <>

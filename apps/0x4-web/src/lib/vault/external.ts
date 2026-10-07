@@ -1,11 +1,11 @@
-// 网页版连外部钱包（2026-09-30 goat：MetaMask、Phantom 等也能连进来用；合约交易等是 0x4 Wallet 专属，用来推 0x4 Wallet）。
+// Web connects external wallets (2026-09-30 goat: MetaMask, Phantom, etc. can all connect and be used; perps and the like stay 0x4 Wallet-exclusive to promote 0x4 Wallet).
 //
-// · 发现：EIP-6963（浏览器里每个钱包扩展自己公告名字、图标、rdns），不抢也不读 window.ethereum。0x4 插件自己也公告，这里排除掉
-//   （0x4 插件走 window.ox4 那一套，连接弹窗里单独放第一个）。
-// · 签名：外部钱包只给 EIP-1193（personal_sign / eth_signTypedData_v4 / eth_sendTransaction），私钥在它自己那里，每笔都由它弹窗确认。
-//   外部钱包不支持「签好交易交回来」（eth_signTransaction），所以发交易改走 eth_sendTransaction（lib/evm.ts walletClientFor）。
-// · Phantom：EVM 走上面这套；它另外有 Solana（window.phantom.solana），能接就一起接上，Solana 现货也能用。
-// · 外部钱包能用：登录、行情、社区、发动态、关注、现货买卖。0x4 Wallet 专属：合约交易、网页快捷交易、私信、小精灵全自动、比特币（desktop/Ox4Only.tsx）。
+// · Discovery: EIP-6963 (each wallet extension in the browser announces its own name, icon, and rdns) — never fight over or read window.ethereum. The 0x4 extension announces too, and is excluded here
+//   (the 0x4 extension uses the window.ox4 flow and gets its own first slot in the connect dialog).
+// · Signing: external wallets only expose EIP-1193 (personal_sign / eth_signTypedData_v4 / eth_sendTransaction); keys stay with them and every tx is confirmed in their own popup.
+//   External wallets don't support "sign and hand the tx back" (eth_signTransaction), so sending goes through eth_sendTransaction instead (lib/evm.ts walletClientFor).
+// · Phantom: EVM follows the flow above; it additionally exposes Solana (window.phantom.solana) — connect it too when available so Solana spot works as well.
+// · External wallets can: log in, view markets, use community, post, follow, spot-trade. 0x4 Wallet exclusives: perps, web quick-trade, DMs, fully-auto sprites, Bitcoin (desktop/Ox4Only.tsx).
 import { create } from 'zustand'
 import { toAccount } from 'viem/accounts'
 import { toHex, type Hex } from 'viem'
@@ -13,7 +13,7 @@ import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js'
 import type { SolanaWallet } from './signers'
 import { t } from '@/lib/i18n'
 
-/** 0x4 插件在 EIP-6963 里公告的 rdns（extension/src/inpage/index.ts），连接弹窗里不和第三方钱包列在一起 */
+/** The rdns the 0x4 extension announces via EIP-6963 (extension/src/inpage/index.ts); not listed alongside third-party wallets in the connect dialog */
 export const OX4_RDNS = 'meme.420.wallet'
 
 export interface Eip1193Provider {
@@ -24,12 +24,12 @@ export interface Eip1193Provider {
 export interface WalletInfo { uuid: string; name: string; icon: string; rdns: string }
 export interface WalletDetail { info: WalletInfo; provider: Eip1193Provider }
 
-// ---------- EIP-6963 发现 ----------
+// ---------- EIP-6963 discovery ----------
 
-/** 常见钱包的先后顺序（其余按名字排）。只影响列表顺序，0x4 Wallet 永远单独放在最上面 */
+/** Ordering for well-known wallets (the rest sort by name). Only affects list order — 0x4 Wallet always sits alone at the top */
 const PREFERRED = ['io.metamask', 'app.phantom', 'io.rabby', 'com.okex.wallet', 'com.coinbase.wallet', 'com.trustwallet.app', 'com.bitget.web3', 'com.binance.wallet']
 
-/** 排序 + 去重（同一个钱包重复公告只留一个）+ 排除 0x4 插件和没名字的 */
+/** Sort + dedupe (one entry per wallet that announces twice) + exclude the 0x4 extension and nameless ones */
 export function sortWallets(list: WalletDetail[]): WalletDetail[] {
   const seen = new Set<string>()
   const out: WalletDetail[] = []
@@ -43,8 +43,8 @@ export function sortWallets(list: WalletDetail[]): WalletDetail[] {
   return out.sort((a, b) => rank(a) - rank(b) || a.info.name.localeCompare(b.info.name))
 }
 
-/** 钱包公告的图标只收 data:image（svg / png / webp），别的地址不拿来当 <img src>（防它借图标请求外部地址）。
- *  先去掉首尾空白：Phantom 公告的图标开头带一个换行（2026-10-03 goat 发现它没 logo），原样检查会被当成不合规丢掉 */
+/** Wallet-announced icons accept only data:image (svg / png / webp); other URLs are never used as <img src> (so icons can't be abused to hit external addresses).
+ *  Trim whitespace first: Phantom's announced icon starts with a newline (2026-10-03 goat found it had no logo) — checking it raw would wrongly discard it as non-compliant */
 export function safeIcon(icon: string | undefined): string | null {
   const v = typeof icon === 'string' ? icon.trim() : ''
   return /^data:image\/(svg\+xml|png|webp|jpeg|gif)[;,]/i.test(v) && v.length < 200_000 ? v : null
@@ -54,7 +54,7 @@ interface DiscoveryState { wallets: WalletDetail[] }
 export const useWalletDiscovery = create<DiscoveryState>()(() => ({ wallets: [] }))
 
 let discovering = false
-/** 开始收钱包公告（只挂一次监听），并请所有钱包重新公告一次 */
+/** Start collecting wallet announcements (listener attached once) and ask all wallets to re-announce */
 export function discoverWallets(): void {
   if (typeof window === 'undefined') return
   if (!discovering) {
@@ -62,14 +62,14 @@ export function discoverWallets(): void {
     window.addEventListener('eip6963:announceProvider', (e: Event) => {
       const detail = (e as CustomEvent<WalletDetail>).detail
       if (!detail?.info || !detail.provider) return
-      // 新公告放前面：同一个钱包重新公告（扩展重载后 provider 对象换了）时留新的那个
+      // New announcements go first: when the same wallet re-announces (provider object replaced after an extension reload), keep the new one
       useWalletDiscovery.setState((s) => ({ wallets: sortWallets([detail, ...s.wallets]) }))
     })
   }
   window.dispatchEvent(new Event('eip6963:requestProvider'))
 }
 
-/** 按 rdns 找已发现的钱包（刷新页面后恢复上次连的钱包用）；刚打开页面公告可能还没到，最多等 timeoutMs */
+/** Find a discovered wallet by rdns (used to restore the last-connected wallet after refresh); announcements may not have arrived right after page open — wait up to timeoutMs */
 export async function findWallet(rdns: string, timeoutMs = 800): Promise<WalletDetail | null> {
   discoverWallets()
   const pick = () => useWalletDiscovery.getState().wallets.find((w) => w.info.rdns === rdns) ?? null
@@ -78,9 +78,9 @@ export async function findWallet(rdns: string, timeoutMs = 800): Promise<WalletD
   return pick()
 }
 
-// ---------- 错误 ----------
+// ---------- Errors ----------
 
-/** 外部钱包的 4001（用户拒绝）按「已取消」处理：名字 UnlockCancelled，lib/errors isUserCancel 认得，界面不弹红字 */
+/** An external wallet's 4001 (user rejected) is treated as "cancelled": named UnlockCancelled, recognized by lib/errors isUserCancel, no red error toast */
 export class ExternalWalletError extends Error {
   code: number
   constructor(code: number, message: string) {
@@ -97,11 +97,11 @@ export async function walletRequest<T>(p: Eip1193Provider, method: string, param
   }
 }
 
-// ---------- 链切换 ----------
+// ---------- Chain switching ----------
 
 export interface ChainParams { chainId: number; name: string; rpcUrl: string; nativeSymbol: string; explorer?: string }
 
-/** 发交易前把钱包切到要用的链；钱包里没有这条链（4902）就先请它加上 */
+/** Switch the wallet to the needed chain before sending; when the wallet lacks the chain (4902), ask it to add the chain first */
 export async function ensureChain(p: Eip1193Provider, c: ChainParams): Promise<void> {
   const want = toHex(c.chainId)
   const cur = await walletRequest<string>(p, 'eth_chainId').catch(() => '')
@@ -117,19 +117,19 @@ export async function ensureChain(p: Eip1193Provider, c: ChainParams): Promise<v
   if (typeof now !== 'string' || now.toLowerCase() !== want.toLowerCase()) throw new ExternalWalletError(4901, t('请在钱包里切换到 {chain}', { chain: c.name }))
 }
 
-// ---------- EVM 账户 ----------
+// ---------- EVM account ----------
 
-/** viem 账户上挂的标记：lib/evm.ts 看到它就改用 eth_sendTransaction 让外部钱包自己发 */
+/** Marker hung on the viem account: lib/evm.ts sees it and switches to eth_sendTransaction so the external wallet sends itself */
 export interface ExternalMark { provider: Eip1193Provider; name: string }
 export const externalOf = (account: unknown): ExternalMark | null => {
   const m = (account as { ox4External?: ExternalMark } | null)?.ox4External
   return m && typeof m.provider?.request === 'function' ? m : null
 }
 
-/** 结构化数据整份交给钱包（它按字段显示给用户），bigint 转成十进制字符串 */
+/** Structured data is handed to the wallet whole (it renders it field-by-field to the user); bigints become decimal strings */
 const typedDataJson = (td: unknown) => JSON.stringify(td, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))
 
-/** 外部钱包的 viem 账户：签文字消息、签结构化数据；发交易由 lib/evm.ts 走 eth_sendTransaction（不支持「只签不发」） */
+/** The external wallet's viem account: signs text messages and structured data; sending goes through lib/evm.ts via eth_sendTransaction ("sign-only" unsupported) */
 export function eip1193Account(p: Eip1193Provider, address: string, name: string) {
   const acc = toAccount({
     address: address as Hex,
@@ -141,14 +141,14 @@ export function eip1193Account(p: Eip1193Provider, address: string, name: string
       return walletRequest<Hex>(p, 'eth_signTypedData_v4', [address, typedDataJson(typedData)])
     },
     async signTransaction() {
-      // 走不到这里：lib/evm.ts 的 walletClientFor 对外部钱包用 eth_sendTransaction
+      // Unreachable: lib/evm.ts's walletClientFor uses eth_sendTransaction for external wallets
       throw new ExternalWalletError(4200, t('这个钱包不支持这项操作'))
     },
   })
   return Object.assign(acc, { ox4External: { provider: p, name } as ExternalMark })
 }
 
-// ---------- Phantom 的 Solana ----------
+// ---------- Phantom's Solana ----------
 
 export interface PhantomSolana {
   isPhantom?: boolean
@@ -159,7 +159,7 @@ export interface PhantomSolana {
   on?(event: string, cb: (...a: unknown[]) => void): unknown
 }
 
-/** 选的是 Phantom（rdns app.phantom）时，它的 Solana 接口 */
+/** Its Solana interface, when Phantom (rdns app.phantom) is selected */
 export function phantomSolana(rdns: string): PhantomSolana | null {
   if (rdns !== 'app.phantom' || typeof window === 'undefined') return null
   const s = (window as unknown as { phantom?: { solana?: PhantomSolana } }).phantom?.solana
@@ -167,8 +167,8 @@ export function phantomSolana(rdns: string): PhantomSolana | null {
 }
 
 /**
- * Phantom 的 Solana 签名器，形状同 lib/vault/signers 的 SolanaWallet。
- * Phantom 签完返回的是新的交易对象，我们的发送代码（lib/rpc.ts 等）用的是原来那个，所以把签名挂回原交易上
+ * Phantom's Solana signer, shaped like lib/vault/signers' SolanaWallet.
+ * Phantom returns a new transaction object after signing, but our send code (lib/rpc.ts etc.) uses the original — so the signature is attached back onto the original transaction
  */
 export function phantomSolanaWallet(s: PhantomSolana, address: string): SolanaWallet {
   const publicKey = new PublicKey(address)

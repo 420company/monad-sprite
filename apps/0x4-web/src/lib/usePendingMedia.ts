@@ -1,6 +1,6 @@
-// 正在发送的图片 / 视频（微信式）：选完立刻以「发送中」出现在聊天列表里（本机预览 + 圆形进度），
-// 上传完成、消息发出后换成正式消息；失败的留在列表里显示红色感叹号，点一下重发（已传完的不再重传）。
-// 群聊和私信共用：upload 负责传一个文件（群聊明文上传，私信加密后上传），send 负责把整组发成一条消息。
+// Sending images / videos (WeChat-style): appear in the chat list as "sending" the moment they're picked (local preview + circular progress),
+// swapped for the official message after upload + send; failures stay in the list with a red exclamation — tap to resend (finished uploads aren't re-uploaded).
+// Shared by groups and DMs: upload sends one file (plaintext for groups, encrypted for DMs); send posts the whole set as one message.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mapLimit, mediaKindOf, UPLOAD_CONCURRENCY, type MediaKind } from './multiMedia'
 import { toast } from '@/components/Toast'
@@ -10,19 +10,19 @@ import { errorText } from '@/lib/errors'
 export interface PendingFile { file: File; kind: MediaKind; local: string }
 export interface PendingAlbum<U> {
   id: string; ts: number; items: PendingFile[]
-  /** 每个文件的上传进度 0~1 */
+  /** Per-file upload progress 0–1 */
   progress: number[]
-  /** 已上传完的结果；重发时跳过这些 */
+  /** Finished upload results; skipped on resend */
   results: (U | undefined)[]
   state: 'uploading' | 'sending' | 'failed'
 }
 
-/** 发出去之后等服务器回显的时间，超过算失败（群聊没有回执，只能看回显） */
+/** How long to wait for the server echo after sending; past that counts as failed (groups have no ack — only the echo) */
 const ECHO_TIMEOUT = 20_000
 
 export function usePendingMedia<U>(opts: {
   upload: (f: PendingFile, onProgress: (p: number) => void) => Promise<U>
-  /** 'done'：消息已进列表（私信本地先显示），直接去掉；'await'：等回显，调用 confirm 去掉 */
+  /** 'done': message already in the list (DMs show locally first) — remove directly; 'await': waiting for echo, call confirm to remove */
   send: (album: PendingAlbum<U>, results: U[]) => Promise<'done' | 'await'>
 }) {
   const [list, setList] = useState<PendingAlbum<U>[]>([])
@@ -71,7 +71,7 @@ export function usePendingMedia<U>(opts: {
     }
   }, [patch, remove])
 
-  /** 选好的文件（已按 9 张截好）→ 一条发送中的消息 */
+  /** Picked files (already capped at 9) → one sending message */
   const start = useCallback((files: File[]) => {
     const items = files.flatMap((file) => { const kind = mediaKindOf(file); return kind ? [{ file, kind, local: URL.createObjectURL(file) }] : [] })
     if (!items.length) return

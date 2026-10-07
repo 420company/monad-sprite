@@ -1,5 +1,5 @@
-// 帖子图片：列表里统一显示缩略图（1 张按比例、最高 280；2~4 张网格；超过 4 张第 4 格叠 +N），点开全屏看大图。
-// 宽高已知就按比例先占好位置，图片到了不会把下面的内容顶下去。
+// Post images: lists always show thumbnails (1 keeps aspect ratio, max 280 tall; 2–4 in a grid; beyond 4, the 4th cell overlays +N); tap for fullscreen.
+// When dimensions are known, reserve the space by aspect ratio up front — the image arriving won't push content below down.
 import { useState } from 'react'
 import ImageViewer from './ImageViewer'
 import { SOCIAL_API } from '@/lib/social'
@@ -20,7 +20,7 @@ function Cell({ img, className = '', style, onOpen, children }: { img: PostImage
   )
 }
 
-/** mode=grid：信息流缩略；mode=full：详情页，每张按原比例铺满宽度 */
+/** mode=grid: feed thumbnails; mode=full: detail page, each image full-width at its natural aspect ratio */
 export default function PostImages({ images, mode = 'grid', className = 'mt-3' }: { images: PostImage[]; mode?: 'grid' | 'full'; className?: string }) {
   const [open, setOpen] = useState<number | null>(null)
   if (!images.length) return null
@@ -42,7 +42,7 @@ export default function PostImages({ images, mode = 'grid', className = 'mt-3' }
 
   if (images.length === 1) {
     const img = images[0]
-    // 太高太宽的都裁一下：比例限制在 3:4 ~ 2:1；不知道尺寸的老图按 4:3
+    // Crop anything too tall or too wide: aspect ratio clamped to 3:4 – 2:1; old images with unknown dimensions default to 4:3
     const ratio = img.w && img.h ? Math.min(2, Math.max(3 / 4, img.w / img.h)) : 4 / 3
     return <div className={className}>
       <Cell img={img} onOpen={() => setOpen(0)} className="rounded-lg" style={{ aspectRatio: String(ratio), width: `${Math.round(SINGLE_MAX_H * ratio)}px`, maxWidth: '100%' }} />

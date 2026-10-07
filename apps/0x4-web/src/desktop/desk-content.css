@@ -1,11 +1,13 @@
-/* 网页版内容页样式（2026-09-29，规范 docs/WEB_DESIGN.md）：流媒体、小精灵、社区、排行、我的资产、通知、设置，
-   以及顶栏的通知下拉 / 钱包菜单、电脑端居中模态框（components/Sheet 在网页版宽屏下的外壳）。
-   · 类名前缀 .wc-（web content）与 .desk-pop / .desk-menu / .desk-modal；和交易终端的 .dm-* 分开，互不影响。
-   · 只用 --w-* 色板：实色面板 + 1px 细线，圆角 14，面板间距 16，不加投影（弹出层除外）。
-   · 全部 Geist，数字等宽；像素字只允许出现在小精灵横幅的「CYBER EDEN」角标。
-   · 空状态 = 图标 20 + 一句话 + 一个操作，居中在所属面板里；一页里同一个状态只说一次。 */
+/* Web content-page styles (2026-09-29, spec docs/WEB_DESIGN.md): streaming, fly sprites, community, rankings,
+   my assets, notifications, settings, plus the top bar's notification dropdown / wallet menu and the desktop
+   centered modal (the shell of components/Sheet on wide web).
+   - Class prefixes .wc- (web content) with .desk-pop / .desk-menu / .desk-modal; kept separate from the trading
+     terminal's .dm-*, no interference either way.
+   - Only the --w-* palette: solid panels + 1px hairlines, 14px radius, 16px panel gaps, no shadows (popups excepted).
+   - All Geist, tabular numbers; pixel font only on the "CYBER EDEN" badge of the fly-sprite banner.
+   - Empty state = 20px icon + one line + one action, centered in its panel; the same state is stated once per page. */
 
-/* ============ 基础 ============ */
+/* ============ Base ============ */
 .wc-page { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding-top: 4px; font-family: var(--w-font); color: var(--w-fg); }
 .wc-page .num, .wc-num { font-variant-numeric: tabular-nums; }
 .wc-up { color: var(--w-up); }
@@ -19,17 +21,17 @@
 .wc-dot.is-live { background: var(--w-down); box-shadow: 0 0 0 3px rgb(255 92 108 / .16); }
 .wc-dot.is-warn { background: var(--color-warning); }
 
-/* 页头：标题 28 + 一行说明，右边放页级操作 */
+/* Page header: 28px title + one description line, page-level actions on the right */
 .wc-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 8px 0 4px; }
 .wc-title { font: 600 28px/1.15 var(--w-font); letter-spacing: -.012em; }
 .wc-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; font-size: 13px; color: var(--w-mute); }
 .wc-sub .wc-sep { width: 1px; height: 12px; background: var(--w-line-2); }
 .wc-head-act { display: flex; align-items: center; gap: 8px; flex: none; }
 
-/* 面板 */
+/* Panel */
 .wc-panel { position: relative; min-width: 0; background: var(--w-panel); border: 1px solid var(--w-line); border-radius: 14px; }
 .wc-panel.is-clip { overflow: hidden; }
-/* 网页版单独打开的闪兑（/swap）：中间一块卡片，宽度和弹窗差不多（2026-10-05 goat「不应该就是中间有一个大小合适的闪兑模块吗」） */
+/* Standalone web swap (/swap): a centered card about as wide as a modal (2026-10-05 goat: "shouldn't it just be a right-sized swap module in the middle") */
 .desk-swap { width: 100%; max-width: 480px; margin: 32px auto 48px; padding-bottom: 20px; }
 .wc-ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--w-line); }
 .wc-ph.is-flat { border-bottom: 0; }
@@ -39,14 +41,14 @@
 .wc-ph-meta { font-size: 12px; color: var(--w-mute); white-space: nowrap; }
 .wc-pf { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 20px; border-top: 1px solid var(--w-line); font-size: 12px; color: var(--w-mute); }
 
-/* 区块（卡片网格上方的小标题，不另起面板） */
+/* Section (small heading above a card grid, not its own panel) */
 .wc-sec { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .wc-sec-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
 .wc-sec-t { display: inline-flex; align-items: baseline; gap: 10px; font: 600 16px/1.2 var(--w-font); }
 .wc-sec-t small { font: 400 12px/1 var(--w-font); color: var(--w-mute); }
 .wc-sec-act { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--w-mute); }
 
-/* 按钮：36 常规 / 28 紧凑 / 44 主操作，圆角 8；主操作珍珠渐变黑字，其余实色描边 */
+/* Buttons: 36 regular / 28 compact / 44 primary, 8px radius; primary gets pearl-gradient with black text, the rest solid with outline */
 .wc-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 8px; font: 500 14px/1 var(--w-font); color: var(--w-fg); white-space: nowrap; background: var(--w-raised); border: 1px solid var(--w-line-2); transition: background-color .15s, border-color .15s, color .15s, filter .15s, opacity .15s; }
 .wc-btn:hover:not(:disabled) { background: var(--w-hover); }
 .wc-btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -66,14 +68,14 @@
 .wc-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .wc-link:disabled { opacity: .45; text-decoration: none; }
 
-/* 分段选择（24h / 7d …）：实色胶囊组，选中项深一档 */
+/* Segmented control (24h / 7d): solid capsule group, selected item one shade darker */
 .wc-seg { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 9px; background: var(--w-raised); border: 1px solid var(--w-line); }
 .wc-seg button { height: 28px; padding: 0 12px; border-radius: 6px; font: 500 13px/1 var(--w-font); color: var(--w-mute); white-space: nowrap; transition: color .15s, background-color .15s; }
 .wc-seg button:hover:not(:disabled) { color: var(--w-fg); }
 .wc-seg button[aria-pressed="true"], .wc-seg button[aria-selected="true"] { color: var(--w-fg); background: var(--w-hover); box-shadow: inset 0 0 0 1px var(--w-line); }
 .wc-seg button:disabled { opacity: .45; cursor: not-allowed; }
 
-/* 页签：13px，选中白字 + 2px 下划线，底部 1px 线 */
+/* Tabs: 13px, selected = white text + 2px underline, 1px bottom rule */
 .wc-tabs { display: flex; align-items: stretch; gap: 22px; min-height: 48px; padding: 0 20px; border-bottom: 1px solid var(--w-line); }
 .wc-tabs.is-flat { border-bottom: 0; padding: 0; min-height: 52px; }
 .wc-tabs button { position: relative; display: inline-flex; align-items: center; gap: 6px; font: 500 14px/1 var(--w-font); color: var(--w-mute); white-space: nowrap; transition: color .15s; }
@@ -84,14 +86,14 @@
 .wc-tabs .wc-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: inline-grid; place-items: center; font: 600 11px/1 var(--w-font); color: #0c0e13; background: var(--w-accent); font-variant-numeric: tabular-nums; }
 .wc-tabs-gap { flex: 1; }
 
-/* 输入框：高 40，聚焦描边变强调色 */
+/* Inputs: 40px tall, focus ring turns accent color */
 .wc-input { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 8px; background: var(--w-raised); border: 1px solid var(--w-line-2); color: var(--w-mute); transition: border-color .15s; }
 .wc-input:focus-within { border-color: var(--w-accent); }
 .wc-input input { flex: 1; min-width: 0; height: 100%; background: transparent; border: 0; outline: 0; font: 400 13px/1 var(--w-font); color: var(--w-fg); }
 .wc-input input::placeholder { color: var(--w-faint); }
 .wc-input.is-sm { height: 34px; }
 
-/* 空状态 / 失败 / 未连接：居中在所属面板里 */
+/* Empty / error / disconnected states: centered in their panel */
 .wc-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 36px 24px; text-align: center; font-size: 13px; line-height: 1.55; color: var(--w-mute); }
 .wc-empty > svg { color: var(--w-faint); flex: none; }
 .wc-empty > .wc-btn { margin-top: 4px; }
@@ -101,18 +103,18 @@
 .wc-empty b { color: var(--w-fg); font-weight: 600; }
 .wc-empty.is-loading > svg { animation: spin 1s linear infinite; }
 
-/* 状态条（例：社区没连上，只在中栏顶部出现一次） */
+/* Status strip (e.g. community disconnected — appears once, top of the middle column only) */
 .wc-note { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 8px 6px 14px; border-radius: 10px; background: var(--w-panel); border: 1px solid var(--w-line); font-size: 13px; color: var(--w-mute); }
 .wc-note > span { flex: 1; min-width: 0; }
 .wc-note.is-warn { border-color: rgb(245 190 80 / .28); }
 .wc-note.is-warn > svg { color: var(--color-warning); }
 
-/* 骨架屏：横向流光 */
+/* Skeleton: horizontal shimmer */
 .wc-sk { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--w-raised) 0%, var(--w-hover) 50%, var(--w-raised) 100%); background-size: 200% 100%; animation: wc-sk 1.4s ease-in-out infinite; }
 @keyframes wc-sk { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .wc-sk { animation: none; } }
 
-/* 表格：行高 52（带头像）/ 44，表头 11px 吸顶，数字右对齐 */
+/* Tables: 52px rows (with avatar) / 44, 11px sticky header, numbers right-aligned */
 .wc-tr { display: grid; align-items: center; column-gap: 16px; min-height: 52px; padding: 0 20px; border-bottom: 1px solid var(--w-line); font-size: 13px; color: var(--w-fg); text-align: left; width: 100%; transition: background-color .12s; }
 .wc-tr:last-child { border-bottom: 0; }
 .wc-tr.is-th { position: sticky; top: 0; z-index: 1; min-height: 36px; background: var(--w-panel); font-size: 11px; font-weight: 500; color: var(--w-mute); }
@@ -133,18 +135,18 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .wc-chip.is-warn { color: var(--color-warning); background: rgb(245 190 80 / .08); border-color: rgb(245 190 80 / .22); }
 .wc-chip.is-accent { color: var(--w-accent); background: rgb(205 189 255 / .08); border-color: rgb(205 189 255 / .22); }
 
-/* 名次：前三名奖牌色 */
+/* Ranks: medal colors for the top three */
 .wc-rank { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font: 600 12px/1 var(--w-font); color: var(--w-mute); font-variant-numeric: tabular-nums; }
 .wc-rank.is-1 { color: #f1c14b; background: rgb(241 193 75 / .12); box-shadow: inset 0 0 0 1px rgb(241 193 75 / .35); }
 .wc-rank.is-2 { color: #c7ced8; background: rgb(199 206 216 / .1); box-shadow: inset 0 0 0 1px rgb(199 206 216 / .3); }
 .wc-rank.is-3 { color: #d8905a; background: rgb(216 144 90 / .1); box-shadow: inset 0 0 0 1px rgb(216 144 90 / .32); }
 
-/* 关注按钮（共用 FollowButton）在网页版表格里换成紧凑实色按钮 */
+/* Follow button (shared FollowButton) becomes a compact solid button in web tables */
 .wc-follow > button { height: 28px; padding: 0 12px; border-radius: 7px; font: 500 12px/1 var(--w-font); background: var(--w-raised); color: var(--w-fg); border: 1px solid var(--w-line-2); }
 .wc-follow > button:hover:not(:disabled) { background: var(--w-hover); }
 .wc-follow > button.bg-card2 { color: var(--w-mute); border-color: var(--w-line); }
 
-/* ============ 电脑端居中模态框（components/Sheet 在网页版宽屏下的外壳） ============ */
+/* ============ Desktop centered modal (shell of components/Sheet on wide web) ============ */
 .desk-modal { background: var(--w-panel); border: 1px solid var(--w-line-2); color: var(--w-fg); font-family: var(--w-font); box-shadow: 0 30px 80px rgb(0 0 0 / .55); }
 .desk-modal-head { display: flex; align-items: center; gap: 12px; flex: none; height: 56px; padding: 0 12px 0 20px; border-bottom: 1px solid var(--w-line); }
 .desk-modal-head h2 { font: 600 16px/1.2 var(--w-font); }
@@ -152,14 +154,14 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .desk-modal-x:hover:not(:disabled) { color: var(--w-fg); background: var(--w-raised); }
 .desk-modal [data-sheet-content] { scrollbar-width: thin; }
 
-/* ============ 顶栏弹出层：通知下拉、钱包菜单 ============ */
+/* ============ Top-bar popovers: notification dropdown, wallet menu ============ */
 .desk-pop-wrap { position: relative; display: inline-flex; }
 .desk-pop { position: absolute; top: calc(100% + 10px); right: 0; z-index: 60; display: flex; flex-direction: column; background: var(--w-panel); border: 1px solid var(--w-line-2); border-radius: 12px; box-shadow: 0 24px 64px rgb(0 0 0 / .55), 0 0 0 1px rgb(0 0 0 / .3); font-family: var(--w-font); color: var(--w-fg); overflow: hidden; transform-origin: top right; animation: desk-pop-in .14s ease-out both; }
 @keyframes desk-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .desk-pop { animation: none; } }
 .desk-icon .desk-count { position: absolute; top: 3px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; display: grid; place-items: center; font: 600 10px/1 var(--w-font); color: #fff; background: var(--w-down); box-shadow: 0 0 0 2px var(--w-bg); font-variant-numeric: tabular-nums; }
 
-/* 通知下拉 380 宽 */
+/* Notification dropdown, 380px wide */
 .desk-notif { width: 380px; max-height: min(560px, calc(100dvh - 90px)); }
 .desk-notif-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 48px; padding: 0 12px 0 16px; }
 .desk-notif-head b { font: 600 15px/1 var(--w-font); }
@@ -169,7 +171,7 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .desk-notif-foot { display: flex; align-items: center; justify-content: center; height: 44px; border-top: 1px solid var(--w-line); font: 500 13px/1 var(--w-font); color: var(--w-accent); flex: none; }
 .desk-notif-foot:hover { background: var(--w-raised); }
 
-/* 一条通知（下拉和通知页共用） */
+/* One notification (shared by the dropdown and the notifications page) */
 .wc-notif { position: relative; display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--w-line); transition: background-color .12s; }
 .wc-notif:last-child { border-bottom: 0; }
 .wc-notif:hover { background: var(--w-raised); }
@@ -182,7 +184,7 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .wc-notif-body time { display: block; margin-top: 3px; font-size: 11px; color: var(--w-mute); }
 .wc-notif-dot { flex: none; width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: var(--w-accent); }
 
-/* 钱包菜单 */
+/* Wallet menu */
 .desk-menu { width: 264px; padding: 6px; }
 .desk-menu-id { display: flex; align-items: center; gap: 10px; padding: 10px 10px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--w-line); }
 .desk-menu-id b { display: block; font: 600 14px/1.2 var(--w-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -197,10 +199,10 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .desk-me-chev { color: var(--w-mute); flex: none; transition: transform .15s; }
 .desk-me[aria-expanded="true"] .desk-me-chev { transform: rotate(180deg); }
 
-/* ============ 流媒体 ============ */
+/* ============ Streaming ============ */
 .wc-live-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.55fr); gap: 16px; align-items: stretch; }
 .wc-act { position: relative; overflow: hidden; isolation: isolate; display: flex; flex-direction: column; min-height: 264px; padding: 22px; }
-/* 右上角的立体物件（官网同款插画），只做装饰，不挡文字 */
+/* 3D object at top-right (same illustration as the website), decorative only, never covers text */
 .wc-act-art { position: absolute; top: 14px; right: 14px; z-index: -1; width: 92px; height: 92px; object-fit: contain; opacity: .9; pointer-events: none; user-select: none; filter: drop-shadow(0 10px 24px rgb(205 189 255 / .18)); }
 .wc-act-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; color: var(--w-fg); background: var(--w-raised); border: 1px solid var(--w-line-2); flex: none; }
 .wc-act-ic.is-live { color: #ff8a96; background: rgb(255 92 108 / .08); border-color: rgb(255 92 108 / .22); }
@@ -215,17 +217,17 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .wc-act-stats dt { font-size: 11px; font-weight: 500; color: var(--w-mute); }
 .wc-act-stats dd { margin-top: 6px; font: 600 18px/1 var(--w-font); font-variant-numeric: tabular-nums; }
 .wc-act-status { display: flex; align-items: center; gap: 8px; min-height: 20px; font-size: 12px; color: var(--w-mute); }
-/* 会议卡：上面和另外两块同样的标题区，下面左「新建 / 加入」、右「最近的会议」 */
+/* Meeting card: same title area as the other two cards up top; below, "new / join" left, "recent meetings" right */
 .wc-meet-body { margin-top: auto; padding-top: 20px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 20px; align-items: end; }
 .wc-meet-left { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .wc-meet-left .wc-meet-join { align-self: stretch; }
 .wc-meet-join { display: flex; gap: 8px; min-width: 0; }
-/* 输入框自带的最小宽度会把「加入」挤出这一栏：允许它收缩 */
+/* The input's intrinsic min-width would push "join" out of this column: allow it to shrink */
 .wc-meet-join .wc-input { flex: 1; min-width: 0; height: 36px; }
 .wc-meet-join .wc-btn { flex: none; }
 .wc-meet-recent { align-self: stretch; display: flex; flex-direction: column; min-width: 0; padding-left: 20px; border-left: 1px solid var(--w-line); }
 .wc-meet-recent-h { font-size: 11px; font-weight: 500; color: var(--w-mute); padding-bottom: 6px; }
-/* 没连钱包：说明在上、按钮贴底，和左边「新建会议」及另外两块的按钮底边对齐（2026-09-30 goat） */
+/* No wallet connected: description up top, button pinned to the bottom, baseline-aligned with the "new meeting" button on the left and the other two cards' buttons (2026-09-30 goat) */
 .wc-meet-connect { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 12px; text-align: center; }
 .wc-meet-connect p { margin: auto 0 0; font-size: 12px; color: var(--w-mute); }
 .wc-meet-rows { display: flex; flex-direction: column; max-height: 88px; overflow-y: auto; margin-right: -6px; padding-right: 6px; }
@@ -235,7 +237,7 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .wc-meet-row small { display: block; margin-top: 3px; font-size: 11px; color: var(--w-mute); font-variant-numeric: tabular-nums; }
 .wc-meet-recent .wc-empty { flex: 1; padding: 12px 0; font-size: 12px; }
 
-/* 正在直播：4 列房间卡 */
+/* Live now: 4-column room cards */
 .wc-rooms { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .wc-room { display: flex; flex-direction: column; overflow: hidden; text-align: left; transition: border-color .15s, transform .15s; }
 .wc-room:hover:not(:disabled) { border-color: var(--w-line-2); }
@@ -248,8 +250,8 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .wc-room-body small { font-size: 12px; color: var(--w-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wc-room-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--w-mute); }
 
-/* ============ 小精灵 ============ */
-/* 伊甸园横幅是一张深色的神经网络图：两种主题里字都用浅色（2026-10-02 香芋白下标题、数字变成深字压在深图上看不见） */
+/* ============ Fly sprites ============ */
+/* The Eden banner is a dark neural-network image: light text in both themes (2026-10-02: under Taro White the titles/numbers turned dark and vanished against the dark image) */
 .wc-eden { --w-fg: #eceef3; --w-mute: #a7adbb; --w-faint: #7d8496; --w-line: rgb(255 255 255 / .1); color: var(--w-fg); }
 .wc-eden { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 32px; min-height: 248px; padding: 32px 36px; border-radius: 14px; border: 1px solid var(--w-line); background: #0b0a16; isolation: isolate; }
 .wc-eden-art { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; object-position: 60% 45%; }
@@ -267,8 +269,8 @@ a.wc-tr:hover, button.wc-tr:hover, .wc-tr.is-hover:hover { background: var(--w-r
 .wc-eden-stats dd { margin-top: 8px; font: 600 28px/1 var(--w-font); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wc-eden-stats dd small { font-size: 16px; font-weight: 500; color: rgb(236 238 243 / .55); }
 
-/* 我的小精灵：横向卡片行，一屏 4 张，多了横向滚 */
-/* 我的小精灵：多行网格（2026-09-30 goat：横向一行要用鼠标往右拖才看得完，改成换行排开；默认两行，多的「展开全部」） */
+/* My sprites: horizontal card row, 4 per screen, horizontal scroll for more */
+/* My sprites: multi-row grid (2026-09-30 goat: a horizontal row needed mouse-dragging to see it all; switched to wrapping rows — two by default, "expand all" for more) */
 .wc-hrow { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; padding: 16px 20px 20px; }
 .wc-more { display: flex; justify-content: center; padding: 0 20px 16px; margin-top: -4px; }
 .wc-zc { display: flex; align-items: center; gap: 12px; min-height: 84px; padding: 12px 14px; border-radius: 12px; background: var(--w-raised); border: 1px solid var(--w-line); text-align: left; min-width: 0; transition: border-color .15s, background-color .15s; }
@@ -284,7 +286,7 @@ a.wc-zc:hover { border-color: var(--w-line-2); background: var(--w-hover); }
 .wc-mine-empty p { margin-top: 4px; font-size: 13px; color: var(--w-mute); }
 .wc-mine-empty .wc-key { margin-top: 4px; font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--w-accent); }
 
-/* 此刻的伊甸园：4 列，卡片统一高度 */
+/* Eden right now: 4 columns, uniform card height */
 .wc-wall { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .wc-sprite { display: grid; grid-template-rows: auto auto 40px auto 22px auto; gap: 12px; height: 100%; padding: 16px; text-align: left; transition: border-color .15s; }
 .wc-sprite:hover { border-color: var(--w-line-2); }
@@ -300,7 +302,7 @@ a.wc-zc:hover { border-color: var(--w-line-2); background: var(--w-hover); }
 .wc-sprite-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--w-line); font-size: 12px; color: var(--w-mute); min-width: 0; }
 .wc-sprite-foot b { font-size: 14px; }
 
-/* ============ 社区：左 300 · 中 640 · 右 340，三栏顶端对齐 ============ */
+/* ============ Community: left 300, middle 640, right 340 — columns top-aligned ============ */
 .wc-comm { display: grid; grid-template-columns: 300px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
 .wc-rail { position: sticky; top: calc(var(--w-bar-h) + 20px); display: flex; flex-direction: column; max-height: calc(100dvh - var(--w-bar-h) - var(--w-status-h) - 40px); overflow: hidden; }
 .wc-rail-tools { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--w-line); }
@@ -314,26 +316,26 @@ a.wc-row:hover, .wc-row.is-hover:hover { background: var(--w-raised); }
 .wc-row-n { width: 18px; flex: none; text-align: center; font-size: 12px; color: var(--w-faint); font-variant-numeric: tabular-nums; }
 .wc-row-px { flex: none; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
 .wc-row-px small { display: block; margin-top: 3px; font-size: 11px; }
-/* 中栏：动态面板里复用手机的 Feed / PostComposer，去掉手机页边距，改用面板内边距 */
+/* Middle column: feed panel reuses the phone Feed / PostComposer minus phone page margins, using panel padding instead */
 .wc-feed .page-gutter { padding-inline: 20px; }
 .wc-feed article { padding-block: 18px; }
 .wc-feed .divide-y > * + * { border-color: var(--w-line); }
 .wc-compose { padding: 16px 20px; }
-/* 发动态框（共用 PostComposer）在电脑端去掉自带的外框，按钮换成电脑端规格 */
+/* Post composer (shared PostComposer): desktop drops its built-in frame, buttons switch to desktop sizing */
 .wc-compose form { border: 0; border-radius: 0; padding: 0; }
 .wc-compose textarea { min-height: 64px; font-size: 14px; }
 .wc-compose form > div.border-t { border-color: var(--w-line); }
 .wc-compose-guest { display: flex; align-items: center; gap: 12px; padding: 14px 16px 14px 20px; }
 .wc-compose-guest > svg { color: var(--w-faint); flex: none; }
 .wc-compose-guest > span { flex: 1; font-size: 13px; color: var(--w-mute); }
-/* 左栏会话列表：复用手机 ChatList，收紧行高和边距 */
+/* Left conversation list: reuses the phone ChatList with tighter row height and margins */
 .wc-chats .page-gutter { padding-inline: 16px; }
 .wc-chats a.flex { min-height: 64px; padding-block: 10px; }
 .wc-chats a.flex:hover { background: var(--w-raised); }
 .wc-chats .grid-cols-4 { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top: 12px; }
 .wc-chats .grid-cols-4 button { min-height: 30px; font-size: 13px; border-radius: 7px; }
 
-/* ============ 排行 ============ */
+/* ============ Rankings ============ */
 .wc-rank-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
 .wc-rank-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .wc-lb .wc-tr { grid-template-columns: 44px minmax(0, 1fr) 150px 100px 90px 84px; }
@@ -343,7 +345,7 @@ a.wc-row:hover, .wc-row.is-hover:hover { background: var(--w-raised); }
 .wc-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 0 16px 0 20px; border-top: 1px solid var(--w-line); font-size: 12px; color: var(--w-mute); font-variant-numeric: tabular-nums; }
 .wc-pager > div { display: flex; gap: 6px; }
 
-/* ============ 我的资产 ============ */
+/* ============ My assets ============ */
 .wc-pf-sum { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; padding: 24px 24px 20px; }
 .wc-pf-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--w-mute); }
 .wc-pf-total { margin-top: 10px; font: 600 40px/1.05 var(--w-font); letter-spacing: -.02em; font-variant-numeric: tabular-nums; min-height: 42px; }
@@ -371,10 +373,10 @@ a.wc-row:hover, .wc-row.is-hover:hover { background: var(--w-raised); }
 .wc-chainpill img { width: 16px; height: 16px; border-radius: 50%; flex: none; }
 .wc-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px; border-bottom: 1px solid var(--w-line); }
 
-/* ============ 通知页：中间一栏 720 ============ */
+/* ============ Notifications page: centered 720 column ============ */
 .wc-col720 { width: 100%; max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 
-/* ============ 设置：左分组导航 + 右内容，最大宽 960 ============ */
+/* ============ Settings: left group nav + right content, max 960 wide ============ */
 .wc-set { width: 100%; max-width: 960px; margin: 0 auto; display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 24px; align-items: start; }
 .wc-set-nav { position: sticky; top: calc(var(--w-bar-h) + 20px); display: flex; flex-direction: column; gap: 2px; }
 .wc-set-nav button { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border-radius: 8px; font: 500 14px/1 var(--w-font); color: var(--w-mute); text-align: left; transition: background-color .12s, color .12s; }
@@ -390,7 +392,7 @@ a.wc-row:hover, .wc-row.is-hover:hover { background: var(--w-raised); }
 .wc-set-row .wc-val { font-size: 13px; color: var(--w-mute); white-space: nowrap; }
 .wc-radio { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 20px; border-bottom: 1px solid var(--w-line); text-align: left; font-size: 14px; transition: background-color .12s; }
 .wc-radio:last-child { border-bottom: 0; }
-/* 设置 → 外观：午夜黑 / 香芋白两张卡（2026-10-02）。缩略图用固定颜色画各自那套配色，和当前是哪套无关 */
+/* Settings → appearance: two cards, Midnight Black / Taro White (2026-10-02). Thumbnails paint each palette in fixed colors regardless of the active one */
 .wc-looks { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 16px; padding: 20px; }
 .wc-look { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: 14px; text-align: left; background: var(--w-raised); border: 1px solid var(--w-line); transition: border-color .15s, box-shadow .15s; }
 .wc-look:hover { border-color: var(--w-line-2); }
@@ -413,12 +415,12 @@ a.wc-row:hover, .wc-row.is-hover:hover { background: var(--w-raised); }
 .wc-radio[aria-checked="true"] i::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--w-accent); }
 .wc-radio span { flex: 1; min-width: 0; }
 .wc-radio small { display: block; margin-top: 3px; font-size: 12px; color: var(--w-mute); }
-/* 设置里复用的通知开关（NotificationPrefs）：去掉手机的上下粗线，改面板内边距 */
+/* Reused notification switches in settings (NotificationPrefs): drop the phone's thick top/bottom rules, use panel padding */
 .wc-notify-prefs { padding: 8px 20px 4px; }
 .wc-notify-prefs [role="switch"] { min-height: 52px; font-size: 14px; }
 .wc-notify-prefs [role="switch"] > span:last-child { transform: scale(.86); transform-origin: right center; }
 
-/* ============ 较窄的电脑屏（900–1279）：三栏收成两栏，四列收成三列 ============ */
+/* ============ Narrower desktop screens (900-1279): three columns collapse to two, four columns to three ============ */
 @media (max-width: 1279px) {
   .wc-comm { grid-template-columns: 280px minmax(0, 1fr); }
   .wc-side { display: none; }
@@ -442,17 +444,17 @@ a.wc-row:hover, .wc-row.is-hover:hover { background: var(--w-raised); }
   .wc-eden { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* 网页版里打开的会议室（/meet/:code）：会议界面的标题原来用像素字（meet.css .font-display），网页版统一 Geist；独立的 meet.420.meme 不带 data-surface，不受影响 */
+/* Meeting room opened in web (/meet/:code): meeting UI titles used to be pixel font (meet.css .font-display); web unifies on Geist. The standalone meet.420.meme has no data-surface and is unaffected */
 html[data-surface="web"] .meet-ui .font-display { font-family: var(--w-font); letter-spacing: 0; }
 
-/* 共用按钮（components/Button：手机的胶囊发光按钮）出现在网页版电脑端内容页和模态框里时：圆角 8、不发光、高度收到电脑端规格 */
+/* Shared button (components/Button: the phone's glowing capsule) inside web desktop content pages and modals: 8px radius, no glow, desktop heights */
 html[data-surface="web"] .wc-page .ui-button, html[data-surface="web"] .wc-comm .ui-button, html[data-surface="web"] .desk-modal .ui-button { border-radius: 8px; box-shadow: none; font-size: 14px; font-weight: 600; }
 html[data-surface="web"] .desk-modal .ui-button.min-h-13, html[data-surface="web"] .desk-modal .ui-button.min-h-12 { min-height: 44px; }
 html[data-surface="web"] .wc-page .ui-button.min-h-11, html[data-surface="web"] .wc-comm .ui-button.min-h-11, html[data-surface="web"] .desk-modal .ui-button.min-h-11 { min-height: 34px; padding-block: 0; }
 
-/* ============ 群聊 / 私信 / 官方公告：左会话列表 + 右聊天窗（ChatDesk） ============ */
+/* ============ Group chats / DMs / official announcements: left conversation list + right chat window (ChatDesk) ============ */
 .wc-chatshell { flex: 1; min-height: 0; width: 100%; max-width: 1488px; margin: 0 auto; padding: 16px 24px; display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; font-family: var(--w-font); }
-/* /official 不在整屏聊天模式里（内容区带上下边距、底部状态栏在）：高度按一屏算 */
+/* /official isn't in full-screen chat mode (content area keeps its vertical padding, bottom status bar stays): height counts as one screen */
 .wc-chatshell.is-page { flex: none; padding: 0; height: calc(100dvh - var(--w-bar-h) - var(--w-status-h) - 68px); min-height: 520px; }
 .wc-chatshell.is-single { grid-template-columns: minmax(0, 760px); justify-content: center; }
 .wc-chatrail { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -463,7 +465,7 @@ html[data-surface="web"] .wc-page .ui-button.min-h-11, html[data-surface="web"] 
 .wc-chats a[aria-current="page"] { background: var(--w-raised); box-shadow: inset 2px 0 0 var(--w-accent); }
 @media (max-width: 1099px) { .wc-chatshell { grid-template-columns: 260px minmax(0, 1fr); padding: 12px; } }
 
-/* ============ 个人主页：左 360 资料 + 盈亏，右页签表（ProfileDesk） ============ */
+/* ============ Profile: left 360 profile + PnL, right tabs (ProfileDesk) ============ */
 .wc-prof { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
 .wc-prof-side { position: sticky; top: calc(var(--w-bar-h) + 20px); display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .wc-prof-card { padding: 20px 20px 0; overflow: hidden; }
@@ -492,13 +494,13 @@ html[data-surface="web"] .wc-page .ui-button.min-h-11, html[data-surface="web"] 
 .wc-holds .wc-tr { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
 @media (max-width: 1099px) { .wc-prof { grid-template-columns: 300px minmax(0, 1fr); } .wc-prof-side { position: static; } }
 
-/* 还没做电脑端专门设计的页面：居中一栏 760 的面板（DeskColumn） */
+/* Pages without a desktop design yet: centered 760 column panel (DeskColumn) */
 .wc-colpage { width: 100%; max-width: 760px; margin: 0 auto; padding-bottom: 12px; overflow: hidden; }
-/* 个人主页「动态」页签里的动态列表（共用 PostList）：面板内边距 */
+/* Profile "posts" tab feed list (shared PostList): panel padding */
 .wc-prof-main .wc-postlist { padding: 0 20px 8px; }
 .wc-prof-main .wc-postlist .divide-y > * + * { border-color: var(--w-line); }
 
-/* 大厅「正在进行的会议」（2026-09-30 goat）：一行两到三张卡片，右侧锁 / 人数 / 加入 */
+/* Lobby "meetings in progress" (2026-09-30 goat): two-to-three cards per row, lock / headcount / join on the right */
 .wc-meets { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .wc-meet-live { display: flex; align-items: center; gap: 12px; padding: 14px 16px; text-align: left; cursor: pointer; transition: border-color .15s, background-color .15s; }
 .wc-meet-live:hover { border-color: var(--w-line-2); background: var(--w-hover); }
@@ -507,7 +509,7 @@ html[data-surface="web"] .wc-page .ui-button.min-h-11, html[data-surface="web"] 
 .wc-meet-live .wc-grow small { display: block; margin-top: 3px; font-size: 12px; color: var(--w-mute); }
 .wc-meet-live-side { display: flex; align-items: center; gap: 6px; flex: none; }
 
-/* ---------- 外观第三种「空间」（2026-10-03）：缩略卡 + 背景选择。★类名别用 .wc-wall：那是小精灵页「此刻的伊甸园」的 4 列网格（撞名过一次，网格变成一张一行） ---------- */
+/* ---------- Third appearance "Space" (2026-10-03): thumbnail cards + background picker. ★Never use .wc-wall as a class name: that's the 4-column grid of "Eden right now" on the sprites page (a collision once turned the grid into one-card-per-row) ---------- */
 .wc-looks { grid-template-columns: repeat(3, minmax(0, 200px)); }
 .wc-look.is-space .wc-look-pv { background: #20232c url('./img/space/nebula-s.webp') center / cover; }
 .wc-look.is-space .wc-look-pv i:nth-child(1) { left: 2%; top: 30%; width: 7%; height: 40%; border-radius: 6px; background: rgb(40 42 54 / .7); box-shadow: inset 0 1px 0 rgb(255 255 255 / .25); }
@@ -528,8 +530,11 @@ html[data-surface="web"] .wc-page .ui-button.min-h-11, html[data-surface="web"] 
 .wc-bgs-note { padding: 2px 22px 6px; font-size: 12px; color: var(--w-faint); }
 .wc-bgs:last-child { padding-bottom: 20px; }
 
-/* 窄屏（手机浏览器）：顶栏下拉（通知、钱包菜单）固定宽 380、贴着按钮右对齐，铃铛右边还有头像按钮，面板左边会出屏幕（2026-10-04 走查）。
-   改成贴着屏幕左右各留 10px。香芋白的顶栏胶囊有 backdrop-filter，会成为 fixed 的定位框，那时就是相对胶囊，位置也对 */
+/* Narrow screens (phone browsers): the top-bar dropdowns (notifications, wallet menu) were fixed 380px wide
+   right-aligned to their buttons — with the bell plus an avatar button to its right, the panel's left edge
+   went off-screen (2026-10-04 review). Now inset 10px from both screen edges. Taro White's top-bar capsule
+   has backdrop-filter, which becomes fixed positioning's containing block — still positioned correctly
+   relative to the capsule then */
 @media (max-width: 899px) {
   .desk-pop { position: fixed; top: calc(var(--w-bar-h) + 6px); left: 10px; right: 10px; width: auto; max-width: none; }
   .desk-notif { width: auto; }

@@ -1,9 +1,9 @@
-// 网页版「小精灵」（/flies 宽屏，2026-09-29 goat 第三轮：「小精灵页面的排版设计我也不满意」）。版式（docs/WEB_DESIGN.md）：
-//   页头整宽横幅：左边 CYBER EDEN 角标、标题、说明、进入赛博伊甸园；右边三个真实统计；背景是官网小精灵页同款插画（只在横幅里）。
-//   我的小精灵：一个面板里的卡片网格（Zalien 卡、赠送名额、没挂卡的小精灵），自己的在跑的排前面，默认两行、多的点「展开全部」；没连钱包 / 读不到 / 没有卡，各自一句话 + 一个操作。
-//   此刻的伊甸园：4 列卡片网格，卡片统一高度。排行挪到「排行」页，这里不再放右栏。
-// 只用接口给的真实数据（/api/flies、/api/life、/api/flies/mine/all、/api/zalien/cards），失败显示空状态和重试；没有假的围观小精灵、假价格。
-// 领养规则、文案和手机「我的小精灵」（pages/Flies.tsx MyZaliens）一致，这里只换成电脑端的横向卡片。
+// Web "Sprites" (/flies widescreen; 2026-09-29 goat, round 3: "I'm not happy with the sprite page layout either"). Layout (docs/WEB_DESIGN.md):
+//   Full-width header banner: CYBER EDEN badge, title, description, and enter-Cyber-Eden on the left; three real stats on the right; the official site's sprite-page illustration as background (banner only).
+//   My sprites: a card grid in one panel (Zalien cards, gifting slots, sprites without a card); my running ones first, two rows by default with "show all" for the rest; no-wallet / unreadable / no-card each get a one-liner + one action.
+//   Eden right now: 4-column card grid, uniform card heights. Rankings moved to the "Rankings" page — no right column here anymore.
+// Only real data from the APIs (/api/flies, /api/life, /api/flies/mine/all, /api/zalien/cards); failures show empty state + retry. No fake spectator sprites, no fake prices.
+// Adoption rules and copy match the mobile "My Sprites" (pages/Flies.tsx MyZaliens); only the cards become desktop-style horizontal here.
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, ArrowUpRight, Brain, Gift, Info, Link2, MapPin, Plus, RefreshCw, Sparkles, Wallet, WifiOff } from 'lucide-react'
@@ -28,7 +28,7 @@ type Cap = { capacity: number; remaining: number; plans: Record<FlyPlan, FlyPlan
 type Grant = { plan: FlyPlan; months: number; note: string | null } | null
 
 const floorName = (f: string) => f === 'F1' ? t('教堂') : f === 'F3' ? t('派对广场') : t('房间')
-// 日期跟随 App 语言，不跟浏览器语言
+// Dates follow the app language, not the browser language
 const day = (ms: number) => new Date(ms).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 
 export default function SpritesDesk() {
@@ -42,7 +42,7 @@ export default function SpritesDesk() {
   const [workerOk, setWorkerOk] = useState(true)
   const [grant, setGrant] = useState<Grant>(null)
   const [revision, setRevision] = useState(0)
-  // 我的小精灵（和手机小精灵页同一套接口）
+  // My sprites (same APIs as the mobile sprite page)
   const [mine, setMine] = useState<Fly[] | undefined>(undefined)
   const [mineErr, setMineErr] = useState(false)
   const [cards, setCards] = useState<ZalienCards | null>(null)
@@ -52,12 +52,12 @@ export default function SpritesDesk() {
   const [linking, setLinking] = useState(false)
   const reload = () => setRevision((n) => n + 1)
 
-  // 公开的小精灵列表 + 生活状态：进页面拉一次，之后每分钟刷新（标签页在后台时跳过）
+  // Public sprite list + life status: fetched once on entry, then refreshed every minute (skipped while the tab is in the background)
   useEffect(() => {
     const ctrl = new AbortController()
     let first = true
     const run = () => {
-      // 第一次一定取（后台标签里打开也要有数据）；之后的定时刷新在后台时跳过
+      // The first fetch always happens (opened background tabs need data too); later scheduled refreshes are skipped in the background
       if (!first && document.hidden) return
       first = false
       api<{ workerConfigured: boolean; capacity: number; remaining: number; plans: Record<FlyPlan, FlyPlanDef>; grant: Grant; list: Fly[] }>('/api/flies', { signal: ctrl.signal })
@@ -65,11 +65,11 @@ export default function SpritesDesk() {
         .catch(() => { if (!ctrl.signal.aborted) setLoadErr(true) })
       api<{ list: LifeRow[] }>('/api/life', { signal: ctrl.signal })
         .then((r) => { if (!ctrl.signal.aborted) setLives(Object.fromEntries(r.list.map((x) => [x.id, x]))) })
-        .catch(() => { /* 生活状态拿不到：卡片上不显示这一行，不影响列表 */ })
+        .catch(() => { /* Life status unavailable: hide that row on the card; the list is unaffected */ })
     }
     run()
     const id = window.setInterval(run, 60_000)
-    const onVis = () => { if (!document.hidden) run() }   // 从后台切回来马上刷新，不用等下一分钟
+    const onVis = () => { if (!document.hidden) run() }   // Refresh immediately when returning from the background — no waiting for the next minute
     document.addEventListener('visibilitychange', onVis)
     return () => { ctrl.abort(); window.clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
   }, [status, me?.address, revision])
@@ -79,21 +79,21 @@ export default function SpritesDesk() {
     const ctrl = new AbortController()
     setMine(undefined); setMineErr(false); setCards(null); setCardsErr(null)
     api<{ list: Fly[] }>('/api/flies/mine/all', { signal: ctrl.signal }).then((r) => setMine(r.list)).catch(() => { if (!ctrl.signal.aborted) setMineErr(true) })
-    // 查卡失败（链上节点暂时不通）不影响看自己的小精灵，只在卡片区提示
+    // Card lookup failing (chain node temporarily unreachable) doesn't block viewing my sprites — only a notice in the card area
     api<ZalienCards>('/api/zalien/cards', { signal: ctrl.signal }).then(setCards).catch((e) => { if (!ctrl.signal.aborted) setCardsErr(errorText(e, t('加载失败，稍后再试'))) })
     return () => ctrl.abort()
   }, [status, connected, me?.address, revision])
 
   const all = useMemo(() => list ?? [], [list])
   const online = all.filter((f) => f.online).length
-  // 卡片墙：在线的排前面，其次按最近一次动作
+  // Card wall: online first, then by most recent activity
   const wall = useMemo(() => [...all].sort((a, b) => Number(b.online) - Number(a.online) || (b.lastTickAt ?? 0) - (a.lastTickAt ?? 0)), [all])
   const lifeText = useMemo(() => Object.fromEntries(Object.values(lives).map((x) => [x.id, locale() === 'en-US' ? x.life.textEn : x.life.text])), [lives])
   const open = (f: Fly) => { if (!needWallet()) nav(`/fly/${f.id}`) }
   const lang = locale() === 'en-US' ? 'en' : 'zh'
-  // 进入赛博伊甸园（2026-09-30 goat：网页版点进去又要扫码）：已登录就先向服务器换一个 60 秒、只能用一次的游戏登录凭证，
-  // 放在网址 # 后面打开游戏，游戏换成自己的令牌直接进（server/src/meetAuth.ts /api/game/handoff）。没登录或换失败就照常打开，游戏里再扫码。
-  // 先同步开一个空白窗口再改地址：等接口回来再 window.open 会被浏览器当成弹窗拦掉
+  // Enter Cyber Eden (2026-09-30 goat: the web version asked for another QR scan): when logged in, first exchange a 60-second single-use game login credential from the server,
+  // append it after the URL # and open the game, which exchanges it for its own token and enters directly (server/src/meetAuth.ts /api/game/handoff). When logged out or the exchange fails, open as usual and scan inside the game.
+  // Open a blank window synchronously first, then change its URL: window.open after the API returns gets blocked as a popup
   const enterGame = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (useSocial.getState().status !== 'ready') return
     e.preventDefault()
@@ -108,7 +108,7 @@ export default function SpritesDesk() {
 
   return (
     <div className="wc-page">
-      {/* 页头横幅：插画只在这一块里 */}
+      {/* Header banner: the illustration only lives in this block */}
       <section className="wc-eden" aria-labelledby="wc-eden-t">
         <img className="wc-eden-art" src={edenArt} alt="" aria-hidden="true" decoding="async" />
         <div>
@@ -128,7 +128,7 @@ export default function SpritesDesk() {
       </section>
       {cap && !workerOk && <div className="wc-note is-warn" role="status"><WifiOff size={15} aria-hidden="true" /><span>{t('服务暂时不可用，请稍后再试。')}</span><button type="button" className="wc-btn is-sm" onClick={reload}>{t('重试')}</button></div>}
 
-      {/* 我的小精灵 */}
+      {/* My sprites */}
       <section className="wc-panel" aria-labelledby="wc-mine-t">
         <div className="wc-ph">
           <h2 id="wc-mine-t" className="wc-ph-t">{t('我的小精灵')}{cards && (cards.cards.length > 0 || (mine?.length ?? 0) > 0) && <small className="num">{t('Zalien {n} 张 · 小精灵 {live} / {max} 只', { n: cards.cards.length, live: cards.liveFlies, max: cards.maxFlies })}</small>}</h2>
@@ -137,7 +137,7 @@ export default function SpritesDesk() {
         {!connected ? (
           <Empty row icon={Wallet} text={t('连接 0x4 Wallet 后查看你的 Zalien 和小精灵，持有 Zalien 即可领养。')} action={<button type="button" className="wc-btn is-primary is-sm" onClick={() => { needWallet() }}>{t('连接 0x4 Wallet')}</button>} />
         ) : status !== 'ready' ? (
-          // 社区没登录上：登录中转圈，失败说原因 +「重新登录」（这一页只在这里说）
+          // Community login failed: spinner while logging in; on failure show the reason + "log in again" (only mentioned on this page)
           <SocialLogin />
         ) : mineErr ? (
           <Empty row icon={WifiOff} text={t('暂时无法读取你的小精灵。')} action={<button type="button" className="wc-btn is-sm" onClick={reload}><RefreshCw size={13} />{t('重试')}</button>} />
@@ -148,11 +148,11 @@ export default function SpritesDesk() {
         )}
       </section>
 
-      {/* 此刻的伊甸园 */}
+      {/* Eden right now */}
       <section className="wc-sec" aria-labelledby="wc-wall-t">
         <div className="wc-sec-h">
           <h2 id="wc-wall-t" className="wc-sec-t">{t('此刻的伊甸园')}{list && all.length > 0 && <small className="num">{t('共 {n} 只 · {m} 只在线', { n: all.length, m: online })}</small>}</h2>
-          {/* 顶部「排行」页里的小精灵榜，直接滚到那一块（2026-09-30 goat：原来叫「小精灵排行」，看着像另一套排行） */}
+          {/* The sprite leaderboard inside the top "Rankings" page — scroll straight to that section (2026-09-30 goat: it used to be called "Sprite Rankings", which looked like a separate ranking) */}
           <Link to="/rank?focus=sprites" className="wc-link">{t('查看排行')}<ArrowRight size={13} /></Link>
         </div>
         {loadErr && !list ? <div className="wc-panel"><Empty row tall icon={WifiOff} text={t('暂时无法加载小精灵')} action={<button type="button" className="wc-btn is-sm" onClick={reload}><RefreshCw size={13} />{t('重试')}</button>} /></div>
@@ -168,31 +168,31 @@ export default function SpritesDesk() {
   )
 }
 
-/** 收起时最多显示几张（宽屏一行 4 张 = 两行） */
+/** Max cards shown when collapsed (widescreen: 4 per row = two rows) */
 const COLLAPSED = 8
 
-/** 我的小精灵：卡片网格（默认显示两行 = 8 张，多的「展开全部」）。领养规则和手机 MyZaliens 一致（手机端 / 没开余额功能时不出现价格和付费入口） */
+/** My sprites: card grid (two rows = 8 cards by default, "show all" for more). Adoption rules match mobile MyZaliens (no prices or payment entry on mobile / when the balance feature is off) */
 function MineRow({ mine, cards, cardsErr, grant, price, lives, onClaim, onGrant, onLink, onRetry }: {
   mine: Fly[]; cards: ZalienCards | null; cardsErr: string | null; grant: Grant; price?: number; lives: Record<string, string>
   onClaim: (c: { tokenId: number; free: boolean }) => void; onGrant: () => void; onLink: () => void; onRetry: () => void
 }) {
-  // 排序：自己的小精灵在跑的卡 → 可以免费领养的 → 其它（被别人领养的、免费月用过的）
+  // Sort: my running sprite's card → free-to-adopt → everything else (adopted by others, free month used)
   const rank = (c: ZalienCard) => c.status === 'busy' && c.fly?.mine ? 0 : c.status === 'free' ? 1 : 2
   const list = [...(cards?.cards || [])].sort((a, b) => rank(a) - rank(b) || a.tokenId - b.tokenId)
   const full = !!cards && cards.liveFlies >= cards.maxFlies
   const [expanded, setExpanded] = useState(false)
   const byId = new Map(mine.map((f) => [f.id, f]))
-  // 不挂在「我钱包里的卡」上的小精灵：赠送领的、老的、卡已经卖掉还在跑到期的
+  // Sprites not attached to "cards in my wallet": gifted ones, legacy ones, ones whose card was sold but are still running to expiry
   const shown = new Set(list.filter((c) => c.fly?.mine).map((c) => c.fly!.id))
   const others = mine.filter((f) => !shown.has(f.id))
   const empty = !!cards && !list.length && !mine.length
-  // 卡还没读到（也没读失败）：先占位
+  // Card not loaded yet (and not failed either): show a placeholder
   if (!cards && !cardsErr) return <div className="wc-hrow">{Array.from({ length: 4 }, (_, i) => <span key={i} className="wc-sk" style={{ height: 84, borderRadius: 12 }} />)}</div>
   if (empty && !grant) {
     return (
       <div className="wc-mine-empty">
         <span className="wc-zc-ic" aria-hidden="true"><Sparkles size={22} strokeWidth={1.7} /></span>
-        {/* 2026-09-27 goat 定稿文案，别改 */}
+        {/* 2026-09-27 goat: finalized copy — do not change */}
         <div><b>{t('想要领养小精灵？')}</b><p>{t('当前地址中未检测到持有Zalien.')}</p><p className="wc-key">Zalien is the key.</p></div>
         <button type="button" className="wc-btn" onClick={onLink}><Link2 size={14} />{t('关联其他钱包')}</button>
       </div>
@@ -229,7 +229,7 @@ function MineRow({ mine, cards, cardsErr, grant, price, lives, onClaim, onGrant,
   )
 }
 
-/** 小精灵状态小标签 */
+/** Sprite status pill */
 function FlyState({ f }: { f: Fly }) {
   if (f.expired) return <span className="wc-chip is-warn">{t('休眠中')}</span>
   if (f.halted) return <span className="wc-chip is-down">{t('停机')}</span>
@@ -238,7 +238,7 @@ function FlyState({ f }: { f: Fly }) {
   return <span className="wc-chip is-up">{t('运行中')}</span>
 }
 
-/** 一张 Zalien 卡：四种状态和手机 CardRow 一样（自己的小精灵在跑 / 被别人领养 / 可免费领养 / 免费月用过） */
+/** One Zalien card: same four states as mobile CardRow (my sprite running / adopted by someone else / free to adopt / free month used) */
 function CardTile({ c, fly, life, full, price, onClaim }: { c: ZalienCard; fly?: Fly; life?: string; full: boolean; price?: number; onClaim: (c: { tokenId: number; free: boolean }) => void }) {
   const img = <img src={c.image} alt="" className="wc-zc-img" loading="lazy" />
   const title = <b>Zalien #{c.tokenId}</b>
@@ -266,7 +266,7 @@ function CardTile({ c, fly, life, full, price, onClaim }: { c: ZalienCard; fly?:
         <button type="button" className="wc-btn is-primary is-sm" style={{ marginTop: 8 }} disabled={full} onClick={() => onClaim({ tokenId: c.tokenId, free: true })}>{full ? t('已达上限') : t('免费领养')}</button></span></div>
     )
   }
-  // 未领养（免费月已用）：没开余额功能时只写状态，不写价格也不给付费入口
+  // Unadopted (free month used): without the balance feature, show only the status — no price, no payment entry
   return (
     <div className="wc-zc">{img}<span className="wc-zc-main">{title}<small>{t('此卡当前未被领养')}</small>
       {!BALANCE_FEATURES ? <span className="wc-chip">{t('未领养')}</span>
@@ -274,7 +274,7 @@ function CardTile({ c, fly, life, full, price, onClaim }: { c: ZalienCard; fly?:
   )
 }
 
-/** 盈亏：没启用 / 主人隐藏 / 还没数据分别说明，不显示成 0 */
+/** PnL: not-enabled / hidden-by-owner / no-data-yet are each explained — never displayed as 0 */
 function PnlCell({ f }: { f: Fly }) {
   if (!f.activated) return <span>{t('尚未启用')}</span>
   if (f.pnlHidden) return <span>{t('盈亏已隐藏')}</span>
@@ -282,13 +282,13 @@ function PnlCell({ f }: { f: Fly }) {
   return <b className={`num ${f.pnl > 0 ? 'wc-up' : f.pnl < 0 ? 'wc-down' : ''}`}>{pnlText(f.pnl)}</b>
 }
 
-/** 一张小精灵卡（统一高度）：楼层、在线状态、此刻在做什么、最近一次真实决策、关注的币、模式和盈亏 */
+/** One sprite card (uniform height): floor, online status, what it's doing now, its latest real decision, watched tokens, mode, and PnL */
 function SpriteCard({ f, life, onOpen }: { f: Fly; life?: LifeRow; onOpen: () => void }) {
   const en = locale() === 'en-US'
   const d = life?.decision
   const on = f.online && !f.expired
   const state = f.expired ? t('休眠') : f.paused ? t('已暂停') : f.halted ? t('停机') : f.online ? t('在线') : t('离线')
-  // 还没选模式（pending）的左边留空，右边盈亏格会写「尚未启用」，不重复说
+  // No mode picked yet (pending): leave the left side blank — the PnL cell on the right already says "not enabled", so don't repeat it
   const mode = f.mode === 'perp' ? t('合约 {n}x', { n: f.leverage }) : f.mode === 'confirm' ? t('真金') : ''
   return (
     <button type="button" className="wc-panel wc-sprite" onClick={onOpen}>

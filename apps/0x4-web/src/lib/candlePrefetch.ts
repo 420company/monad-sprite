@@ -1,6 +1,6 @@
-// 币种 K 线预取入口（2026-09-29 goat：点开币种 K 线总是不能秒出）：列表上手指按下、发现页停留时调用。
-// 交易对地址从行情缓存里找（列表里的币都在），周期用币种页记住的那个（默认 1 小时），额度和去重在 candles.ts 里管。
-// 两路一起预取：GeckoTerminal 完整历史，和服务器通道里已经缓存的那份（只读缓存，不花 DexPaprika 额度）。
+// Candle prefetch entry for coins (2026-09-29 goat: opening a coin's chart never appears instantly): called on finger-down in lists and on dwell in Discover.
+// The pair address comes from the market cache (listed coins are all there); the timeframe uses the coin page's remembered one (default 1h); quota and dedupe are managed in candles.ts.
+// Prefetch both paths: GeckoTerminal's full history, and the already-cached copy in the server channel (cache reads only — no DexPaprika quota spent).
 import { prefetchDexCandles, prefetchServerCandles, type DexInterval } from './candles'
 import { marketKey } from './market'
 import { oneOf, readPageState } from './pageState'
@@ -17,8 +17,8 @@ export function prefetchTokenChart(token: { chain?: string; address?: string; pa
 }
 
 /**
- * 列表行用的按下预取：手指按下 90 毫秒内没怎么移动（不是在滑列表）就开始拉，抬起时还没拉就立刻拉；
- * 按下后移动超过 8 像素（开始滑动）或系统取消就作废。滑列表时每行都会先收到按下事件，直接拉会白白用掉预取额度。
+ * Press-to-prefetch for list rows: start pulling when the finger stays within 90ms of pressing down without much movement (not scrolling the list); pull immediately on lift if not yet pulled;
+ * void it if the finger moves more than 8px after pressing (scrolling started) or the system cancels. Every row gets a press event while scrolling — pulling directly would waste prefetch quota.
  */
 let press: { timer: ReturnType<typeof setTimeout>; x: number; y: number; fire: () => void } | null = null
 const cancelPress = () => { if (press) { clearTimeout(press.timer); press = null } }

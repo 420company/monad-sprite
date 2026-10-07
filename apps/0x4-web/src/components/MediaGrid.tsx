@@ -1,6 +1,6 @@
-// 聊天多图消息：一个气泡里按宫格排（2 张两格、3 张三格、4 张 2×2、5~9 张三列），统一正方形裁切，可以混着视频。
-// 点任意一格打开全屏查看器（左右滑、双指缩放、单张保存）。
-// 还在发送的（pending）每格叠一个圆形进度；失败的在气泡旁边显示红色感叹号，点一下重发。
+// Multi-image chat messages: grid layout in one bubble (2 → two cells, 3 → three, 4 → 2×2, 5–9 → three columns), uniform square crops, videos may mix in.
+// Tap any cell for the fullscreen viewer (swipe, pinch-zoom, per-image save).
+// Sending (pending) cells overlay a circular progress; failed ones show a red exclamation by the bubble — tap to resend.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Play } from 'lucide-react'
 import ImageViewer, { type ViewerImage } from './ImageViewer'
@@ -13,17 +13,17 @@ import { t } from '@/lib/i18n'
 export interface GridItem {
   key: string
   kind: 'image' | 'video'
-  /** 格子里显示的地址（缩略图 / 本机预览）；私信要先解密所以是异步的 */
+  /** The URL shown in a cell (thumbnail / local preview); async because DMs decrypt first */
   thumb: () => Promise<string>
-  /** 全屏看的大图 / 视频 */
+  /** Full-size image / video for fullscreen viewing */
   full: () => Promise<string>
 }
 export interface GridPending { progress: number[]; state: 'uploading' | 'sending' | 'failed' }
 
-/** 视频格子只显示第一帧：带 #t=0.1，iOS 才会画出画面而不是黑块 */
+/** Video cells show only the first frame: #t=0.1 makes iOS paint the frame instead of a black box */
 const frameOf = (u: string) => (u.includes('#') ? u : u + '#t=0.1')
 
-/** 圆形进度：0~1；拿不到进度（发送中）时转圈 */
+/** Circular progress: 0–1; spins when progress is unavailable (sending) */
 export function ProgressRing({ value, size = 34 }: { value?: number; size?: number }) {
   const r = (size - 4) / 2, c = 2 * Math.PI * r
   const spin = value === undefined
@@ -51,7 +51,7 @@ function Cell({ item, style, className = '', progress, busy, onOpen }: { item: G
   const single = !style
   return (
     <button type="button" data-grid-cell
-      // 长按是出菜单（外层气泡处理），松手后的这次点击不算打开
+      // Long-press opens the menu (handled by the outer bubble); the tap on release doesn't count as open
       onPointerDown={() => { pressed.current = Date.now() }}
       onClick={(e) => { e.stopPropagation(); const held = pressed.current > 0 && Date.now() - pressed.current > 450; pressed.current = 0; if (held || busy) return; onOpen() }}
       aria-label={item.kind === 'video' ? t('播放视频') : t('查看大图')}
@@ -72,7 +72,7 @@ export default function MediaGrid({ items, pending, onRetry }: { items: GridItem
   const [thumbs, setThumbs] = useState<Record<number, string>>({})
   const [fulls, setFulls] = useState<Record<number, string>>({})
   const asked = useRef(new Set<number>())
-  // 看到第几张就加载它和左右两张的大图
+  // Load the full images of the viewed cell plus its neighbors
   const want = (i: number) => {
     for (const j of [i, i - 1, i + 1]) {
       if (j < 0 || j >= items.length || asked.current.has(j)) continue
@@ -105,7 +105,7 @@ export default function MediaGrid({ items, pending, onRetry }: { items: GridItem
   )
 }
 
-/** 语音上传中：屏幕中间一个半透明小胶囊，不占输入栏 */
+/** Voice uploading: a small translucent capsule centered on screen, not taking the input bar */
 export function UploadingToast() {
   return (
     <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center" role="status">
@@ -114,7 +114,7 @@ export function UploadingToast() {
   )
 }
 
-/** 正在发送的图片 / 视频：和自己发的消息同样的位置（头像在右），群聊和私信共用 */
+/** Sending images / videos: same position as my own messages (avatar right), shared by groups and DMs */
 export function PendingMediaRow({ album, self, onRetry }: { album: { id: string; items: PendingFile[]; progress: number[]; state: GridPending['state'] }; self?: Profile | null; onRetry: () => void }) {
   const items = useMemo<GridItem[]>(() => album.items.map((f, i) => ({ key: `${album.id}:${i}`, kind: f.kind, thumb: async () => f.local, full: async () => f.local })), [album.id, album.items])
   return (

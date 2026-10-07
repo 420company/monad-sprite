@@ -1,28 +1,28 @@
-// 会议等候室（2026-10-01 goat）的前端逻辑，网页版 / 手机 App（src/pages/MeetingRoom.tsx）和电脑端 meet/ 共用。
-// 这里不引 @/ 别名、不引界面组件，meet 工程用相对路径直接引用；请求函数由调用方传进来（两边的 api() 不一样）。
+// Meeting lobby (2026-10-01 goat) frontend logic, shared by web / mobile app (src/pages/MeetingRoom.tsx) and the desktop meet/.
+// No @/ aliases or UI components here — the meet project references via relative paths; the request function is passed in by callers (the two sides' api() differ).
 //
-// 规则在服务器（server/src/meetAuth.ts）：开了等候室，除主持人和临时管理员外进会先进等待列表，服务器不签进会令牌；
-// 主持人 / 管理员「允许」「拒绝」「全部允许」；被拒的人看到「主持人未同意你加入」；允许只在本场有效。
+// Rules live on the server (server/src/meetAuth.ts): with the lobby on, everyone except the host and temp admins lands on the waiting list first — the server won't sign a join token;
+// the host / admins "admit" / "deny" / "admit all"; denied people see "the host didn't approve you"; admission is valid for this meeting only.
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type LobbyApi = <T>(path: string, init?: RequestInit) => Promise<T>
 export interface LobbyWaiter { address: string; name: string; avatar: string | null; since: number }
-/** waiting 还在等 / admitted 已允许（再进一次会拿令牌）/ denied 未同意 / none 不在等待列表里（太久没来问被清掉了，重新进会即可） */
+/** waiting = still waiting / admitted = approved (rejoining gets a token) / denied = not approved / none = not on the waiting list (cleared after too long without polling — just rejoin) */
 export type WaitStatus = 'waiting' | 'admitted' | 'denied' | 'none'
 
-/** 等着的人多久问一次状态；服务器 30 秒没收到就把人从列表里拿掉 */
+/** How often waiters poll their status; the server drops people from the list after 30s without a poll */
 export const LOBBY_POLL_MS = 3000
-/** 主持人 / 管理员多久刷新一次等待列表（开着等候室时） */
+/** How often the host / admins refresh the waiting list (while the lobby is on) */
 export const LOBBY_HOST_POLL_MS = 3000
-/** 等候室关着时也偶尔刷新一下（别的管理员可能打开了） */
+/** Also refresh occasionally while the lobby is off (another admin may have turned it on) */
 export const LOBBY_HOST_IDLE_MS = 15_000
 
-/** 服务器进会接口的「在等候室」回复（HTTP 202） */
+/** The server join API's "in lobby" response (HTTP 202) */
 export const isLobbyWaiting = (r: unknown): boolean => !!r && typeof r === 'object' && (r as { waiting?: unknown }).waiting === true
 
 /**
- * 等着的人：每 3 秒问一次状态，结果一出（允许 / 拒绝 / 不在列表）就停下来回调。
- * 页面在后台也照常问：不问的话 30 秒后会被服务器当成离开。
+ * Waiters: poll status every 3s; stop and call back as soon as there's an outcome (admitted / denied / not on list).
+ * Keep polling even in the background: without polls the server treats them as gone after 30s.
  */
 export function useLobbyWait(api: LobbyApi, code: string, active: boolean, onResult: (s: Exclude<WaitStatus, 'waiting'>) => void) {
   const cb = useRef(onResult)
@@ -35,7 +35,7 @@ export function useLobbyWait(api: LobbyApi, code: string, active: boolean, onRes
         const r = await api<{ status: WaitStatus }>(`/api/meet/meetings/${code}/lobby/me`)
         if (!alive) return
         if (r.status !== 'waiting') { cb.current(r.status); return }
-      } catch { /* 网络抖一下：下一轮再问 */ }
+      } catch { /* Network hiccup: ask again next round */ }
       if (alive) timer = setTimeout(ask, LOBBY_POLL_MS)
     }
     timer = setTimeout(ask, LOBBY_POLL_MS)
@@ -46,14 +46,14 @@ export function useLobbyWait(api: LobbyApi, code: string, active: boolean, onRes
 export interface LobbyHost {
   on: boolean
   waiting: LobbyWaiter[]
-  /** 会中开关（关掉时正在等的人全部放进来） */
+  /** In-meeting switch (turning it off admits everyone currently waiting) */
   toggle: (on: boolean) => Promise<void>
   admit: (address: string) => Promise<void>
   admitAll: () => Promise<void>
   deny: (address: string) => Promise<void>
 }
 
-/** 主持人 / 管理员：等待列表 + 操作。enabled = 自己是主持人或管理员（成员调接口会被服务器拒） */
+/** Host / admins: waiting list + actions. enabled = I am the host or an admin (members calling the API get rejected by the server) */
 export function useLobbyHost(api: LobbyApi, code: string, enabled: boolean, initialOn: boolean, onError: (e: unknown) => void): LobbyHost {
   const [on, setOn] = useState(initialOn)
   const [waiting, setWaiting] = useState<LobbyWaiter[]>([])
@@ -70,7 +70,7 @@ export function useLobbyHost(api: LobbyApi, code: string, enabled: boolean, init
     if (!enabled) { setWaiting([]); return }
     let alive = true, timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
-      try { await load() } catch { /* 下一轮再拉 */ }
+      try { await load() } catch { /* Pull again next round */ }
       if (alive) timer = setTimeout(tick, onRef.current ? LOBBY_HOST_POLL_MS : LOBBY_HOST_IDLE_MS)
     }
     void tick()
@@ -92,7 +92,7 @@ export function useLobbyHost(api: LobbyApi, code: string, enabled: boolean, init
   }
 }
 
-/** 等了多久：不到 1 分钟按秒，之后按分钟（界面自己套文案） */
+/** How long waited: seconds under a minute, minutes after (the UI wraps it in copy itself) */
 export function waitedFor(since: number, now = Date.now()): { unit: 's' | 'm'; n: number } {
   const s = Math.max(0, Math.floor((now - since) / 1000))
   return s < 60 ? { unit: 's', n: s } : { unit: 'm', n: Math.floor(s / 60) }

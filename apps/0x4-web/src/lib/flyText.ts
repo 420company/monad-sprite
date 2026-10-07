@@ -1,5 +1,5 @@
-// 小精灵交易相关的显示文字（2026-10-05 goat「交易还有哪些没对的、哪里该显示却没显示」），和服务器 server/src/flyText.ts 同一套说法：
-// 交易进程内部按包装币记（WBNB / WETH / BTCB），给人看叫 BNB / ETH / BTC；交易所拒单的英文原因翻成一句能照着做的话。
+// Sprite trading display strings (2026-10-05 goat: "which trading copy is still off, where something should show but doesn't"), same wording as the server's server/src/flyText.ts:
+// Internally the trading flow tracks wrapped coins (WBNB / WETH / BTCB), shown to users as BNB / ETH / BTC; exchanges' English rejection reasons are translated into actionable one-liners.
 import { t } from './i18n'
 
 const WRAPPED: Record<string, string> = { WBNB: 'BNB', WETH: 'ETH', BTCB: 'BTC', WBTC: 'BTC', WSOL: 'SOL' }

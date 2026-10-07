@@ -1,4 +1,4 @@
-// Solana 代币图标没有统一规律（Jupiter 给的是 arweave / github / ipfs 混着来），静态候选全失败时按 mint 去 Jupiter 查一次，结果缓存
+// Solana token icons follow no uniform pattern (Jupiter serves a mix of arweave / github / ipfs); when all static candidates fail, look up by mint on Jupiter once and cache the result
 const cache = new Map<string, Promise<string | null>>()
 export function resolveSolanaLogo(mint: string): Promise<string | null> {
   let p = cache.get(mint)

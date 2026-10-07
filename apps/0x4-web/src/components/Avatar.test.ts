@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-// 工作人员头像发光边框：
-// ① 服务端说是 admin / support → 头像外面套发光层（柔光 + 旋转描边），圆头像是圆环、NFT 头像是六边形环
-// ② 普通用户没有；同一批地址合并成一次请求、去重、问过的不再问
-// ③ 个人主页标签：admin「官方」、support「客服」、普通用户不显示
+// Staff avatar glow border:
+// ① server says admin / support → wrap the avatar in a glow layer (soft glow + rotating outline); round avatars get a ring, NFT avatars a hexagonal ring
+// ② regular users get none; addresses in the same batch merge into one request, deduped, never re-asked
+// ③ profile badges: admin → official badge, support → support badge (Chinese labels), regular users show nothing
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -46,28 +46,28 @@ describe('Avatar 工作人员发光边框', () => {
       createElement(Avatar, { address: ALICE, size: 28 }),
       createElement(Avatar, { address: ADMIN, size: 76 }),
     )))
-    expect(host.querySelector('[data-staff-glow]')).toBeNull() // 服务端没回话之前不画
+    expect(host.querySelector('[data-staff-glow]')).toBeNull() // Don't render before the server responds
     await flush()
     expect(staffCalls().length).toBe(1)
     const q = String(staffCalls()[0][0])
-    expect(q.split('=')[1].split(',').sort()).toEqual([ADMIN, ALICE].sort()) // 去重
+    expect(q.split('=')[1].split(',').sort()).toEqual([ADMIN, ALICE].sort()) // Dedupe
 
     const glows = [...host.querySelectorAll('[data-staff-glow]')]
     expect(glows.length).toBe(2)
     const g = glows[0] as HTMLElement
     expect(g.dataset.staffGlow).toBe('admin')
     expect(g.dataset.shape).toBe('circle')
-    expect(g.style.width).toBe('28px') // 占位和头像一样大，不挤布局
+    expect(g.style.width).toBe('28px') // The placeholder matches the avatar size — no layout shift
     const ring = g.querySelector('.sg-ring') as HTMLElement
     expect(ring.style.clipPath).toMatch(/^path\(evenodd, /)
     expect(ring.querySelector('.sg-spin')).not.toBeNull()
     expect(g.querySelector('.sg-halo')).not.toBeNull()
-    expect(g.querySelector('svg')).not.toBeNull() // 头像本体还在里面
-    // 普通用户的头像外面什么都没有
+    expect(g.querySelector('svg')).not.toBeNull() // The avatar itself is still inside
+    // Regular users' avatars have nothing around them
     const aliceSvg = [...host.querySelectorAll('svg')].find((s) => !glowOf(s))
     expect(aliceSvg).toBeTruthy()
 
-    // 再渲染一次不重复请求
+    // Re-rendering doesn't refetch
     act(() => root.render(createElement(Avatar, { address: ALICE, size: 28 })))
     await flush()
     expect(staffCalls().length).toBe(1)
@@ -81,7 +81,7 @@ describe('Avatar 工作人员发光边框', () => {
     expect(g.dataset.shape).toBe('hex')
     const clip = (g.querySelector('.sg-ring') as HTMLElement).style.clipPath
     expect(clip).toMatch(/^path\(evenodd, /)
-    expect(clip).toContain('Q') // 圆角六边形路径（二次贝塞尔拐角），不是圆弧
+    expect(clip).toContain('Q') // Rounded-hexagon path (quadratic Bézier corners), not arcs
     expect(clip).not.toContain('A')
     expect(g.querySelector('img')?.style.clipPath).toMatch(/^path\(/)
   })

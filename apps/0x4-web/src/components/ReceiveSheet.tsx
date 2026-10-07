@@ -1,4 +1,4 @@
-// 充值弹层：一次只看一条链，二维码 + 短地址，点一下就复制；其它链用顶部切换
+// Deposit sheet: one chain at a time — QR code + short address, tap to copy; switch chains at the top
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { Check, Copy, Download } from 'lucide-react'
@@ -14,7 +14,7 @@ import { errorText } from '@/lib/errors'
 
 type Net = 'solana' | 'evm' | 'btc'
 
-// 支持的链只显示 logo（2026-09-25 goat：文字太多），名字放在 aria-label / title 里
+// Supported chains show logos only (2026-09-25 goat: too much text); names go in aria-label / title
 const NETS: { id: Net; name: string; hint: string; chains: number[] }[] = [
   { id: 'evm', name: 'EVM', hint: '适用于 BNB Chain、Ethereum、Base、Arbitrum 等 EVM 网络', chains: [56, 1, 8453, 42161, 4663, 137, 10] },
   { id: 'solana', name: 'Solana', hint: '仅适用于 Solana 网络', chains: [SOLANA_CHAIN_ID] },
@@ -25,26 +25,26 @@ function useQr(text: string | null) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     if (!text) return setUrl(null)
-    // 深色底上用浅色码；margin 小一点让码更大
+    // Light code on dark backgrounds; smaller margin for a bigger code
     QRCode.toDataURL(text, { width: 480, margin: 1, color: { dark: '#0b0f0c', light: '#ffffff' } }).then(setUrl).catch(() => setUrl(null))
   }, [text])
   return url
 }
 
 export default function ReceiveSheet({ open, onClose, address, evmAddress, initialNet = 'evm' }: { open: boolean; onClose: () => void; address: string | null; evmAddress: string | null; initialNet?: Net }) {
-  // 比特币地址直接从钱包取（设置页等老调用处不用改）
+  // Bitcoin address taken straight from the wallet (old call sites like settings need no changes)
   const btcAddress = useWallet((s) => s.btcAddress)
   const [net, setNet] = useState<Net>(initialNet)
   const [copied, setCopied] = useState(false)
   useEffect(() => { if (open) { setNet(initialNet); setCopied(false) } }, [open, initialNet])
   const cur = net === 'solana' ? address : net === 'btc' ? (btcAddress || null) : evmAddress
-  // 比特币二维码用 bitcoin: 链接，别的钱包扫了直接进发送页
+  // Bitcoin QR uses a bitcoin: link — other wallets scanning it land on their send page
   const qr = useQr(cur && net === 'btc' ? `bitcoin:${cur}` : cur)
-  // 老钱包的比特币地址要解锁一次才算得出来（之后存进金库，锁着也能看）
+  // Old wallets need one unlock to derive the Bitcoin address (then stored in the vault, viewable while locked)
   const [unlocking, setUnlocking] = useState(false)
   const unlockForBtc = async () => {
     setUnlocking(true)
-    try { await ensureUnlocked(t('生成比特币地址')) } catch { /* 用户取消 */ } finally { setUnlocking(false) }
+    try { await ensureUnlocked(t('生成比特币地址')) } catch { /* User cancelled */ } finally { setUnlocking(false) }
   }
   const info = NETS.find((n) => n.id === net)!
   const copy = () => {
@@ -65,7 +65,7 @@ export default function ReceiveSheet({ open, onClose, address, evmAddress, initi
   }
   return (
     <Sheet open={open} onClose={onClose} title={t('充值')}>
-      {/* 网络切换 */}
+      {/* Network switch */}
       <div className="flex rounded-2xl bg-card2 p-1">
         {NETS.filter((n) => n.id === 'solana' || evmAddress).map((n) => (
           <button key={n.id} onClick={() => setNet(n.id)} className={`flex-1 rounded-xl py-2 text-sm font-semibold transition ${net === n.id ? 'bg-accent text-bg' : 'text-muted'}`}>{n.name}</button>
@@ -78,12 +78,12 @@ export default function ReceiveSheet({ open, onClose, address, evmAddress, initi
           <button onClick={unlockForBtc} disabled={unlocking} className="mx-auto mt-3 flex min-h-10 items-center rounded-full bg-accent px-5 text-[13px] font-semibold text-bg disabled:opacity-50">{t('验证并生成')}</button>
         </div>
       ) : <>
-      {/* 二维码 */}
+      {/* QR code */}
       <div className="mx-auto mt-5 flex h-48 w-48 items-center justify-center overflow-hidden rounded-2xl bg-white p-2">
         {qr ? <img src={qr} alt={t('收款二维码')} className="h-full w-full" /> : <span className="text-xs text-bg/60">{t('生成中…')}</span>}
       </div>
 
-      {/* 地址：一行显示完整（字号随屏宽缩放，不折行）；复制按钮在第二行居中（2026-09-25 goat 要求） */}
+      {/* Address: full on one line (font scales with screen width, no wrap); copy button centered on the second row (2026-09-25 goat requirement) */}
       <div className="glass-lite mt-4 rounded-2xl px-3 py-3 text-center">
         <div className="whitespace-nowrap font-mono text-[clamp(10px,3.1vw,13px)] tracking-tight" aria-label={t('收款地址')}>{cur || '--'}</div>
         <button onClick={copy} className="mx-auto mt-2.5 flex min-h-10 items-center gap-1.5 rounded-full bg-card2 px-4 text-[13px] font-semibold" aria-label={t('复制地址')}>

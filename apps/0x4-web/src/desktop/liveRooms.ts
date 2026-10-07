@@ -1,6 +1,6 @@
-// 网页版「正在直播」的共用数据（2026-10-01 社区合并）：顶栏「社区」的红点、社区左边菜单「直播」的数字、
-// 动态页右边栏「正在直播」、直播页的房间列表，都用这一份，不各拉各的。
-// 公开接口 /api/rooms（不登录也能读）。有页面在用时每 10 秒拉一次，标签页在后台时跳过，切回来马上拉。
+// Shared "now live" data for web (2026-10-01 community merge): the top bar "Community" red dot, the community left menu's "Livestream" number,
+// the feed page's right rail "Now live", and the livestream page's room list — all use this one copy, no separate pulls.
+// Public API /api/rooms (readable without login). Pulls every 10s while some page uses it; skipped when the tab is in background, pulled immediately on return.
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { api } from '@/lib/social'
@@ -31,7 +31,7 @@ export const useLiveRooms = create<LiveRoomsState>((set, get) => ({
     try {
       const r = await api<{ livekit: boolean; rooms: RoomInfo[] }>('/api/rooms', { signal: ctrl.signal }, { anonymous: true })
       if (!Array.isArray(r?.rooms) || typeof r.livekit !== 'boolean') throw new Error('bad')
-      // 看的人多的在前，同样多的新开播在前
+      // Most viewers first; ties broken by most recently started
       const rooms = [...r.rooms].sort((a, b) => b.viewers - a.viewers || b.createdAt - a.createdAt)
       set({ livekit: r.livekit, rooms, updated: Date.now(), failed: false })
     } catch { set({ failed: true }) }
@@ -43,7 +43,7 @@ let users = 0
 let timer: ReturnType<typeof setInterval> | null = null
 function onVisible() { if (!document.hidden) void useLiveRooms.getState().refresh() }
 
-/** 页面用这个订阅：第一个用的组件挂上时开始轮询，最后一个卸载时停 */
+/** Pages subscribe with this: polling starts when the first consuming component mounts, stops when the last unmounts */
 export function useLiveRoomsPoll() {
   useEffect(() => {
     users++

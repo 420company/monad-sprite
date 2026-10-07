@@ -1,10 +1,10 @@
-// 关联其他钱包（只服务于「用 NFT 做头像」）。
+// Link other wallets (serves only "use an NFT as avatar").
 //
-// 场景：NFT 放在冷钱包或另一个常用钱包里，用户不想把那个钱包拿来交易，
-// 但想用里面的 NFT 当头像。关联时让那个钱包签一条消息证明是本人，
-// 之后验证 NFT 持有会把它一起算上。
+// Scenario: the NFT sits in a cold wallet or another daily wallet, and the user doesn't want to trade with that wallet,
+// But wants to use its NFT as an avatar. When linking, have that wallet sign a message proving ownership,
+// Later NFT-holding verification will count it too.
 //
-// 边界：我们只记地址，不碰它的私钥，也永远不会用它发起交易。
+// Boundary: we only record the address — never touch its private key, and never initiate transactions with it.
 import { api } from '@/lib/social'
 import { currentWebDomain } from '@/lib/siwx'
 
@@ -18,12 +18,12 @@ export async function listLinkedWallets(): Promise<{ list: LinkedWallet[]; max: 
   return api<{ list: LinkedWallet[]; max: number }>('/api/me/wallets')
 }
 
-/** 第一步：拿这个地址要签的消息。domain = 网页版当前域名（网页版令牌才用它；App 令牌服务器不看，消息照旧是 app.420.meme） */
+/** Step one: fetch the message this address must sign. domain = the web build's current domain (only web tokens use it; the server ignores it for app tokens, and the message stays app.420.meme) */
 export async function walletChallenge(address: string): Promise<{ message: string; issuedAt: string }> {
   return api<{ message: string; issuedAt: string; nonce: string }>(`/api/me/wallets/challenge?address=${encodeURIComponent(address)}&domain=${currentWebDomain()}`)
 }
 
-/** 第二步：交签名。验不过服务端会拒 */
+/** Step two: submit the signature. The server rejects if verification fails */
 export async function linkWallet(p: { address: string; chainType: 'solana' | 'evm'; signature: string; issuedAt: string }): Promise<void> {
   await api('/api/me/wallets', { method: 'POST', body: JSON.stringify(p) })
 }

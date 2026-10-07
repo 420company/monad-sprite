@@ -1,20 +1,20 @@
-// 像素标语的绘制（canvas 2D，每个像素方块一个粒子）。组件在 WelcomeIntro.tsx。
+// Pixel tagline rendering (canvas 2D, one particle per pixel cell). The component lives in WelcomeIntro.tsx.
 //
-// 画布比标语大一圈（左右到屏幕边、上下各多出一段），方块从下方和两侧飞进来。
-// 方块尺寸取整到设备像素、位置也取整，关掉插值，保证边缘锐利。
+// The canvas is a ring larger than the tagline (sides to the screen edges, extra above and below); cells fly in from below and the sides.
+// Cell sizes floored to device pixels, positions floored too, interpolation off — edges stay crisp.
 import type { PixelText } from './pixelFont'
 
 export interface IntroTimeline {
-  /** 猫头像素化显影开始 / 时长 */
+  /** Cat-head pixelation develop start / duration */
   logo: number
   logoDur: number
-  /** 第一颗方块起飞 / 最后一颗落位 */
+  /** First cell takes off / last cell lands */
   text: number
   textEnd: number
-  /** 光带扫过开始 / 时长 */
+  /** Light band sweep start / duration */
   sweep: number
   sweepDur: number
-  /** 按钮（解锁页是密码框）、底部说明淡入 */
+  /** The button (password box on the unlock page) and the bottom note fade in */
   cta: number
   note: number
 }
@@ -24,12 +24,12 @@ interface Particle {
   y: number
   delay: number
   dur: number
-  /** 起飞点相对落点的偏移：横向按标语宽度算、纵向按标语高度算 */
+  /** Takeoff point offset relative to the landing point: horizontal from tagline width, vertical from tagline height */
   fx: number
   fy: number
-  /** 沿对角线的位置 0–1：光带和配色都用它 */
+  /** Position 0–1 along the diagonal: both the light band and the palette use it */
   u: number
-  /** 落位后上 / 下 / 左 / 右是不是字形边缘（边缘才画高光和暗边，字里面连成一整块） */
+  /** After landing, whether up / down / left / right is a glyph edge (highlights and dark edges only on edges; interiors merge into one block) */
   edge: [boolean, boolean, boolean, boolean]
 }
 
@@ -38,7 +38,7 @@ interface Palette {
   hi: string
   lo: string
   shadow: string
-  /** 被光带扫到时的颜色（按强度分三档） */
+  /** The color when swept by the light band (three steps by intensity) */
   lit: string[]
   glow: string | null
   seam: string
@@ -46,10 +46,10 @@ interface Palette {
 
 const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v))
 const easeOut = (x: number) => 1 - Math.pow(1 - clamp(x), 3)
-/** 带一点回弹 */
+/** With a touch of bounce */
 const easeOutBack = (x: number, s = 1.35) => { const t = clamp(x) - 1; return 1 + (s + 1) * t * t * t + s * t * t }
 
-// 伪随机：同一段字每次排出来一样（录屏、截图可复现）
+// Pseudo-random: the same text lays out identically every time (screen recordings and screenshots are reproducible)
 function rng(seed: number) {
   return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296 }
 }
@@ -58,7 +58,7 @@ type RGB = [number, number, number]
 const hex = (h: string): RGB => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
 const mix = (a: RGB, b: RGB, k: number) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * k)).join(' ')})`
 
-// 深色流体上：近白厚重字，光带扫过变纯白、带一圈淡紫柔光；浅色流体上：近黑字，光带扫过变品牌紫
+// On dark fluid: near-white heavy type, turning pure white with a soft lavender glow as the light band sweeps; on light fluid: near-black type, turning brand purple under the band
 function palette(light: boolean): Palette {
   if (light) {
     const face = hex('#17181f'), lit = hex('#6b4de6')
@@ -68,14 +68,14 @@ function palette(light: boolean): Palette {
   return { face: '#ebe7f0', hi: 'rgb(255 255 255 / .7)', lo: 'rgb(60 50 90 / .22)', shadow: 'rgb(6 6 18 / .42)', lit: [1, 2, 3].map(k => mix(face, lit, k / 3)), glow: 'rgb(214 200 255 / .26)', seam: 'rgb(70 60 100 / .1)' }
 }
 
-// 色彩流动（2026-09-25 goat：字要有色彩上的动效）：品牌三色 蜜桃 → 淡紫 → 冰青 斜着缓慢流过整块字，
-// 分成 FLOW_STEPS 档，一格一格跳色，保持像素风；深色流体上用浅色调（和白字混一半），浅色流体上用深色调，保证看得清
+// Flowing colors (2026-09-25 goat: the text needs color motion): the three brand colors — peach → lavender → ice cyan — drift diagonally and slowly across the whole glyph block,
+// Split into FLOW_STEPS steps, jumping color cell by cell to keep the pixel look; light tones on dark fluid (mixed half with the white text), dark tones on light fluid — always readable
 const FLOW_STEPS = 12
-const FLOW_PERIOD = 7 // 秒，流过一整轮
+const FLOW_PERIOD = 7 // Seconds for one full flow cycle
 function flowColors(light: boolean): string[] {
   const stops: RGB[] = light ? [hex('#c2415f'), hex('#5b3fd6'), hex('#10789c')] : [hex('#ffb08f'), hex('#c7a8ff'), hex('#8fdcff')]
   const base = light ? hex('#17181f') : hex('#ffffff')
-  const k = light ? 0.15 : 0.08 // 往底色拉一点点，保留色彩又不刺眼
+  const k = light ? 0.15 : 0.08 // Pull slightly toward the base color — keeps the hue without glaring
   return Array.from({ length: FLOW_STEPS }, (_, i) => {
     const f = (i / FLOW_STEPS) * stops.length
     const a = stops[Math.floor(f) % stops.length], b = stops[(Math.floor(f) + 1) % stops.length]
@@ -88,12 +88,12 @@ export class PixelTitleRenderer {
   private ctx: CanvasRenderingContext2D
   private parts: Particle[]
   private cell = 1
-  /** 标语左上角在画布里的位置（设备像素） */
+  /** The tagline's top-left position on the canvas (device pixels) */
   private ox = 0
   private oy = 0
   private pal: Palette
   private flow: string[] = flowColors(false)
-  /** 闲置时零星闪一下的方块：下标 → 开始时间 */
+  /** Cells that blink sporadically while idle: index → start time */
   private twinkles = new Map<number, number>()
 
   constructor(private canvas: HTMLCanvasElement, private text: PixelText, private tl: IntroTimeline) {
@@ -105,7 +105,7 @@ export class PixelTitleRenderer {
     const has = (x: number, y: number) => filled.has(`${x},${y}`)
     this.parts = text.cells.map(c => {
       const dur = clamp(spread * 0.34, 0.42, 0.8) * (0.85 + r() * 0.3)
-      // 大致从左往右、先第一行后第二行落位，再撒一把随机让它错落
+      // Land roughly left-to-right, first row then second, then scatter some randomness for stagger
       const k = clamp(0.5 * (c.x / text.cols) + 0.15 * c.line + 0.35 * r())
       const fromBelow = r() < 0.6
       const side = r() < 0.5 ? -1 : 1
@@ -123,8 +123,8 @@ export class PixelTitleRenderer {
   setTheme(light: boolean) { this.pal = palette(light); this.flow = flowColors(light) }
 
   /**
-   * 按标语占位宽度排版：方块边长 = 占位宽度 ÷ 列数，向下取整到设备像素。
-   * pad = 画布在标语四周多铺出去的 CSS 像素（给飞入留地方）。返回画布的 CSS 尺寸
+   * Lay out to the tagline placeholder width: cell side = placeholder width ÷ columns, floored to device pixels.
+   * pad = extra CSS pixels the canvas extends beyond the tagline on all sides (room for the fly-in). Returns the canvas's CSS size
    */
   layout(boxW: number, dpr: number, pad: { left: number; right: number; top: number; bottom: number }) {
     const { cols, rows } = this.text
@@ -138,18 +138,18 @@ export class PixelTitleRenderer {
     return { width: W / dpr, height: H / dpr }
   }
 
-  /** 闲置阶段：挑几颗方块闪一下 */
+  /** Idle phase: pick a few cells to blink */
   twinkle(now: number, n: number) {
     for (let i = 0; i < n; i++) this.twinkles.set(Math.floor(Math.random() * this.parts.length), now + i * 0.18)
   }
 
-  /** 闲置阶段有没有正在闪的方块（没有就不用继续跑帧） */
+  /** Whether any cell is blinking during idle (if none, no need to keep running frames) */
   busy(now: number) {
     for (const [i, t0] of this.twinkles) if (now - t0 > 0.6) this.twinkles.delete(i)
     return this.twinkles.size > 0
   }
 
-  /** t = 开场后的秒数；still = 直接画最终态 */
+  /** t = seconds since the intro started; still = draw the final state directly */
   draw(t: number, still = false) {
     const { ctx, cell, pal, ox, oy, tl } = this
     const tw = this.text.cols * cell, th = this.text.rows * cell
@@ -159,8 +159,8 @@ export class PixelTitleRenderer {
     const sd = Math.max(1, Math.round(cell * 0.2))
     const sweepC = still ? -9 : -0.25 + ((t - tl.sweep) / tl.sweepDur) * 1.5
 
-    // 先算每颗方块这一帧的位置 / 大小 / 透明度 / 亮度，阴影一遍、方块一遍，阴影不会压到相邻方块上
-    // [x, y, 边长, 透明度, 亮度档, 粒子下标, 是否已落位]
+    // First compute each cell's position / size / opacity / brightness for this frame — one pass for shadows, one for cells, so shadows never cover neighboring cells
+    // [x, y, side length, opacity, brightness step, particle index, landed?]
     const frame: [number, number, number, number, number, number, boolean][] = []
     for (let i = 0; i < this.parts.length; i++) {
       const p = this.parts[i]
@@ -171,7 +171,7 @@ export class PixelTitleRenderer {
       const x = ox + p.x * cell + Math.round((1 - m) * p.fx * tw) + ((cell - size) >> 1)
       const y = oy + p.y * cell + Math.round((1 - m) * p.fy * th) + ((cell - size) >> 1)
       const a = clamp(k * 4)
-      // 光带：窄带斜着扫过，强度分三档，像素风不要平滑渐变
+      // Light band: a narrow band sweeping diagonally, three intensity steps — pixel style, no smooth gradients
       let lit = 0
       const d = Math.abs(p.u - sweepC)
       if (d < 0.13) lit = Math.ceil((1 - d / 0.13) * 3)
@@ -196,12 +196,12 @@ export class PixelTitleRenderer {
     }
     for (const [x, y, size, a, lit, i, landed] of frame) {
       ctx.globalAlpha = a
-      // 没被光带扫到时按位置和时间取流动色；光带和闪烁照旧提亮
+      // Unswept cells take the flowing color by position and time; the light band and blinking still brighten
       const ph = ((this.parts[i].u * 1.2 - t / FLOW_PERIOD) % 1 + 1) % 1
       ctx.fillStyle = lit ? pal.lit[lit - 1] : this.flow[Math.floor(ph * FLOW_STEPS) % FLOW_STEPS]
       ctx.fillRect(x, y, size, size)
       if (size < 4) continue
-      // 飞行中是独立小方块，四边都有高光暗边；落位后只在字形外缘画，字身连成厚实的一整块
+      // Mid-flight they're independent little cells with highlight and shadow on all four sides; once landed, only the glyph's outer edge is drawn, the body merging into one solid chunk
       const [top, bottom, left, right] = landed ? this.parts[i].edge : [true, true, true, true]
       ctx.fillStyle = pal.hi
       if (top) ctx.fillRect(x, y, size, e)
@@ -209,7 +209,7 @@ export class PixelTitleRenderer {
       ctx.fillStyle = pal.lo
       if (bottom) ctx.fillRect(x, y + size - e, size, e)
       if (right) ctx.fillRect(x + size - e, y, e, size)
-      // 格缝：极淡的一像素线，留住「一颗颗像素」的质感
+      // Cell gaps: an extremely faint one-pixel line, keeping the "individual pixels" texture
       ctx.fillStyle = pal.seam
       if (!bottom) ctx.fillRect(x, y + size - 1, size, 1)
       if (!right) ctx.fillRect(x + size - 1, y, 1, size)

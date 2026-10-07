@@ -1,4 +1,4 @@
-// 余额、礼物收入与提现（美元计价；提现可选 USDC / USDT 等资产）
+// Balance, gift earnings, and withdrawals (USD-denominated; withdrawals can be USDC / USDT etc.)
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react'
 import Button from '@/components/Button'
@@ -20,7 +20,7 @@ import { routeQuery } from '@/lib/route'
 interface History { charges: { amount: number; reason: string; created_at: number }[]; received: { from_addr: string; gift_id: string; qty: number; value: number; fee: number; created_at: number; nickname: string | null; avatar: string | null }[]; topups: { amount: number; tx: string; created_at: number; asset?: string; asset_amount?: number }[]; withdrawals: { amount: number; tx: string | null; status: string; created_at: number; asset?: string; asset_amount?: number }[] }
 
 export default function Earnings() {
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /settings
+  // Back: go back if there is a previous page (its state / scroll get restored); push / deep-link opens go to /settings
   const back = useBack('/settings')
   const { address, evmAddress } = useWallet()
   const [picking, setPicking] = useState(false)
@@ -29,7 +29,7 @@ export default function Earnings() {
   const [history, setHistory] = useState<History | null>(null)
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
-  // 「我」页点「充值」会带 ?topup=1 进来，直接打开充值弹层
+  // Tapping "Top up" on the "Me" page arrives with ?topup=1 — opens the top-up sheet directly
   const [topup, setTopup] = useState(() => routeQuery().get('topup') === '1')
   const loadHistory = () => api<History>('/api/gifts/history').then(setHistory).catch(() => {})
   useEffect(() => { loadHistory() }, [])
@@ -37,7 +37,7 @@ export default function Earnings() {
   const withdraw = async () => {
     setBusy(true)
     try {
-      // 没点过芯片时用界面上高亮的那个，别让后端自己兜底——显示的和提的必须是同一种
+      // When no chip was tapped, use the one highlighted in the UI — don't let the backend fall back on its own; displayed and withdrawn must be the same
       const picked = asset || wallet?.assets.find((x) => x.kind === 'stable') || null
       const r = await api<{ tx: string }>('/api/credits/withdraw', { method: 'POST', body: JSON.stringify({ amount: Number(amount), chainId: picked?.chainId, token: picked?.address }) })
       toast.success(t('提现已到账')); setAmount(''); reload(); loadHistory()
@@ -55,7 +55,7 @@ export default function Earnings() {
       </div>
       <div className="mt-4 rounded-2xl bg-card p-4">
         <Label>{t('提现资产')}</Label>
-        {/* 选链：一个按钮显示当前选中的，点开再列出全部（以前一排横滑，看不全，2026-09-25 goat 反馈） */}
+        {/* Chain picker: one button shows the current selection, tap to list all (previously a horizontal swipe row that couldn't be fully seen — 2026-09-25 goat feedback) */}
         {(() => {
           const opts = (wallet?.assets || []).filter((a) => a.kind === 'stable')
           const cur = asset || opts[0]

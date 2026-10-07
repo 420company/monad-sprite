@@ -1,4 +1,4 @@
-// 名字 / 昵称规则（2026-09-28 goat 定）：只允许汉字、英文字母、数字；按宽度算，一个汉字 2、字母数字 1，合计 ≤ 16
+// Name / nickname rules (goat's call, 2026-09-28): CJK characters, letters, and digits only; width-based counting — one CJK char counts 2, a letter/digit counts 1, total ≤ 16
 import { describe, expect, it } from 'vitest'
 import { nameError, nameWidth } from './names'
 
@@ -15,9 +15,9 @@ describe('名字规则', () => {
   })
   it('空格、符号、表情都不行（含注入和冒充常用的写法）', () => {
     for (const bad of ['DR.Nerd', 'Moon Boy', '<img src=x onerror=alert(1)>', 'a"b', "a'b", 'a&b', '小猫😺', '✓Admin', '官方·客服', '0x4_team',
-      'abc‮def',   // 让文字倒着显示的控制符
-      'ad​min',    // 看不见的零宽字符
-      'ＡＤＭＩＮ',       // 全角字母，看起来像 ADMIN
+      'abc‮def',   // Control characters that render text reversed
+      'ad​min',    // Invisible zero-width characters
+      'ＡＤＭＩＮ',       // Full-width letters that look like ADMIN
       '１２３']) expect(nameError(bad), JSON.stringify(bad)).not.toBeNull()
   })
   it('空的不行；昵称的提示说「昵称」', () => {

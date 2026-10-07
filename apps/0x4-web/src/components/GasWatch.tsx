@@ -1,5 +1,5 @@
-// 首页燃料费预警（2026-09-27 goat）：某条链上还有币但燃料费不够，卖出会失败 —— 提醒用户；
-// 开了「自动补充燃料费」就直接从 BSC 上的 BNB 预存里补（同一条链 6 小时内最多自动补一次，失败不重试刷屏）。
+// Home gas warning (2026-09-27 goat): a chain still holds coins but is short on gas, so selling would fail — warn the user;
+// With "auto gas top-up" on, top up directly from the BNB reserve on BSC (at most one auto top-up per chain per 6 hours; failures don't retry-spam).
 import { useEffect, useRef, useState } from 'react'
 import FuelGauge from '@/components/FuelGauge'
 import { toast } from '@/components/Toast'
@@ -16,16 +16,16 @@ import { withRefuelLock } from '@/lib/refuelLock'
 const COOLDOWN = 6 * 3600_000
 const KEY = '0x4.autoRefuelAt'
 const lastAuto = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch { return {} } }
-const markAuto = (chainId: number) => { try { localStorage.setItem(KEY, JSON.stringify({ ...lastAuto(), [chainId]: Date.now() })) } catch { /* 无痕模式 */ } }
-// 自动补充的 24 小时累计（美元）：不超过用户设的燃料预算（2026-09-28 审查 #12：冷却只限次数，不限金额）
+const markAuto = (chainId: number) => { try { localStorage.setItem(KEY, JSON.stringify({ ...lastAuto(), [chainId]: Date.now() })) } catch { /* Incognito mode */ } }
+// Auto top-up's rolling 24h total (USD): never exceeds the user's gas budget (2026-09-28 review #12: cooldown limits frequency, not amount)
 const SPENT_KEY = '0x4.autoRefuelSpent'
 const spent24h = (): { at: number; usd: number }[] => { try { return (JSON.parse(localStorage.getItem(SPENT_KEY) || '[]') as { at: number; usd: number }[]).filter((x) => Date.now() - x.at < 24 * 3600_000) } catch { return [] } }
-const addSpent = (usd: number, at: number) => { try { localStorage.setItem(SPENT_KEY, JSON.stringify([...spent24h(), { at, usd }])) } catch { /* 无痕模式 */ } }
-const dropSpent = (at: number) => { try { localStorage.setItem(SPENT_KEY, JSON.stringify(spent24h().filter((x) => x.at !== at))) } catch { /* 无痕模式 */ } }
-// 签名之前就失败（报价失败、没路线、用户取消）：钱肯定没花出去，退回额度，30 分钟后可以再试；
-// 走到签名之后才失败：交易可能已经发出去了，额度和 6 小时冷却都保留，宁可少补也不重复补（2026-09-29 Codex 复审 P1）
+const addSpent = (usd: number, at: number) => { try { localStorage.setItem(SPENT_KEY, JSON.stringify([...spent24h(), { at, usd }])) } catch { /* Incognito mode */ } }
+const dropSpent = (at: number) => { try { localStorage.setItem(SPENT_KEY, JSON.stringify(spent24h().filter((x) => x.at !== at))) } catch { /* Incognito mode */ } }
+// Failed before signing (quote failed, no route, user cancelled): no money left the wallet, so refund the quota — retry allowed after 30 minutes;
+// Failed only after reaching signing: the tx may already be sent — keep the quota and the 6-hour cooldown; better to under-top-up than to double-top-up (2026-09-29 Codex review P1)
 const RETRY_AFTER_FAIL = 30 * 60_000
-const unmarkAuto = (chainId: number) => { try { localStorage.setItem(KEY, JSON.stringify({ ...lastAuto(), [chainId]: Date.now() - COOLDOWN + RETRY_AFTER_FAIL })) } catch { /* 无痕模式 */ } }
+const unmarkAuto = (chainId: number) => { try { localStorage.setItem(KEY, JSON.stringify({ ...lastAuto(), [chainId]: Date.now() - COOLDOWN + RETRY_AFTER_FAIL })) } catch { /* Incognito mode */ } }
 
 export default function GasWatch({ onOpenFuel }: { onOpenFuel: () => void }) {
   const holdings = usePortfolio((s) => s.holdings)
@@ -33,20 +33,20 @@ export default function GasWatch({ onOpenFuel }: { onOpenFuel: () => void }) {
   const { autoRefuel, gasReserveUsd, fuelChains } = useSettings()
   const scannedChains = usePortfolio((s) => s.scannedChains)
   const evmAccount = useWallet((s) => s.evmAccount)
-  // 原生 App 里 evmAccount 一直是带闸外壳，锁着也有值；自动补充要看真签名器是否已解锁
+  // In the native app, evmAccount is always the gated shell — it has a value even while locked; auto top-up must check whether the real signer is unlocked
   const keysUnlocked = useWallet((s) => s.keysUnlocked)
   const { run, busyChain, bnbUsd } = useRefuel()
   const low = lastUpdated ? lowGasChains(holdings) : []
   const running = useRef(false)
-  // 各链燃料费标准按服务器实测（每 3 小时更新），拿到后重新判断一次
+  // Per-chain gas standards follow server measurements (updated every 3 hours); re-evaluate once they arrive
   const [, setRulesTick] = useState(0)
   useEffect(() => { loadGasRules().then(() => setRulesTick((x) => x + 1)) }, [])
 
-  // 自动补：App 开着、钱包解锁时进行（锁着就跳过，不弹验证框）；BNB 不够补就只提醒
+  // Auto top-up: runs while the app is open and the wallet unlocked (skipped when locked, no auth prompt); if BNB is too low to top up, just notify
   useEffect(() => {
     if (!canAutoRefuel({ enabled: autoRefuel, hasAccount: !!evmAccount, keysUnlocked, portfolioReady: !!lastUpdated }) || running.current) return
-    // 要补的链：有币却缺燃料费的链（卖出会失败），加上用户在燃料费页添加的链（专门为它预存，余额低于警戒线就补）
-    // 冷却和 24 小时额度在锁里重新读一次：别的标签刚补过，这里就不会再补
+    // Chains to top up: chains holding coins but short on gas (selling would fail), plus chains the user added on the gas page (pre-stored specifically for them — top up when the balance drops below the warning line)
+    // Re-read the cooldown and 24h quota inside the lock: if another tab just topped up, this one won't top up again
     const pick = () => autoRefuelDue({ holdings, low: low.map((l) => l.chainId), fuelChains, scannedChains, bnbUsd, reserveUsd: gasReserveUsd, spentUsd: spent24h().reduce((s, x) => s + x.usd, 0), lastAuto: lastAuto(), cooldownMs: COOLDOWN })
     if (pick() === null) return
     running.current = true
@@ -54,7 +54,7 @@ export default function GasWatch({ onOpenFuel }: { onOpenFuel: () => void }) {
       const due = pick()
       if (due === null) return
       const usd = gasRule(due).topUpUsd, at = Date.now()
-      markAuto(due); addSpent(usd, at)   // 先占住额度和冷却，别的标签看到就不会再发
+      markAuto(due); addSpent(usd, at)   // Occupy the quota and cooldown first — other tabs seeing it won't send again
       let signing = false
       const name = chainById(due)?.name || ''
       try {
@@ -64,7 +64,7 @@ export default function GasWatch({ onOpenFuel }: { onOpenFuel: () => void }) {
         if (!signing) { dropSpent(at); unmarkAuto(due) }
         toast.error(t('自动补充燃料费失败：{msg}', { msg: errorText(e, '') }))
       }
-    }).catch(() => { /* 浏览器的锁本身出错：这一轮不补，下次再判断 */ }).finally(() => { running.current = false })
+    }).catch(() => { /* The browser's lock itself errored: skip this round's top-up, evaluate again next time */ }).finally(() => { running.current = false })
   }, [autoRefuel, evmAccount, keysUnlocked, lastUpdated]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!low.length) return null

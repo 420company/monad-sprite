@@ -1,6 +1,6 @@
-// 0x4 Wallet 专属功能的提示卡（2026-09-30 goat：合约交易这些就是我们钱包专属，好推钱包；提示要帅、字少、一看就懂）。
-// 网页版连的是外部钱包（MetaMask、Phantom 等）时，合约交易、网页快捷交易、私信、小精灵全自动、比特币换成这张卡；
-// 连的是 0x4 Wallet、或者手机 App，原样渲染。卡上只有：猫头、一句大标题、一行短说明、「获取 0x4 Wallet」，外加一个不打扰的「已经装了？连接」。
+// Promo card for 0x4 Wallet-exclusive features (2026-09-30 goat: perp trading etc. are our wallet's exclusives — good for pushing the wallet; the prompt should look sharp, few words, instantly clear).
+// When the web build connects an external wallet (MetaMask, Phantom, etc.), perp trading, web quick-trade, DMs, sprite full-auto, and Bitcoin swap into this card;
+// with 0x4 Wallet connected — or on the mobile app — render as usual. The card carries only: a cat head, one big title, one short line, "Get 0x4 Wallet", plus an unobtrusive "Already installed? Connect".
 import { ArrowRight } from 'lucide-react'
 import { isExternalWallet, useWallet } from '@/store/wallet'
 import { WEB_SURFACE } from '@/lib/surface'
@@ -10,7 +10,7 @@ import { connectOx4, getOx4Wallet } from './walletGate'
 
 export type Ox4Feature = 'perp' | 'dm' | 'auto' | 'btc'
 
-/** 每个专属功能的一行短说明（大标题统一是「0x4 Wallet 专属」） */
+/** One short line per exclusive feature (the big title is always "0x4 Wallet Exclusive") */
 const LINE: Record<Ox4Feature, () => string> = {
   perp: () => t('合约交易，一键开单'),
   dm: () => t('私信，端到端加密'),
@@ -18,19 +18,19 @@ const LINE: Record<Ox4Feature, () => string> = {
   btc: () => t('比特币收发'),
 }
 
-/** 现在是不是外部钱包（专属功能要换成提示卡）。手机 App 恒为 false */
+/** Whether an external wallet is currently connected (exclusive features swap to the promo card). Always false on the mobile app */
 export function useExternalWallet(): boolean {
   const ext = useWallet(isExternalWallet)
   return WEB_SURFACE && ext
 }
 
-/** 专属功能外壳：外部钱包时换成提示卡 */
+/** Exclusive-feature shell: swaps to the promo card for external wallets */
 export default function Ox4Only({ feature, children, compact = false }: { feature: Ox4Feature; children: React.ReactNode; compact?: boolean }) {
   if (!useExternalWallet()) return <>{children}</>
   return <Ox4OnlyCard feature={feature} compact={compact} />
 }
 
-/** 提示卡本身（弹层里也直接用它） */
+/** The promo card itself (also used directly inside sheets) */
 export function Ox4OnlyCard({ feature, compact = false }: { feature: Ox4Feature; compact?: boolean }) {
   return (
     <section className={`ox4-only ${compact ? 'is-compact' : ''}`} aria-labelledby={`ox4-only-${feature}`}>

@@ -1,20 +1,20 @@
-// 网页版浅色「香芋白」的液态玻璃动态（2026-10-03 goat 选定 Gemini 方向 1「清透透镜」+ 方向 2「流体水银」）：
-// 1. 环境光：<body> 最前面一层 .lq-amb（几团很慢流动的珍珠色光）+ 很淡的同心圆辅助线；样式和动画在 light.css，深色下不显示。
-// 2. 透镜：顶部导航胶囊、次要按钮、各分段控件里的选中块，按各自尺寸挂上透镜滤镜（lens.ts，只有 Chromium 有）。
-// 3. 液态选中块：分段控件、链筛选、顶部导航、标签页的「选中」不再是按钮自己的底色，而是容器 ::before 画的一颗玻璃水滴，
-//    切换时带着拉伸滑过去、到位回弹（位置写在容器的 --ix/--iy/--iw/--ih）。用伪元素不往 React 管的节点里塞东西。
-// 4. 水波：按钮按下时从按下的位置扩散一圈光（--rx/--ry + .lq-rip 重新触发动画）。
-// 5. 鼠标反光：玻璃面板上的柔光和边缘亮线跟着鼠标走（--lx/--ly）。
-// 6. 自动降级：页面安顿后测两次帧率，都太低（老电脑、核显）才给 <html> 加 .lq-lite，light.css 据此关掉透镜和流动背景。
-// 只在浅色主题和「空间」外观（2026-10-03，data-look="space"）时做事；系统开了「减少动态效果」时不做动效（选中块直接到位）。
+// Liquid-glass motion for the web's light "taro white" theme (2026-10-03 goat picked Gemini direction 1 "clear lens" + direction 2 "liquid mercury"):
+// 1. Ambient light: a frontmost .lq-amb layer on <body> (slow-drifting pearl glows) + faint concentric guide rings; styles and animation in light.css, hidden in dark mode.
+// 2. Lenses: the top nav capsule, secondary buttons, and selected blocks in segmented controls get lens filters sized to each element (lens.ts, Chromium-only).
+// 3. Liquid selection blocks: the "selected" state in segmented controls, chain filters, top nav and tabs is no longer the button's own background — it's a glass droplet drawn by the container's ::before,
+//    sliding over with a stretch on switch and bouncing on arrival (position written to the container's --ix/--iy/--iw/--ih). Pseudo-elements keep React-managed nodes untouched.
+// 4. Ripples: pressing a button radiates a ring of light from the press point (--rx/--ry + .lq-rip re-triggers the animation).
+// 5. Mouse sheen: the glow and edge highlights on glass panels follow the cursor (--lx/--ly).
+// 6. Auto-degrade: after the page settles, measure fps twice — only if both are too low (old machines, integrated GPUs) does <html> get .lq-lite, and light.css switches off lenses and the flowing background accordingly.
+// Only active in the light theme and the "space" appearance (2026-10-03, data-look="space"); no motion effects when the system enables "reduce motion" (selection blocks snap into place).
 import { applyLens, lensFilter, lensSupported } from './lens'
 
 const LIT = '.wc-panel, .tx-panel, .cm-panel, .cm-pc, .cm-meetbar, .desk-need, .desk-gate-card, .sm-opt'
-/** 挂透镜的小元素（数量少、尺寸小，显卡吃得消） */
+/** Small elements carrying lenses (few and small, easy on the GPU) */
 const LENS = '.desk-bar-in, .desk-me, .desk-lang, .cm-btn.is-quiet, .wc-btn:not(.is-primary):not(.is-ghost):not(.is-up):not(.is-down):not(.is-danger):not(.is-sm)'
-/** 「空间」外观另外的漂浮胶囊：左边图标栏、品牌、右上工具（玻璃画在 ::before 上，--lens 会继承过去） */
+/** Extra floating capsules in the "space" appearance: left icon rail, brand, top-right tools (glass painted on ::before, --lens inherits onto it) */
 const LENS_SPACE = '.desk-nav, .desk-brand-link, .desk-tools'
-/** 液态选中块：容器 / 选中项 / 形状（pill = 玻璃水滴垫在下面，line = 底下一条会拉伸的线） */
+/** Liquid selection block: container / selected item / shape (pill = glass droplet tucked under, line = a stretching line underneath) */
 const GROUPS: { sel: string; active: string; kind: 'pill' | 'line' }[] = [
   { sel: '.desk-nav', active: '.desk-nav-item.on', kind: 'pill' },
   { sel: '.wc-seg, .cm-seg, .tx-seg', active: ':scope > [aria-pressed="true"], :scope > [aria-selected="true"], :scope > .on', kind: 'pill' },
@@ -24,7 +24,7 @@ const GROUPS: { sel: string; active: string; kind: 'pill' | 'line' }[] = [
 const RIPPLE = '.wc-btn, .tx-btn, .cm-btn, .wc-seg button, .cm-seg button, .tx-seg button, .tx-chains button'
 
 const space = () => document.documentElement.dataset.look === 'space'
-/** 香芋白或「空间」：这两种外观才有玻璃动效 */
+/** Taro white or "space": only these two appearances get glass motion */
 const light = () => document.documentElement.dataset.theme === 'light' || space()
 const lite = () => document.documentElement.classList.contains('lq-lite')
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -37,7 +37,7 @@ export function mountLiquid(): void {
   amb.innerHTML = '<i></i><i></i><i></i><i></i><b></b>'
   document.body.prepend(amb)
 
-  // ---------- 选中块 + 透镜：页面变化后（下一帧）统一重算 ----------
+  // ---------- Selection blocks + lenses: recalculated together after page changes (next frame) ----------
   let placed = new WeakMap<HTMLElement, string>()
   const lensed = new Set<HTMLElement>()
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver((es) => { for (const e of es) applyLens(e.target as HTMLElement); schedule() }) : null
@@ -46,7 +46,7 @@ export function mountLiquid(): void {
   function update() {
     raf = 0
     if (!light()) return
-    // 透镜
+    // Lenses
     if (lensSupported && !lite()) {
       for (const el of document.querySelectorAll<HTMLElement>(space() ? `${LENS}, ${LENS_SPACE}` : LENS)) {
         if (lensed.has(el)) continue
@@ -54,7 +54,7 @@ export function mountLiquid(): void {
       }
       for (const el of lensed) if (!el.isConnected) { lensed.delete(el); ro?.unobserve(el) }
     }
-    // 选中块
+    // Selection blocks
     for (const g of GROUPS) {
       for (const box of document.querySelectorAll<HTMLElement>(g.sel)) {
         const on = box.querySelector<HTMLElement>(g.active)
@@ -73,11 +73,11 @@ export function mountLiquid(): void {
           if (url) box.style.setProperty('--lens-ind', url)
         }
         if (!prev) {
-          // 第一次出现：直接放到位，不滑
+          // First appearance: place directly, no slide
           box.classList.add('lq-ind', 'lq-ind-' + g.kind, 'lq-snap')
           requestAnimationFrame(() => requestAnimationFrame(() => box.classList.remove('lq-snap')))
         } else if (!reduced()) {
-          // 换了选中项：滑过去，途中拉伸（水银的表面张力），到位回弹
+          // Selection changed: slide over, stretching en route (mercury's surface tension), bounce on arrival
           box.classList.remove('lq-moving'); void box.offsetWidth; box.classList.add('lq-moving')
           setTimeout(() => box.classList.remove('lq-moving'), 520)
         }
@@ -86,7 +86,7 @@ export function mountLiquid(): void {
   }
   const mo = new MutationObserver(schedule)
   mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'aria-pressed', 'aria-selected'] })
-  // 换外观时选中块直接到位（导航从顶栏变成左边竖栏，不要从上面飞过去）
+  // On appearance switch the block snaps into place (nav moves from top bar to left rail — don't fly it across from above)
   let lookKey = ''
   new MutationObserver(() => {
     const k = `${document.documentElement.dataset.theme}|${document.documentElement.dataset.look ?? ''}`
@@ -96,7 +96,7 @@ export function mountLiquid(): void {
   addEventListener('resize', schedule)
   schedule()
 
-  // ---------- 水波 ----------
+  // ---------- Ripples ----------
   document.addEventListener('pointerdown', (e) => {
     if (!light() || reduced()) return
     const el = e.target instanceof Element ? e.target.closest<HTMLElement>(RIPPLE) : null
@@ -109,7 +109,7 @@ export function mountLiquid(): void {
 
   if (reduced()) return
 
-  // ---------- 鼠标反光 ----------
+  // ---------- Mouse sheen ----------
   let cur: HTMLElement | null = null
   let ev: PointerEvent | null = null
   let praf = 0
@@ -134,8 +134,8 @@ export function mountLiquid(): void {
   document.documentElement.addEventListener('pointerleave', clear)
   addEventListener('blur', clear)
 
-  // ---------- 自动降级：页面安顿下来后（4 秒）量 1.5 秒帧率，连着两次平均低于 40 帧才关掉重的效果 ----------
-  // 只量一次会误判：刚打开时页面在加载行情、图表，正常电脑也会掉帧（本机预览实测过）
+  // ---------- Auto-degrade: after the page settles (4s), measure fps for 1.5s; only two consecutive sub-40fps averages switch off the heavy effects ----------
+  // A single measurement misleads: a freshly opened page is loading markets and charts, so even decent machines drop frames (verified in local preview)
   const measure = (then: (slow: boolean) => void) => {
     if (document.hidden) return
     let n = 0

@@ -1,8 +1,8 @@
-// 评论（2026-09-25 改版，参考 Instagram / X）：
-// · 一条评论 = 头像 + 昵称 + 时间一行，正文下一行，右边小爱心 + 赞数；不再套灰色大框
-// · 删除 / 举报 / 复制收进「…」菜单（也可以长按正文）。能删的人：评论作者、帖子作者、客服 / 管理员
-// · 信息流、个人主页、代币页的帖子下面只露最多 2 条（赞多优先，否则最新）+「查看全部 N 条评论」+ 一个「写评论…」入口，
-//   点进去才是完整对话页（PostDetail：全部评论分页 + 底部输入框）
+// Comments (redone 2026-09-25, modeled on Instagram / X):
+// · One comment = avatar + nickname + time on one line, body on the next, small heart + like count on the right; no more big gray frame
+// · Delete / report / copy tuck into the "…" menu (long-press the body also works). Who can delete: the comment author, the post author, support / admins
+// · Under posts in the feed, profiles, and token pages: at most 2 comments shown (most-liked first, else newest) + "view all N comments" + a "write a comment…" entry,
+//   tapping in opens the full conversation page (PostDetail: all comments paged + bottom input)
 import { useState } from 'react'
 import { openReport } from '@/lib/safety'
 import { Link, useNavigate } from 'react-router-dom'
@@ -22,12 +22,12 @@ import { t } from '@/lib/i18n'
 import UserName from './UserName'
 import { errorText } from '@/lib/errors'
 
-/** 删帖 / 删评论前的确认文案：删自己的照旧；客服删别人的要说清会通知作者 */
+/** Confirmation copy before deleting a post / comment: deleting your own as usual; support deleting others' must state the author will be notified */
 export const confirmDeleteText = (own: boolean, what: 'post' | 'comment') => own
   ? (what === 'post' ? t('删除这条动态？') : t('删除这条评论？'))
   : (what === 'post' ? t('这条动态违反社区规范，确定删除？作者会收到通知。') : t('这条评论违反社区规范，确定删除？作者会收到通知。'))
 
-/** 进入某条帖子的完整对话页；compose = 进去后直接聚焦输入框 */
+/** Open a post's full conversation page; compose = focus the input right after entering */
 export const postPath = (id: string) => `/post/${encodeURIComponent(id)}`
 
 const setCommentLike = (postId: string, commentId: string, on: boolean) =>
@@ -49,19 +49,19 @@ export function CommentRow({ c, postId, postAuthor, onChange, onRemove }: { c: C
     if (status !== 'ready') return toast.info(t('连接社交服务后可以点赞'))
     const on = !c.likedByMe
     setBusy(true)
-    onChange({ ...c, likedByMe: on, likes: Math.max(0, c.likes + (on ? 1 : -1)) }) // 先改界面，失败再退回
+    onChange({ ...c, likedByMe: on, likes: Math.max(0, c.likes + (on ? 1 : -1)) }) // Update the UI first, roll back on failure
     try { const r = await setCommentLike(postId, c.id, on); onChange({ ...c, likedByMe: r.likedByMe, likes: r.likes }) }
     catch (e) { onChange(c); toast.error(errorText(e, t('点赞失败，请重试'))) }
     finally { setBusy(false) }
   }
   const remove = async () => {
     setMenu(null)
-    // 删自己的直接删（老行为）；帖主删别人的问一句；客服删别人的说明会通知作者
+    // Deleting your own deletes directly (old behavior); post authors deleting others' get asked once; support deleting others' explains the author will be notified
     if (!own && !confirm(confirmDeleteText(mineToManage, 'comment'))) return
     try { await api(`/api/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(c.id)}`, { method: 'DELETE' }); onRemove(c.id); toast.success(t('已删除')) }
     catch (e) { toast.error(errorText(e, t('删除失败'))) }
   }
-  // 举报走统一的举报弹层（选原因、可以顺手拉黑），客服后台能看到这条评论的原文
+  // Reports go through the unified report sheet (pick a reason, can block along the way); support's backend can see the comment's original text
   const report = () => { setMenu(null); openReport({ kind: 'comment', id: c.id, target: c.author, name: c.nickname || undefined }) }
   const items: MenuItem[] = [
     { key: 'copy', label: t('复制'), icon: <Copy size={17} />, onSelect: () => { setMenu(null); void copyText(c.text).then(() => toast.success(t('已复制'))) } },
@@ -95,8 +95,8 @@ export function CommentRow({ c, postId, postAuthor, onChange, onRemove }: { c: C
 interface PreviewPost { id: string; author: string; comments?: number; topComments?: Comment[] }
 
 /**
- * 帖子下面的评论预览：最多 2 条 +「查看全部 N 条评论」+ 轻量的「写评论…」入口。
- * onPatch 把本地改动（点赞、删除）写回列表里那条帖子。
+ * Comment preview under a post: at most 2 + "view all N comments" + a lightweight "write a comment…" entry.
+ * onPatch writes local changes (likes, deletes) back into that post in the list.
  */
 export function CommentPreview({ post, onPatch }: { post: PreviewPost; onPatch: (patch: Partial<PreviewPost>) => void }) {
   const nav = useNavigate()

@@ -1,5 +1,5 @@
-// 个人主页的三个标签（动态 · 交易 · 持仓）：记住上次选的，下次打开谁的主页都停在那个标签。
-// 存储键带 0x4. 前缀（和其它本地设置一致）。读不到 / 被写坏 / 隐私模式存不进去都回到「动态」。
+// The profile page's three tabs (feed · trades · holdings): remembers the last selected one; next time anyone's profile opens, it lands on that tab.
+// Storage keys carry the 0x4. prefix (consistent with other local settings). Falls back to "feed" when unreadable / corrupted / unpersistable in private mode.
 export type ProfileTab = 'posts' | 'trades' | 'holdings'
 export const PROFILE_TABS: readonly ProfileTab[] = ['posts', 'trades', 'holdings']
 export const PROFILE_TAB_KEY = '0x4.profileTab'
@@ -12,5 +12,5 @@ export function loadProfileTab(): ProfileTab {
 }
 
 export function saveProfileTab(tab: ProfileTab) {
-  try { localStorage.setItem(PROFILE_TAB_KEY, tab) } catch { /* 存不进去下次回到默认，不影响使用 */ }
+  try { localStorage.setItem(PROFILE_TAB_KEY, tab) } catch { /* When persistence fails, falls back to the default next time — doesn't affect usage */ }
 }

@@ -1,4 +1,4 @@
-// 居中提示弹窗：交易 / 操作失败时用它，标题 + 原因 + 建议 + 一个按钮；不用顶部通知条塞一长串英文
+// Centered alert dialog: for failed trades / operations — title + reason + suggestion + one button; no cramming long English strings into the top notification bar
 import { useEffect, useRef } from 'react'
 import { create } from 'zustand'
 import { CircleAlert, CircleCheck, Info } from 'lucide-react'
@@ -12,7 +12,7 @@ export const useAlert = create<AlertState>((set) => ({
   error: (e, fallbackTitle) => { const f = friendlyError(e, fallbackTitle); set({ open: true, kind: 'error', title: f.title, message: f.message, hint: f.hint }) },
   close: () => set({ open: false }),
 }))
-/** 任何地方直接调：alertError(e, '闪兑失败') */
+/** Call directly from anywhere: alertError(error, message) */
 export const alertError = (e: unknown, fallbackTitle?: string) => useAlert.getState().error(e, fallbackTitle)
 
 export function AlertHost() {

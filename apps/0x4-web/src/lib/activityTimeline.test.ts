@@ -12,7 +12,7 @@ function entry(p: Partial<TimelineEntry> & { chainId: number; time: number }): T
     asset: { symbol: 'BNB', address: '0x0000000000000000000000000000000000000000', decimals: 18 }, ...p,
   }
 }
-/** 假数据源：按时间倒序，每页 size 条，cursor 是偏移量 */
+/** Fake data source: time-descending, size items per page, cursor is the offset */
 function source(id: string, items: TimelineEntry[], size: number, opts: { fail?: 'first' | 'second' } = {}): TimelineSource & { calls: number } {
   const sorted = [...items].sort((a, b) => b.time - a.time)
   const s = {
@@ -41,7 +41,7 @@ describe('活动时间线归并', () => {
     const m = createMerger([source('sol', sol, 4), source('btc', btc, 2), source('evm', evm, 6)], { pageSize: 8 })
     const first = await m.page(sig())
     expect(first.items).toHaveLength(8)
-    // T0 三个源都有一条：BSC → Solana → 比特币
+    // At T0 all three sources have one item: BSC → Solana → BTC
     expect(first.items.slice(0, 3).map((e) => e.chainId)).toEqual([56, SOLANA_CHAIN_ID, BTC_CHAIN_ID])
     const rest = await drain(m)
     const all = [...first.items, ...rest]
@@ -51,7 +51,7 @@ describe('活动时间线归并', () => {
   })
 
   it('老记录不会插到还没拉到的新记录前面（每个源都有缓冲才出）', async () => {
-    // evm 每页 1 条，btc 一页全给：第一页不能直接把 btc 的全部倒出来
+    // evm gives 1 item per page, btc gives everything in one page: the first page must not dump all of btc's items at once
     const evm = [entry({ chainId: 56, time: T0 }), entry({ chainId: 56, time: T0 - 1000 }), entry({ chainId: 56, time: T0 - 2000 })]
     const btc = [entry({ chainId: BTC_CHAIN_ID, time: T0 - 1500 }), entry({ chainId: BTC_CHAIN_ID, time: T0 - 5000 })]
     const m = createMerger([source('evm', evm, 1), source('btc', btc, 10)], { pageSize: 3 })
@@ -70,7 +70,7 @@ describe('活动时间线归并', () => {
     expect(p.failed).toEqual(['sol'])
     const dead = createMerger([source('a', ok, 5, { fail: 'first' }), source('b', ok, 5, { fail: 'first' })], { pageSize: 10 })
     await expect(dead.page(sig())).rejects.toThrow()
-    // 翻页时才失败：已拿到的留着，剩下的源继续
+    // Fails only while paging: keep what arrived, the remaining sources continue
     const later = createMerger([source('evm', Array.from({ length: 6 }, (_, i) => entry({ chainId: 56, time: T0 - i })), 2, { fail: 'second' }), source('sol', [entry({ chainId: SOLANA_CHAIN_ID, time: T0 - 100 })], 5)], { pageSize: 2 })
     const a = await later.page(sig())
     expect(a.items).toHaveLength(2)

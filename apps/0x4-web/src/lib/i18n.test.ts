@@ -8,7 +8,7 @@ describe('多语言', () => {
     expect(systemLang(['zh-TW'])).toBe('zh-Hant')
     expect(systemLang(['zh-HK'])).toBe('zh-Hant')
     expect(systemLang(['zh-Hant-TW'])).toBe('zh-Hant')
-    expect(systemLang(['ja-JP', 'zh-CN'])).toBe('zh-Hans')   // 列表里有中文就用中文
+    expect(systemLang(['ja-JP', 'zh-CN'])).toBe('zh-Hans')   // Use Chinese when the list contains it
     expect(systemLang(['en-US'])).toBe('en')
     expect(systemLang(['th-TH'])).toBe('en')
     expect(systemLang([])).toBe('en')

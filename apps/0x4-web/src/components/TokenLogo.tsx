@@ -1,9 +1,9 @@
-// 代币图标：加载失败时显示首字母占位
+// Token icon: show an initial placeholder on load failure
 import { useEffect, useState } from 'react'
 import { resolveSolanaLogo } from '@/lib/logos'
 
-/** src 可以是用 | 连接的多个候选地址：第一个加载失败就换下一个，全失败才显示首字母 */
-export default function TokenLogo({ src, symbol, size = 40, chain, address }: { src?: string; symbol: string; size?: number; /** 传了链和地址：静态候选全失败后还能按地址查一次（目前只做 Solana） */ chain?: string; address?: string }) {
+/** src can be multiple candidate URLs joined by |: on load failure try the next one, show the first letter only when all fail */
+export default function TokenLogo({ src, symbol, size = 40, chain, address }: { src?: string; symbol: string; size?: number; /** Chain and address given: after all static candidates fail, one more lookup by address is possible (Solana only for now) */ chain?: string; address?: string }) {
   const [resolved, setResolved] = useState<string | null>(null)
   const candidates = [...(src || '').split('|').map((x) => x.trim()).filter(Boolean), ...(resolved ? [resolved] : [])]
   const [idx, setIdx] = useState(0)

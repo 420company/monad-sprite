@@ -1,4 +1,4 @@
-// 果蝇主页：实时神经活动、决策、多巴胺、净值曲线、它眼里的 K 线、成交与跟单
+// Fly home: realtime neural activity, decisions, dopamine, equity curve, the candles as it sees them, fills and copy-trading
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Clock, RotateCcw } from 'lucide-react'
@@ -35,26 +35,26 @@ import { errorText } from '@/lib/errors'
 
 interface Trade { id: string; side: 'buy' | 'sell'; chain: string; token: string; symbol: string; qty: number; usd: number; price: number; created_at: number; realized: number }
 
-/** 合约暂停的三种原因（交易进程 PAUSE_REASONS 原文）：维护中 / 授权没通过核对 / 正在核对。别的原因一律按维护中显示 */
-// worker 回传的暂停 / 没放行原因（worker.py 的 PAUSE_REASONS、PERMIT_REASONS），认得的原样显示，不认得的按维护处理
+/** The three perp-pause reasons (verbatim from the trading process's PAUSE_REASONS): under maintenance / authorization failed verification / verifying. Anything else displays as under maintenance */
+// Pause / not-permitted reasons sent back by the worker (worker.py's PAUSE_REASONS, PERMIT_REASONS): known ones shown verbatim, unknown ones treated as maintenance
 const PAUSE_TEXT = ['合约自动下单暂停维护中，只记录信号不下单', '合约授权没有通过核对，请在「交易方式」里重新授权，现在只记录信号不下单', '正在核对合约授权，核对完成前只记录信号不下单',
   '小精灵已经不在合约模式，这一单没有下', '小精灵已暂停，这一单没有下', '小精灵已到期，这一单没有下', '服务器没有放行这一单，没有下单', '暂时无法向服务器确认能否下单，这一轮不下单']
 
-/** 全自动目前只在 BNB Chain 上生效：小精灵看的币（或自动找币的链）里有 BNB Chain 才引导开全自动；只看 Solana 等别的链的币照常逐笔确认 */
+/** Full-auto currently only works on BNB Chain: the prompt to enable full-auto appears only when the sprite watches coins on (or auto-finds coins on) chains including BNB Chain; coins only on Solana etc. stay per-trade confirm as usual */
 const watchesBsc = (f: Fly) => (f.params.autoPick ? f.params.autoPick.chains.includes('bsc') : f.params.tokens.some((x) => x.chain === 'bsc'))
 
 /**
- * 「你不在时错过了 N 次交易申请」（2026-10-04 goat：一位用户领养后离开，一晚上 23 次申请全过期）。现货逐笔确认模式下，回来时在小精灵页上面说一声。
- * 全自动已开放、主人还没开：问「设置为全自动交易？」——
- *   看 BNB Chain 的币 → 打开 BNB Chain 全自动面板；看 Solana 的币 → 打开 Solana 全自动面板（2026-10-04 Solana 版）；
- *   只看别的链（以太坊、Base 等；或者只看 SOL 而 Solana 全自动还没开放）→ 先问一句换成 BNB，换好再打开 BNB Chain 面板。
- * 全自动没开放、已经开着、或者是自动选币但选的链都不支持：只说错过了几次。点任何一个按钮都算看过（服务器记时间，之后只数新错过的）
+ * "You missed N trade requests while away" (2026-10-04 goat: a user adopted one, left, and all 23 requests expired overnight). In spot per-trade-confirm mode, say so at the top of the sprite page on return.
+ * Full-auto available but the owner hasn't enabled it: ask "Switch to full-auto trading?" —
+ *   watching BNB Chain coins → open the BNB Chain full-auto panel; watching Solana coins → open the Solana full-auto panel (2026-10-04 Solana edition);
+ *   only other chains (Ethereum, Base, etc.; or only SOL while Solana full-auto isn't available yet) → first offer to switch to BNB, then open the BNB Chain panel after switching.
+ * Full-auto unavailable, already enabled, or auto-pick selected but none of the picked chains support it: only say how many were missed. Tapping any button counts as seen (the server records the time; afterwards only newly missed ones are counted)
  */
 type AutoTarget = 'bsc' | 'sol' | 'switch'
 function MissedAsks({ fly, onAuto, onSeen, onChanged }: { fly: Fly; onAuto: (target: 'bsc' | 'sol') => void; onSeen: () => void; onChanged: (f: Fly) => void }) {
   const n = fly.missedAsks || 0
   const bsc = watchesChain(fly, 'bsc'), sol = watchesChain(fly, 'solana')
-  // 只看别的链（包括 Solana 全自动还没开放时只看 SOL 的）：可以换成 BNB 走 BNB Chain 全自动
+  // Only watching other chains (including only SOL while Solana full-auto isn't available yet): can switch to BNB for BNB Chain full-auto
   const switchable = !bsc && !fly.params.autoPick
   const [target, setTarget] = useState<AutoTarget | null | undefined>(undefined)
   const [asking, setAsking] = useState(false)
@@ -102,7 +102,7 @@ function MissedAsks({ fly, onAuto, onSeen, onChanged }: { fly: Fly; onAuto: (tar
   )
 }
 
-/** worker 的停机原因是英文，翻成用户能懂的话 */
+/** The worker's downtime reasons are in English — translate into words users understand */
 function haltText(h: string): string {
   if (/insufficient|balance/i.test(h)) return t('账户余额不足')
   if (/drawdown|loss/i.test(h)) return t('触发了回撤保护')
@@ -113,14 +113,14 @@ function haltText(h: string): string {
 export default function FlyDetail() {
   const lang = useLang((s) => s.lang)
   const { id = '' } = useParams()
-  // 分页：?tab=now|trade|risk|data；老链接 ?s=settings 进「交易」页
+  // Tabs: ?tab=now|trade|risk|data; legacy ?s=settings links land on the "trade" tab
   const [search] = useSearchParams()
   type Tab = 'now' | 'trade' | 'risk' | 'data'
   const initial = (search.get('tab') as Tab | null) || (search.get('s') === 'settings' ? 'trade' : 'now')
   const [tab, setTab] = useState<Tab>(['now', 'trade', 'risk', 'data'].includes(initial) ? initial : 'now')
   const nav = useNavigate()
-  // 判断「是不是主人」用登录后的 0x4 账号（服务器认的账号），不用钱包地址：
-  // 电脑网页版用 0x 地址登录，账号可能是证明过这个 0x 的 Solana 账号，和插件自己的 Solana 地址不一定相同（2026-09-30）
+  // "Is the owner" is decided by the logged-in 0x4 account (the account the server knows), not the wallet address:
+  // Desktop web logs in with the 0x address; the account may be a Solana account that proved this 0x, not necessarily the extension's own Solana address (2026-09-30)
   const meAddr = useSocial((s) => s.me?.address)
   const address = meAddr ?? null
   const live = useSocial((s) => s.flyTicks[id])
@@ -130,26 +130,26 @@ export default function FlyDetail() {
   const [editing, setEditing] = useState(false)
   const [topup, setTopup] = useState(false)
   const [realOpen, setRealOpen] = useState(false)
-  // 开始交易（2026-10-05 goat「启动交易太复杂」）：交易方式面板的「现货交易」页直接一个金额一个按钮；领养完带 ?start=1 进来直接弹
+  // Start trading (2026-10-05 goat: "starting trading is too complicated"): the trade-mode panel's "spot trading" page is just one amount and one button; arriving after adoption with ?start=1 pops it directly
   const autoStarted = useRef(false)
   const [realEnabled, setRealEnabled] = useState(false)
-  // 现货模式默认走全自动（2026-09-28 goat：现货当然也要全自动）：选完现货模式，如果全自动还没开、服务器那边已经开放，
-  // 接着打开「全自动交易」面板签一次授权。合约还没部署时 /api/auto/config 是 enabled=false，什么都不弹，照常逐笔确认
+  // Spot mode defaults to full-auto (2026-09-28 goat: spot should be full-auto too): after picking spot mode, if full-auto isn't enabled yet and the server has it available,
+  // open the "full-auto trading" panel next for a one-time authorization. When the contract isn't deployed yet, /api/auto/config returns enabled=false — nothing pops, per-trade confirm as usual
   const [autoOpen, setAutoOpen] = useState(false)
   const [solOpen, setSolOpen] = useState(false)
   const [autoKey, setAutoKey] = useState(0)
   const offerAuto = async () => {
     try {
       const [cfg, st] = await Promise.all([autoConfig(), autoStatus()])
-      if (cfg.enabled && !st.active && st.eligible !== false) window.setTimeout(() => setAutoOpen(true), 350)   // 等交易方式面板收起再弹，不叠两层
-    } catch { /* 拿不到就不弹，交易设置里的「全自动交易」照样能开 */ }
+      if (cfg.enabled && !st.active && st.eligible !== false) window.setTimeout(() => setAutoOpen(true), 350)   // Wait for the trade-mode panel to close before popping — no two layers stacked
+    } catch { /* If it can't be fetched, don't pop — "full-auto trading" in trade settings can still be enabled */ }
   }
-  // Solana 版同理（2026-10-04）：服务器开放了、还没开就接着打开 Solana 全自动面板
+  // Same for the Solana edition (2026-10-04): if the server has it available and it's not enabled, open the Solana full-auto panel next
   const offerSolAuto = async () => {
     try {
       const [cfg, st] = await Promise.all([solAutoConfig(), solAutoStatus()])
       if (cfg.enabled && !st.active) window.setTimeout(() => setSolOpen(true), 350)
-    } catch { /* 拿不到就不弹，交易设置里照样能开 */ }
+    } catch { /* If it can't be fetched, don't pop — it can still be enabled in trade settings */ }
   }
   const [proposals, setProposals] = useState<FlyProposal[]>([])
   const liveProposals = useSocial((s) => s.flyProposals)
@@ -161,14 +161,14 @@ export default function FlyDetail() {
   const lastTs = useRef(0)
 
   const load = () => api<Fly>(`/api/flies/${id}`).then((f) => { setFly(f); api<{ trades: Trade[] }>(`/api/users/${f.address}/trades`).then((r) => setTrades(r.trades)).catch(() => {}) }).catch(() => setLoadErr(true))
-  // 登录恢复好以后再拉一次（2026-10-04：直接打开 / 刷新这一页时，页面先于登录发请求，服务器当成游客，主人专属的数据（错过的申请、盈亏、持仓）都没带）
+  // Fetch again after login is restored (2026-10-04: opening / refreshing this page directly, the page fired requests before login, the server treated it as a guest, and owner-only data — missed requests, PnL, positions — was missing)
   const signedIn = useSocial((s) => s.status === 'ready')
   useEffect(() => { load() }, [id, signedIn]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (autoStarted.current || !fly || search.get('start') !== '1' || fly.mode !== 'pending' || fly.owner !== address || fly.expired || !realEnabled) return
     autoStarted.current = true; setRealOpen(true)
   }, [fly, address, realEnabled]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 新 tick 到达：按 spike 数放电，成交或多巴胺时整脑脉冲
+  // New tick arrived: fire per spike count; whole-brain pulse on fills or dopamine
   useEffect(() => {
     if (!live || live.ts === lastTs.current) return
     lastTs.current = live.ts
@@ -176,14 +176,14 @@ export default function FlyDetail() {
     cloud.current?.flash(Math.min(80, (live.neural.total_spikes ?? 0) / 600))
     if (live.neural.stimulus === 'reward') cloud.current?.pulse('200,255,77')
     else if (live.neural.stimulus === 'aversive') cloud.current?.pulse('255,80,80')
-    if (live.execution === 'FILLED' || !fly?.frameUrl) load() // 成交或还没拿到视觉帧时重新拉一次
+    if (live.execution === 'FILLED' || !fly?.frameUrl) load() // Re-fetch on fills or when no visual frame has arrived yet
   }, [live])
-  // 活动概览仅响应新 tick，不自动循环历史数据，也不为缺失放电数填入示意值。
+  // The activity overview only responds to new ticks: no auto-cycling of historical data, no placeholder values for missing spike counts.
 
   if (!fly) return <div className="p-8 text-center text-sm text-muted">{loadErr ? t('加载失败，稍后再试') : t('加载中…')}</div>
   const tk = fly.ticks?.length ? fly.ticks[fly.ticks.length - 1] : undefined
   const isOwner = fly.owner === address
-  // 合约模式但合约账户里还没钱（或不够一次保证金）：小精灵读不到账户资金就不会开仓。告诉新用户去哪存（2026-09-27 goat；09-28 文案缩成一句，不出现交易所品牌）
+  // Perp mode but the perp account has no money (or not enough for one margin): the sprite won't open positions without readable account funds. Tell new users where to deposit (2026-09-27 goat; copy shortened to one line on 09-28, no exchange brand names)
   const needFunds = PERP_ENABLED && isOwner && fly.mode === 'perp' && !fly.expired && (fly.realEquity == null || fly.realEquity < (fly.marginUsd || 10))
   const fundHint = (
     <div className="mt-4 rounded-2xl border border-accent/40 bg-accent/10 p-4">
@@ -196,13 +196,13 @@ export default function FlyDetail() {
   const tabList: [Tab, string][] = isOwner ? [['now', '现在'], ['trade', '交易||tab'], ['risk', '风控'], ['data', '数据']] : [['now', '现在'], ['data', '数据']]
   const setState = async (body: Record<string, unknown>) => { try { setFly(await api<Fly>(`/api/flies/${fly.id}`, { method: 'PUT', body: JSON.stringify(body) })) } catch (e) { toast.error(errorText(e, t('失败'))) } }
   const side = tk?.neural.side || 'HOLD'
-  // 曲线只画真实账户权益（perp）；confirm 没有连续权益，不画
+  // The curve only draws real account equity (perp); confirm has no continuous equity — don't draw
   const curve = fly.mode === 'perp' ? (fly.ticks || []).filter((k) => k.accountEquity != null).map((k) => k.accountEquity as number) : []
   return (
     <div className="px-4 pb-6" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}>
       <div className="flex flex-wrap items-center gap-2"><button onClick={() => nav(-1)} className="icon-button -ml-2" aria-label={t('返回')}><ArrowLeft size={22} /></button><h1 className="min-w-0 flex-1 break-all text-xl font-bold">{fly.name}</h1><span className={`ml-auto flex items-center gap-1 text-xs ${fly.online ? 'text-up' : 'text-muted'}`}><span className={`h-2 w-2 rounded-full ${fly.online ? 'bg-up' : 'bg-line'}`} />{fly.online ? t('在线') : fly.lastTickAt ? t('上次 {time}', { time: timeAgo(fly.lastTickAt) }) : t('未连接')}</span></div>
-      {/* 头像旁（2026-09-28 goat）：第一行「ZALIEN #x 的小精灵」+ Holder（主人现在还持有这张卡才显示）；第二行它在看的币，带图标的小标签；
-          第三行性格和学习。不再显示粉丝数和观察间隔 */}
+      {/* Next to the avatar (2026-09-28 goat): line 1 "ZALIEN #x's sprite" + Holder (only shown if the owner still holds this card); line 2 the coins it watches, as small icon tags;
+          line 3 personality and learning. Follower count and observation interval no longer shown */}
       <div className="mt-3 flex items-center gap-3">
         <Avatar address={fly.address} name={fly.name} size={48} />
         <div className="min-w-0 flex-1">
@@ -223,7 +223,7 @@ export default function FlyDetail() {
         <FollowButton address={fly.address} />
       </div>
       {isOwner && fly.mode === 'confirm' && !fly.expired && <MissedAsks fly={fly} onAuto={(x) => (x === 'sol' ? setSolOpen(true) : setAutoOpen(true))} onSeen={() => setFly((f) => (f ? { ...f, missedAsks: 0 } : f))} onChanged={(f) => setFly({ ...f, missedAsks: 0 })} />}
-      {/* 分页（2026-09-27 goat：设置不要一页拉很长）：现在 / 交易 / 风控 / 数据；别人的小精灵只有 现在 / 数据 */}
+      {/* Tabs (2026-09-27 goat: settings shouldn't be one long page): Now / Trade / Risk / Data; other people's sprites only show Now / Data */}
       <div className="mt-3 flex rounded-xl border border-line/70 bg-card p-1" role="tablist" aria-label={t('小精灵详情')}>
         {tabList.map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`min-h-10 flex-1 rounded-lg text-sm font-semibold transition-colors ${tab === k ? 'bg-card2 text-fg shadow-sm' : 'text-muted'}`}>{t(label)}</button>)}
       </div>
@@ -241,15 +241,15 @@ export default function FlyDetail() {
       </>}
       {tab === 'trade' && isOwner && <>
         {needFunds && fundHint}
-        {/* iOS 上架版不带合约：已经是合约模式的小精灵照原设置继续运行，这里只说明并留下「改为现货 / 暂停」两条路 */}
+        {/* The iOS listing build has no perps: sprites already in perp mode keep running as configured; here just explain and leave the two options "switch to spot / pause" */}
         {!PERP_ENABLED && fly.mode === 'perp' && <div className="mt-3 rounded-2xl border border-line/70 bg-card p-4 text-[13px] leading-relaxed text-muted">{t('这只小精灵当前的交易方式在此版本中不可用，它会按原来的设置继续运行。你可以在下面的「交易方式」里改为现货模式，或暂停它。')}</div>}
         {PERP_ENABLED && fly.mode === 'perp' && <FlyAsks flyId={fly.id} />}
-        {/* 合约小精灵开的单：持仓 + 最近成交（2026-10-05 goat「小精灵开的单子没地方能看」） */}
+        {/* Orders opened by the perp sprite: positions + recent fills (2026-10-05 goat: "nowhere to see the sprite's orders") */}
         {PERP_ENABLED && fly.mode === 'perp' && fly.activated && <FlyPerpPositions flyId={fly.id} tick={fly.lastTickAt} fills={trades} marginUsd={fly.marginUsd || 10} />}
         {fly.mode !== 'perp' && <FlyHolds flyId={fly.id} holdStyle={fly.prefs?.holdStyle} />}
       {!fly.activated ? (
         <div className="mt-3 flex min-h-16 items-center justify-between gap-3 rounded-2xl bg-card px-4 py-3 text-sm"><div className="font-semibold">{t('还没开始交易')}</div>
-          {/* 2026-10-05 goat：整行大按钮太大，改成标题右边的普通按钮 */}
+          {/* 2026-10-05 goat: the full-width big button was too large, changed to a regular button right of the title */}
           {isOwner && !fly.expired && <Button size="sm" className="shrink-0 px-5" onClick={() => (realEnabled ? setRealOpen(true) : toast.error(t('真实交易功能暂未开放。')))}>{t('开始交易')}</Button>}
         </div>
       ) : fly.mode === 'perp' ? (
@@ -266,10 +266,10 @@ export default function FlyDetail() {
         </div>
       )}
       {fly.halted && <div className="mt-2 rounded-xl bg-down/10 px-3 py-2 text-xs text-down">{fly.halted.includes('reconciliation required') ? t('已暂停：有一笔订单结果待核对，系统正在自动与交易所对账，完成后自动恢复。') : t('已暂停：{reason}。重置后可以重新开始。', { reason: haltText(fly.halted) })}</div>}
-      {/* 领养期限。手机 App 里只显示日期，不出现价格和续期入口（苹果审核）；续期在网页 / 电脑端 */}
+      {/* Adoption term. The mobile app only shows the date, no price or renew entry (Apple review); renewal on web / desktop */}
       {fly.paidUntil && <div className={`mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs ${fly.expired ? 'bg-warning/10 text-warning' : 'bg-card text-muted'}`}><span>{fly.expired ? (fly.releaseAt ? t('休眠中：领养已于 {date} 到期，{release} 后领养结束', { date: new Date(fly.paidUntil).toLocaleDateString(locale()), release: new Date(fly.releaseAt).toLocaleDateString(locale()) }) : t('休眠中：领养已于 {date} 到期', { date: new Date(fly.paidUntil).toLocaleDateString(locale()) })) : t('领养到期日 {date}（剩余 {n} 天）', { date: new Date(fly.paidUntil).toLocaleDateString(locale()), n: Math.max(0, Math.ceil((fly.paidUntil - Date.now()) / 86400000)) })}</span>{isOwner && BALANCE_FEATURES && <button onClick={() => renew()} className="font-semibold text-accent">{t('续期 30 天')}</button>}</div>}
 
-      {/* 交易方式的横条去掉了（2026-10-05 goat「文字能少点」：下面「交易方式」一行已经写着杠杆和保证金） */}
+      {/* The trade-mode banner was removed (2026-10-05 goat: "fewer words" — the "trade mode" row below already states leverage and margin) */}
       {isOwner && !realEnabled && !fly.activated && <div className="mt-3 rounded-xl bg-down/10 px-3 py-2 text-xs text-down">{t('真实交易功能暂未开放。')}</div>}
       {isOwner && <FlyTradeSettings part="trade" autoKey={autoKey} fly={fly} onChanged={setFly} onOpenMode={() => (realEnabled || fly.activated ? setRealOpen(true) : toast.error(t('真实交易功能暂未开放。')))} onOpenParams={() => setEditing(true)} />}
       {isOwner && <div className="mt-2 flex justify-end"><button className="text-xs text-muted underline-offset-2 hover:underline" onClick={() => confirm(t('确定清空交易记录与学习状态并重新开始吗？')) && setState({ reset: true, paused: false })}><RotateCcw size={12} className="mr-1 inline-block align-[-2px]" />{t('重置记录')}</button></div>}
@@ -278,13 +278,13 @@ export default function FlyDetail() {
       {isOwner && <FlyTradeSettings part="risk" fly={fly} onChanged={setFly} onOpenMode={() => (realEnabled || fly.activated ? setRealOpen(true) : toast.error(t('真实交易功能暂未开放。')))} onOpenParams={() => setEditing(true)} />}
       </>}
       {tab === 'data' && <>
-      {/* 决策与统计独立排版，不覆盖图像；概览图不对应真实神经元空间位置。 */}
+      {/* Decisions and stats are laid out independently, not overlaid on the image; the overview map doesn't correspond to real neuron spatial positions. */}
       <section className="mt-4 overflow-hidden rounded-xl border border-line bg-card" aria-label={t('最近神经活动')}>
         <div className="flex flex-wrap items-start justify-between gap-3 p-4">
           <div><div className="text-xs text-muted">{t('最近决策')}</div><div className={`mt-1 break-all text-xl font-semibold ${side === 'BUY' ? 'text-up' : side === 'SELL' ? 'text-down' : ''}`}>{!tk?.neural.side ? '--' : side === 'BUY' ? t('买') + ' ' : side === 'SELL' ? t('卖') + ' ' : t('持有') + ' '}{displaySymbol(tk?.symbol)}</div></div>
           <div className="text-right text-xs text-muted"><div>{tk?.execution === 'FILLED' ? t('已成交') : tk?.execution === 'REJECTED' ? t('没下成') : tk?.execution === 'VETO' ? t('已被风控拦截') : tk?.execution === 'UNFUNDED' ? t('未入金，只记录信号') : tk?.execution === 'PAUSED' ? t(PAUSE_TEXT.includes(tk.executionReason || '') ? tk.executionReason! : '合约自动下单暂停维护中，只记录信号') : tk?.execution === 'ASK' ? t('等待你确认') : tk ? t('观望') : t('尚未开始')}</div>{tk && <div className="mt-1">{timeAgo(tk.ts)}</div>}</div>
         </div>
-        {/* 交易所拒单的原因（原来显示成「观望」，2026-10-05 goat） */}
+        {/* The exchange's order-rejection reason (previously shown as "standing by", 2026-10-05 goat) */}
         {tk?.execution === 'REJECTED' && <p className="mx-4 mb-3 rounded-xl bg-down/10 px-3 py-2 text-xs text-down">{rejectWhy(tk.executionReason, fly.marginUsd || 10)}</p>}
         <div className="relative overflow-hidden border-t border-line bg-black">
           <NeuronCloud ref={cloud} />
@@ -316,7 +316,7 @@ export default function FlyDetail() {
           <div key={x.id} className="flex items-center gap-3 border-b border-line py-2.5 text-sm">
             <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${x.side === 'buy' ? 'bg-up/15 text-up' : 'bg-down/15 text-down'}`}>{x.side === 'buy' ? t('买入') : t('卖出')}</span>
             <div className="min-w-0 flex-1"><div className="font-semibold">{displaySymbol(x.symbol)}{x.chain === 'hyperliquid' && <span className="ml-1.5 rounded bg-card2 px-1.5 py-0.5 text-[10px] font-semibold text-muted">{t('合约')}</span>} <span className="text-xs font-normal text-muted">{fmtUsd(x.usd)}</span></div><div className="text-[11px] text-muted">{timeAgo(x.created_at)}{x.side === 'sell' && x.realized ? ` · ${t('已实现 {pnl}', { pnl: pnlText(x.realized) })}` : ''}</div></div>
-            {/* 合约成交（存的链名是历史遗留的 hyperliquid，见 CLAUDE.md）跟单去合约页，原来链到一个打不开的币详情 */}
+            {/* Perp fills (the stored chain name hyperliquid is a historical leftover, see CLAUDE.md) copy-trade to the perp page; previously linked to an unopenable coin detail */}
             <Link to={x.chain === 'hyperliquid' ? `/perp?coin=${encodeURIComponent(displaySymbol(x.symbol))}` : `/token/${x.chain}/${x.token}`} className="rounded-xl bg-accent px-3 py-1.5 text-xs font-semibold text-bg">{t('跟单')}</Link>
           </div>
         ))}

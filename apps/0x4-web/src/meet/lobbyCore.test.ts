@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-// 会议等候室前端逻辑（2026-10-01 goat）：
-// ① 进会接口回 202 { waiting: true } 认成「在等候室」
-// ② 等着的人每 3 秒问一次状态，同意 / 拒绝 / 被清出列表时停下来回调一次
-// ③ 主持人 / 管理员：拉等待列表；允许 / 拒绝 / 全部允许 / 开关都发到服务器，用服务器回的列表；成员不拉
-// ④ 等候室卡片：有人等才出现，显示名字和等了多久
+// Meeting lobby frontend logic (2026-10-01 goat):
+// ① A 202 { waiting: true } from the join API counts as "in lobby"
+// ② Waiters poll status every 3s; stop and call back once on admitted / denied / cleared-from-list
+// ③ Host / admins: pull the waiting list; admit / deny / admit-all / toggle all go to the server, using the server-returned list; members don't pull
+// ④ Lobby card: appears only when someone is waiting, showing name and how long they've waited
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -125,7 +125,7 @@ describe('等候室卡片', () => {
     act(() => root.render(createElement(LobbyHostCard, { lobby: two })))
     act(() => (host.querySelector('[data-testid=lobby-admit-all]') as HTMLButtonElement).click())
     expect(two.admitAll).toHaveBeenCalled()
-    // 等候室关了：不显示
+    // Lobby off: hidden
     act(() => root.render(createElement(LobbyHostCard, { lobby: { ...two, on: false } })))
     expect(host.querySelector('[data-testid=lobby-card]')).toBeNull()
   })

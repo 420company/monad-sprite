@@ -1,5 +1,5 @@
-// 私信加解密。密钥由钱包私钥派生（盐 0x4-dm-v1；2026-09-25 品牌改名时换过一次，当时没有真实私信），
-// App 里整个过程在原生完成，网页版沿用原来的 JS 实现。
+// DM encryption/decryption. Keys are derived from the wallet private key (salt 0x4-dm-v1; changed once at the 2026-09-25 brand rename, when there were no real DMs yet),
+// the app does the whole flow natively; the web version keeps the original JS implementation.
 import { x25519 } from '@noble/curves/ed25519'
 import { sha256 } from '@noble/hashes/sha2.js'
 import type { Keypair } from '@solana/web3.js'
@@ -12,7 +12,7 @@ export interface DmPayload {
 }
 
 export interface DmCrypto {
-  /** 本设备的加密公钥，登记到资料里别人才能发密文过来 */
+  /** This device's encryption public key; it must be registered in the profile before others can send ciphertext */
   publicKey(): Promise<string>
   encrypt(text: string, peerPublicKey: string): Promise<DmPayload>
   decrypt(payload: DmPayload): Promise<string>
@@ -25,7 +25,7 @@ async function aesKey(shared: Uint8Array): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', sha256(shared) as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt'])
 }
 
-/** 私信私钥。盐 '0x4-dm-v1' 定了就别再改：改了之后发出的私信全都解不开 */
+/** The DM private key. Once set, never change the '0x4-dm-v1' salt again: DMs sent after a change can't be decrypted */
 export function dmPrivateKey(kp: Keypair): Uint8Array {
   return sha256(new Uint8Array([...new TextEncoder().encode('0x4-dm-v1'), ...kp.secretKey.slice(0, 32)]))
 }
@@ -34,7 +34,7 @@ export function localDm(kp: Keypair): DmCrypto {
   return localDmFromKey(dmPrivateKey(kp))
 }
 
-/** Android：私信私钥存在本机加密存储里，冷启动时不解锁钱包也能直接用 */
+/** Android: the DM private key lives in on-device encrypted storage, usable on cold start without unlocking the wallet */
 export function localDmFromKey(priv: Uint8Array): DmCrypto {
   return {
     async publicKey() { return b64(x25519.getPublicKey(priv)) },

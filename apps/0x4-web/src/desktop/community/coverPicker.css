@@ -1,4 +1,4 @@
-/* 开播检查页「直播封面」（CoverPicker 自己引：直播间可能是直接打开的，社区的样式表这时没加载过，2026-10-02） */
+/* Go-live check page's "stream cover" (imported by CoverPicker itself: the live room may be opened directly, when the community stylesheet hasn't loaded yet, 2026-10-02) */
 .lv-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .lv-pick button { position: relative; aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden; background: var(--w-raised); color: var(--w-mute); font-size: 11px; box-shadow: inset 0 0 0 1px var(--w-line); transition: box-shadow .15s; }
 .lv-pick button img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }

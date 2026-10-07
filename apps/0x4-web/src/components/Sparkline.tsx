@@ -1,4 +1,4 @@
-// 只接受带真实时间戳的 OHLCV；不再用涨跌幅反推曲线或填补缺失蜡烛。
+// Only accepts OHLCV with real timestamps; no more deriving curves from price changes or filling missing candles.
 import { useEffect, useMemo, useRef } from 'react'
 import { CandlestickSeries, createChart, type UTCTimestamp } from 'lightweight-charts'
 import { ChartNoAxesCombined } from 'lucide-react'
@@ -20,7 +20,7 @@ export default function Sparkline({ candles = [], height = 240, label = t('价�
     const up = css.getPropertyValue('--color-up').trim(), down = css.getPropertyValue('--color-down').trim()
     const chart = createChart(box.current, {
       autoSize: true,
-      layout: { background: { color: 'transparent' }, textColor: css.getPropertyValue('--color-muted').trim(), attributionLogo: false },   // 不在图上放 TradingView 标志；许可要求的出处写在「我 → 高级 → 开源许可」（2026-09-27 goat）
+      layout: { background: { color: 'transparent' }, textColor: css.getPropertyValue('--color-muted').trim(), attributionLogo: false },   // No TradingView logo on the chart; the license-required attribution lives under "Me → Advanced → Open Source Licenses" (2026-09-27 goat)
       grid: { vertLines: { visible: false }, horzLines: { color: css.getPropertyValue('--color-line').trim() } },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false },

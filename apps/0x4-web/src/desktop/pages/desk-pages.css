@@ -1,6 +1,6 @@
-/* 网页版电脑端页面（src/desktop/pages/*，2026-09-29 goat：网页版不要和手机一个样子，参照 Polymarket / world.xyz / 专业交易终端）。
-   规则都以 .dm- 开头，只作用于电脑端页面，不碰手机 App 的样式。
-   深色为主：面板用实色半透明（不用整屏毛玻璃，省显卡）；标题 / 按钮 / 标签 Pixelify Sans，正文和数字 Geist。 */
+/* Desktop web pages (src/desktop/pages/*; 2026-09-29 goat: the web shouldn't look like the phone — reference Polymarket / world.xyz / pro trading terminals).
+   All rules start with .dm- and only apply to desktop pages; the phone app's styles are untouched.
+   Dark-first: panels use solid translucency (no full-screen frosted glass, saves the GPU); headings / buttons / labels in Pixelify Sans, body and numbers in Geist. */
 
 .dm-page {
   --dm-panel: rgb(17 15 29 / .82);
@@ -45,7 +45,7 @@
 .dm-chart-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--color-muted); font-size: 14px; }
 .dm-note { color: var(--dm-faint); font-size: 12.5px; margin-top: 12px; display: flex; align-items: center; }
 
-/* ---------- 行情：上半屏 精选 + 侧栏 ---------- */
+/* ---------- Markets: top half — featured + sidebar ---------- */
 .dm-hero { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: stretch; }
 .dm-feature { display: flex; flex-direction: column; padding: 22px 22px 16px; overflow: hidden; min-height: 470px; }
 .dm-feature::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(90% 60% at 100% 0%, rgb(169 230 255 / .08), transparent 60%), radial-gradient(70% 60% at 0% 100%, rgb(255 201 168 / .07), transparent 60%); }
@@ -85,7 +85,7 @@ a.dm-hot-row:hover { background: var(--dm-panel-2); }
 .dm-entry-sprite { background: linear-gradient(120deg, rgb(255 201 168 / .14), rgb(205 189 255 / .1) 60%, var(--dm-panel)); }
 .dm-entry-live { background: linear-gradient(120deg, rgb(169 230 255 / .14), rgb(205 189 255 / .1) 60%, var(--dm-panel)); }
 
-/* ---------- 行情：全部市场（框架移植自最初网页版行情页） ---------- */
+/* ---------- Markets: all markets (scaffold ported from the original web markets page) ---------- */
 .dm-all-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .dm-movers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .dm-mover { display: grid; gap: 14px; padding: 18px; border-radius: 22px; background: var(--dm-panel); box-shadow: inset 0 0 0 1px var(--dm-line); transition: transform .45s var(--dm-ease), box-shadow .3s; overflow: hidden; }
@@ -131,15 +131,15 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
   .dm-mover, .dm-entry { transition: none; }
 }
 
-/* ---------- 现货交易终端（/token、/spot） ---------- */
-/* 终端铺得更宽（专业交易站一样用满屏幕），其它宽页面仍是 1280 */
+/* ---------- Spot trading terminal (/token, /spot) ---------- */
+/* The terminal stretches wider (filling the screen like pro trading terminals); other wide pages stay 1280 */
 .desk-main:has(.dm-term) { max-width: 1680px; }
 .dm-term { display: grid; grid-template-columns: 272px minmax(0, 1fr); gap: 16px; align-items: start; padding-top: 12px; }
 .dm-term-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .dm-term-loading { display: grid; gap: 18px; padding: 22px; }
 .dm-stale { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 14px; font-size: 13px; color: var(--color-warning); background: rgb(233 186 114 / .08); box-shadow: inset 0 0 0 1px rgb(233 186 114 / .22); }
 
-/* 左栏：自选 / 热门 */
+/* Left column: favorites / hot */
 .dm-rail { position: sticky; top: 80px; display: flex; flex-direction: column; max-height: calc(100dvh - 96px); padding: 12px 0 6px; overflow: hidden; }
 .dm-rail-search { width: auto; height: 38px; margin: 0 12px; padding: 0 12px; }
 .dm-rail-search input { font-size: 13px; }
@@ -158,7 +158,7 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
 .dm-rail-px { display: flex; flex-direction: column; align-items: flex-end; font-size: 12.5px; }
 .dm-rail-px small { font-size: 11.5px; }
 
-/* 顶部币种栏 */
+/* Top coin bar */
 .dm-tokbar { display: flex; align-items: center; gap: 22px; padding: 14px 18px; flex-wrap: wrap; }
 .dm-tokbar-id { display: flex; align-items: center; gap: 12px; min-width: 180px; }
 .dm-tokbar-sym { font: 600 22px/1.1 var(--dm-display); letter-spacing: .02em; }
@@ -171,7 +171,7 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
 .dm-tokbar-act { display: flex; gap: 8px; }
 .dm-round.is-on { color: var(--color-accent); box-shadow: inset 0 0 0 1px rgb(205 189 255 / .45); }
 
-/* K 线 + 下单 */
+/* K-lines + ordering */
 .dm-term-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: stretch; }
 .dm-term-chart { display: flex; flex-direction: column; min-height: 560px; padding: 10px 12px 12px; }
 .dm-term-chart-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px 8px; border-bottom: 1px solid var(--dm-line); }
@@ -191,10 +191,10 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
 .dm-order-pcts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .dm-order-pcts span { padding: 8px 0; border-radius: 9px; text-align: center; font-size: 12.5px; color: var(--dm-faint); background: var(--dm-panel-2); box-shadow: inset 0 0 0 1px var(--dm-line); }
 .dm-order-note { font-size: 12.5px; line-height: 1.5; }
-/* 下单面板里的买卖表单（components/TradeSheet 的 inline 模式） */
+/* Buy/sell form inside the order panel (components/TradeSheet inline mode) */
 .dm-order .trade-inline { min-width: 0; }
 
-/* 下方标签页 */
+/* Bottom tabs */
 .dm-term-tabs { padding: 12px 16px 16px; }
 .dm-tabs-flat { background: transparent; box-shadow: none; padding: 0; gap: 2px; border-bottom: 1px solid var(--dm-line); border-radius: 0; padding-bottom: 8px; }
 .dm-term-tabbody { padding-top: 12px; min-height: 160px; }
@@ -208,7 +208,7 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
 .dm-ratio-bar span { display: block; height: 100%; background: var(--color-up); }
 .dm-desc { margin-top: 14px; max-width: 760px; font-size: 14px; line-height: 1.6; color: var(--color-muted); }
 
-/* ---------------- 合约终端（PerpTerminal） ---------------- */
+/* ---------------- Perps terminal (PerpTerminal) ---------------- */
 .dm-warn { color: var(--color-warning); }
 .dm-accent { color: var(--color-accent); }
 .dm-chip:disabled { opacity: .4; cursor: default; }
@@ -216,7 +216,7 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
 .dm-coin { flex-shrink: 0; border-radius: 50%; background: var(--dm-panel-2); object-fit: cover; }
 .dm-coin-txt { display: grid; place-items: center; font-weight: 700; }
 .dm-rail-row { width: 100%; text-align: left; }
-/* 左栏顶部三块不被下面的长列表挤扁；四个分类一行放下 */
+/* The three blocks at the top of the left column aren't squeezed by the long list below; four categories fit in one row */
 .dm-rail-search, .dm-rail-tabs, .dm-rail-head { flex-shrink: 0; }
 .dm-rail-tabs button { white-space: nowrap; }
 .dm-rail-tabs.is-4 { gap: 2px; }
@@ -287,11 +287,11 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
 .dm-dir.is-up { background: rgb(67 214 160 / .12); }
 .dm-dir.is-down { background: rgb(255 114 124 / .12); }
 
-/* ---------------- 流媒体（Streaming） ---------------- */
+/* ---------------- Streaming ---------------- */
 .dm-head-act { display: flex; align-items: center; gap: 10px; }
 .dm-sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .dm-empty.is-tight { padding: 22px 12px; }
-/* 精选直播大卡：没有画面截图可用（房间接口不给封面），用主播头像 + 按地址算的固定色相做舞台，不放假画面 */
+/* Featured live big card: no stream screenshot is available (the room API gives no cover) — build the stage from the streamer's avatar + an address-derived fixed hue; never a fake picture */
 .dm-stage { --dm-hue: 270; display: flex; flex-direction: column; justify-content: space-between; min-height: 440px; padding: 22px 24px; text-align: left; overflow: hidden; isolation: isolate;
   background: radial-gradient(70% 80% at 50% 38%, hsl(var(--dm-hue) 70% 55% / .28), transparent 70%), radial-gradient(60% 60% at 100% 100%, hsl(calc(var(--dm-hue) + 60) 70% 60% / .14), transparent 70%), var(--dm-panel);
   transition: box-shadow .3s, transform .45s var(--dm-ease); }
@@ -346,14 +346,14 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
 .dm-meet-rows b { font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-meet-ic { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px; color: var(--color-muted); background: var(--dm-panel-2); }
 
-/* ---------------- 社区三栏（CommunityDesk） ---------------- */
+/* ---------------- Community three-column (CommunityDesk) ---------------- */
 .desk-main:has(.dm-community) { max-width: 1320px; }
 .dm-community { display: grid; grid-template-columns: 290px minmax(0, 1fr) 310px; gap: 18px; align-items: start; padding-top: 12px; }
 .dm-crail { position: sticky; top: 80px; display: flex; flex-direction: column; max-height: calc(100dvh - 96px); padding: 12px 0 6px; overflow: hidden; }
 .dm-crail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 10px; flex-shrink: 0; }
 .dm-crail .dm-rail-search { margin-bottom: 8px; }
 .dm-crail-body { min-height: 0; overflow-y: auto; scrollbar-width: thin; padding: 0 6px; }
-/* 复用手机的会话列表：去掉左右留白，行距收紧一点 */
+/* Reuse the phone's conversation list: drop the side padding, tighten the row spacing a bit */
 .dm-chatlist .page-gutter { padding-left: 8px; padding-right: 8px; }
 .dm-grp-rows { list-style: none; margin: 0; padding: 0 6px; display: flex; flex-direction: column; gap: 2px; }
 .dm-hotgrp .dm-grp-rows, .dm-hotlist .dm-grp-rows { padding: 0 8px 10px; }
@@ -383,7 +383,7 @@ a.dm-tr:hover { background: var(--dm-panel-2); }
   .dm-crail { position: static; max-height: 420px; }
 }
 
-/* ---------------- 小精灵（SpritesDesk） ---------------- */
+/* ---------------- Sprites (SpritesDesk) ---------------- */
 .desk-main:has(.dm-sprites) { max-width: 1320px; }
 .dm-eden { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px; padding: 30px 32px; overflow: hidden;
   background: radial-gradient(60% 120% at 100% 0%, rgb(169 230 255 / .14), transparent 60%), radial-gradient(50% 100% at 0% 100%, rgb(255 201 168 / .12), transparent 60%), var(--dm-panel); }

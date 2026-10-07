@@ -1,10 +1,10 @@
-// 网页版绑定 X：授权走新窗口，原页面不动。
+// Web X binding: authorization runs in a new window; the original page stays put.
 //
-// 以前是整页跳到 X 再整页跳回来，页面一重载，内存里的解锁状态就没了，
-// 用户绑定完回来要重新输密码（私钥只在内存里，这点不能改）。
-// 现在授权在新窗口里完成，新窗口拿到结果后通知原页面并自己关掉。
+// It used to be a full-page hop to X and back; a page reload wiped the in-memory unlock state,
+// so users returning from binding had to re-enter their password (private keys live only in memory — that can't change).
+// Now authorization completes in a new window, which notifies the original page with the result and closes itself.
 //
-// 原生 App 不走这里：那边是系统浏览器叠在 App 上，授权完通过 meme.wallet.app:// 深链跳回，App 一直活着。
+// The native app doesn't go through here: there a system browser overlays the app, and after authorization it deep-links back via meme.wallet.app:// — the app stays alive throughout.
 import { routeQuery } from './route'
 const CHANNEL = '0x4.x-auth'
 const KEY = '0x4.x-auth-result'
@@ -21,29 +21,29 @@ function readResultFromUrl(): XAuthResult | null {
 }
 
 /**
- * 授权窗口回来时调用（在 App 渲染之前）。
- * 是授权窗口就把结果交给原页面并关闭自己，返回 true 让调用方不要再渲染界面。
+ * Called when returning in the authorization window (before App renders).
+ * If this is the auth window, hand the result to the original page and close itself, returning true so the caller skips rendering the UI.
  */
 export function handleXAuthPopup(): boolean {
   const result = readResultFromUrl()
   if (!result || !window.opener || window.opener === window) return false
-  try { new BroadcastChannel(CHANNEL).postMessage(result) } catch { /* 老浏览器没有 BroadcastChannel */ }
-  // 兜底：跨标签页的 storage 事件
-  try { localStorage.setItem(KEY, JSON.stringify({ ...result, at: Date.now() })) } catch { /* 隐私模式 */ }
+  try { new BroadcastChannel(CHANNEL).postMessage(result) } catch { /* Old browsers lack BroadcastChannel */ }
+  // Fallback: cross-tab storage events
+  try { localStorage.setItem(KEY, JSON.stringify({ ...result, at: Date.now() })) } catch { /* Private mode */ }
   window.close()
   return true
 }
 
-/** 原页面监听授权结果。返回取消监听的函数 */
+/** The original page listens for the authorization result. Returns the unsubscribe function */
 export function onXAuthResult(cb: (r: XAuthResult) => void): () => void {
   let channel: BroadcastChannel | null = null
   try {
     channel = new BroadcastChannel(CHANNEL)
     channel.onmessage = (e) => cb(e.data as XAuthResult)
-  } catch { /* 忽略 */ }
+  } catch { /* Ignore */ }
   const onStorage = (e: StorageEvent) => {
     if (e.key !== KEY || !e.newValue) return
-    try { cb(JSON.parse(e.newValue) as XAuthResult) } catch { /* 忽略坏数据 */ }
+    try { cb(JSON.parse(e.newValue) as XAuthResult) } catch { /* Ignore bad data */ }
   }
   window.addEventListener('storage', onStorage)
   return () => {
@@ -53,12 +53,12 @@ export function onXAuthResult(cb: (r: XAuthResult) => void): () => void {
 }
 
 /**
- * 打开授权窗口。弹窗被拦时退回整页跳转（那种情况下回来仍需重新解锁，但至少能绑定）。
- * 返回 true 表示走的是新窗口。
+ * Open the authorization window. When popups are blocked, fall back to a full-page redirect (unlocking is still required on return, but binding works at least).
+ * Returns true when the new-window path was used.
  */
 export function openXAuthWindow(url: string): boolean {
   const w = window.open(url, '0x4-x-auth', 'width=600,height=760')
   if (!w) { location.href = url; return false }
-  try { w.focus() } catch { /* 忽略 */ }
+  try { w.focus() } catch { /* Ignore */ }
   return true
 }

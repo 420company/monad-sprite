@@ -1,4 +1,4 @@
-// 发新版后旧页面拿不到旧分包（2026-10-02）：认得各浏览器的报错，30 秒内只自动刷一次
+// Stale pages can't fetch old chunks after a release (2026-10-02): recognizes each browser's error wording; auto-refreshes at most once per 30 s
 import { describe, expect, it, vi } from 'vitest'
 import { isChunkError, reloadForNewVersion } from './chunkReload'
 

@@ -1,17 +1,17 @@
-// 合约盘口、最新成交、合约头部实时数据（2026-09-29 网页版合约终端，goat：盘口 + 最新成交要用交易所的真实数据）。
-// 全是交易所公开行情接口，不用签名、不碰账户：
-//   · REST 快照：/fapi/v3/depth（前 20 档）、/fapi/v3/aggTrades（最近逐笔）、/fapi/v3/premiumIndex、/fapi/v3/ticker/24hr、/fapi/v3/openInterest
-//   · websocket 合并流 wss://fstream.asterdex.com/stream：<sym>@depth20@500ms（每次推前 20 档整张快照，不用自己合并增量）、
-//     <sym>@aggTrade（逐笔）、<sym>@markPrice@1s（标记价 / 指数价 / 资金费率 / 下次结算时间）、<sym>@ticker（24h 统计）
-// 2026-09-29 实测：REST 都回 Access-Control-Allow-Origin: *，四个推送流都有数据。持仓量没有推送，页面每 15 秒拉一次。
+// Perp order book, recent trades, and live header data (2026-09-29 web perp terminal; goat: book + recent trades must use the exchange's real data).
+// All from the exchange's public market endpoints — no signing, no account access:
+//   · REST snapshots: /fapi/v3/depth (top 20 levels), /fapi/v3/aggTrades (recent trades), /fapi/v3/premiumIndex, /fapi/v3/ticker/24hr, /fapi/v3/openInterest
+//   · websocket combined stream wss://fstream.asterdex.com/stream: <sym>@depth20@500ms (pushes the full top-20 snapshot each time — no manual delta merging),
+//     <sym>@aggTrade (trades), <sym>@markPrice@1s (mark / index price, funding rate, next funding time), <sym>@ticker (24h stats)
+// Tested 2026-09-29: all REST endpoints return Access-Control-Allow-Origin: *, all four streams have data. Open interest has no stream — the page pulls it every 15s.
 import { HOST, symbolOf } from './aster'
 
 export const STREAM_HOST = 'wss://fstream.asterdex.com'
 
 export interface BookLevel { px: number; sz: number }
 export interface OrderBook { bids: BookLevel[]; asks: BookLevel[]; at: number }
-export interface TapeTrade { id: number; px: number; sz: number; /** 主动买（吃掉卖单）为 true */ isBuy: boolean; time: number }
-/** 合约头部数据：每项拿不到就是 undefined，页面显示 --，不补假数 */
+export interface TapeTrade { id: number; px: number; sz: number; /** true for active buys (taking ask orders) */ isBuy: boolean; time: number }
+/** Perp header data: anything unavailable stays undefined, the page shows -- — never backfill fake numbers */
 export interface PerpStats {
   last?: number; mark?: number; index?: number; funding?: number; nextFunding?: number
   open24h?: number; high24h?: number; low24h?: number; quoteVolume24h?: number; openInterest?: number
@@ -31,7 +31,7 @@ function levels(rows: unknown): BookLevel[] {
   return out
 }
 
-/** REST 快照（bids / asks）和推送（b / a）是同一种二维数组：买盘从高到低、卖盘从低到高 */
+/** REST snapshots (bids / asks) and stream pushes (b / a) share the same 2D array shape: bids high-to-low, asks low-to-high */
 export function parseBook(d: { bids?: unknown; asks?: unknown; b?: unknown; a?: unknown; E?: unknown; T?: unknown }): OrderBook {
   return {
     bids: levels(d.bids ?? d.b).sort((x, y) => y.px - x.px),
@@ -40,14 +40,14 @@ export function parseBook(d: { bids?: unknown; asks?: unknown; b?: unknown; a?: 
   }
 }
 
-/** 逐笔：m = true 表示买方是挂单方，也就是这笔是主动卖 */
+/** Trades: m = true means the buyer was the maker, i.e. this trade was an active sell */
 export function parseAggTrade(x: { a?: unknown; p?: unknown; q?: unknown; T?: unknown; m?: unknown }): TapeTrade | null {
   const id = num(x.a), px = pos(x.p), sz = pos(x.q), time = num(x.T)
   if (id === undefined || px === undefined || sz === undefined || time === undefined) return null
   return { id, px, sz, time, isBuy: x.m === false }
 }
 
-/** 推送消息 → 盘口 / 一笔成交 / 头部数据的一部分；认不出的返回 null */
+/** Stream message → book / one trade / part of the header data; null for unrecognized */
 export function parseStream(raw: string): { book?: OrderBook; trade?: TapeTrade; stats?: PerpStats } | null {
   let m: { data?: Record<string, unknown> }
   try { m = JSON.parse(raw) } catch { return null }
@@ -72,14 +72,14 @@ export async function loadBook(coin: string, limit = 20): Promise<OrderBook> {
   return parseBook(await getJson(`/fapi/v3/depth?symbol=${symbolOf(coin)}&limit=${limit}`) as Record<string, unknown>)
 }
 
-/** 最近逐笔，新的在前 */
+/** Recent trades, newest first */
 export async function loadTape(coin: string, limit = 50): Promise<TapeTrade[]> {
   const rows = await getJson(`/fapi/v3/aggTrades?symbol=${symbolOf(coin)}&limit=${limit}`)
   if (!Array.isArray(rows)) return []
   return rows.map((x) => parseAggTrade(x as Record<string, unknown>)).filter((x): x is TapeTrade => !!x).sort((a, b) => b.time - a.time || b.id - a.id)
 }
 
-/** 头部数据快照：标记价 / 资金费、24h 统计、持仓量（张数 × 标记价 = 美元）。哪一项失败就缺哪一项 */
+/** Header data snapshot: mark price / funding, 24h stats, open interest (contracts × mark price = USD). Failed items are simply missing */
 export async function loadPerpStats(coin: string): Promise<PerpStats> {
   const sym = symbolOf(coin)
   const [pi, tk, oi] = await Promise.allSettled([
@@ -97,7 +97,7 @@ export async function loadPerpStats(coin: string): Promise<PerpStats> {
   }
 }
 
-/** 持仓量单独拉（没有推送）：美元 */
+/** Open interest pulled separately (no stream): USD */
 export async function loadOpenInterestUsd(coin: string, mark: number): Promise<number | undefined> {
   const o = await getJson(`/fapi/v3/openInterest?symbol=${symbolOf(coin)}`) as Record<string, unknown>
   const n = pos(o.openInterest)
@@ -109,7 +109,7 @@ export const streamUrl = (coin: string) => {
   return `${STREAM_HOST}/stream?streams=${s}@depth20@500ms/${s}@aggTrade/${s}@markPrice@1s/${s}@ticker`
 }
 
-/** 逐笔合并进已有列表：按 id 去重，新的在前，最多留 max 笔 */
+/** Merge trades into the existing list: dedupe by id, newest first, keep at most max */
 export function mergeTape(cur: TapeTrade[], add: TapeTrade[], max = 60): TapeTrade[] {
   if (!add.length) return cur
   const seen = new Map<number, TapeTrade>()

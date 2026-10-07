@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// 比特币闪兑：卖出 BTC 时对跨链服务给的 PSBT 逐项核对（2026-09-30）。
-// 样本是真实报价（__fixtures__/lifi-btc-sell-quote.json：公开地址 0.001 BTC → BNB Chain USDT，只报价、没签名、没广播），
-// 先确认真实报价能通过，再逐项篡改，每一种都必须被拒绝。
+// BTC instant swap: item-by-item verification of the cross-chain service's PSBT when selling BTC (2026-09-30).
+// The sample is a real quote (__fixtures__/lifi-btc-sell-quote.json: public address 0.001 BTC → BNB Chain USDT — quoted only, never signed or broadcast),
+// first confirm the real quote passes, then tamper item by item — every variant must be rejected.
 import { describe, expect, it } from 'vitest'
 import { Address, NETWORK, OutScript, Script, Transaction } from '@scure/btc-signer'
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js'
@@ -12,12 +12,12 @@ import { BTC_CHAIN_ID, SOLANA_CHAIN_ID } from './chains'
 import { BTC_PLATFORM_FEE_ADDRESS, BtcSwapCheckError, checkBtcSwapPsbt, isBtcChain, swapAddressFor } from './btcSwap'
 
 const step = quote as unknown as LiFiStep
-/** 报价里的发送地址（输入都在它上面） */
+/** The sending address in the quote (all inputs sit on it) */
 const OWNER = step.action.fromAddress as string
 const OTHER = 'bc1q4qw42stdzjqs59xvlrlxr8526e3nunw7mp73te'
 const script = (addr: string) => OutScript.encode(Address(NETWORK).decode(addr))
 
-/** 拆开样本 PSBT，按 edit 改输出后重新打包成新的报价 */
+/** Unpack the sample PSBT, repack it into a new quote with outputs edited per edit */
 function mutate(edit: (outs: { script: Uint8Array; amount: bigint }[]) => { script: Uint8Array; amount: bigint }[], patch: Partial<LiFiStep['transactionRequest']> = {}): LiFiStep {
   const orig = Transaction.fromPSBT(hexToBytes(String(step.transactionRequest!.data)), { allowUnknownOutputs: true })
   const tx = new Transaction({ allowUnknownOutputs: true })
@@ -36,12 +36,12 @@ describe('checkBtcSwapPsbt', () => {
   it('真实报价：通过，拆出存款 / 服务费 / 找零 / 矿工费', () => {
     const p = checkBtcSwapPsbt(step, OWNER)
     expect(p.depositAddress).toBe(step.transactionRequest!.to)
-    expect(p.deposit).toBe(99_750n)          // 100,000 − 服务固定费 250
-    expect(p.serviceFee).toBe(294n)          // 250 凑到尘埃线 294
+    expect(p.deposit).toBe(99_750n)          // 100,000 − service flat fee 250
+    expect(p.serviceFee).toBe(294n)          // 250 topped up to the dust line 294
     expect(p.minerFee).toBeGreaterThan(0n)
     expect(p.minerFee).toBeLessThanOrEqual(5_000n)
     expect(p.request.prevouts.length).toBeGreaterThan(0)
-    // 签名请求里的未签名交易就是这份 PSBT 的交易（txid 一致）
+    // The unsigned tx in the signing request is this PSBT's transaction (txid matches)
     expect(Transaction.fromRaw(hexToBytes(p.request.tx), { allowUnknownOutputs: true }).id).toBe(p.unsigned.id)
   })
 
@@ -104,7 +104,7 @@ describe('swapAddressFor / isBtcChain', () => {
   })
 })
 
-// 2026-09-30 真实报价（带平台费 0.75%，goat 配了比特币链收费地址后）：交易里多一个打到我们收费地址的输出
+// 2026-09-30 real quote (with 0.75% platform fee, after goat configured the Bitcoin chain fee address): the tx carries one extra output to our fee address
 describe('卖出 BTC 带平台费', () => {
   const stepFee = quoteFee as unknown as LiFiStep
   const ownerFee = stepFee.action.fromAddress as string

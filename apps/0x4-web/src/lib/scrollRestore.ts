@@ -1,10 +1,10 @@
-// 滚动位置记忆的纯逻辑（不碰 DOM，方便单测）。接到界面上的是 components/ScrollRestorer.tsx。
-// 规则（和系统浏览器 / iOS 导航栈的直觉一致）：
-// · 每条历史记录（react-router 的 location.key）各记一份：整页滚动 + 页面里带 data-scroll-key 的独立滚动区
-// · 后退 / 前进（POP）回到某条记录：恢复它离开时的位置
-// · 新进入（PUSH）：回到顶部
-// · 原地替换（REPLACE，清掉路由 state、换个参数）：不动
-// · 列表常常是异步加载的：内容还没长到目标高度就先等，等到了一次滚到位，避免停在半截；超时了就尽量靠近
+// Pure logic for scroll-position memory (no DOM, easy to unit-test). Wired to the UI by components/ScrollRestorer.tsx.
+// Rules (matching the intuition of system browsers / the iOS navigation stack):
+// · Each history entry (react-router's location.key) remembers its own: whole-page scroll + independent scroll regions with data-scroll-key
+// · Back / forward (POP) to an entry: restore where it was left
+// · New entry (PUSH): back to top
+// · In-place replace (REPLACE, clearing route state, swapping params): don't move
+// · Lists are often loaded async: if content hasn't grown to the target height yet, wait and scroll into place once — never stop halfway; on timeout, get as close as possible
 
 export interface ScrollEntry { y: number; areas: Record<string, number> }
 export type NavKind = 'POP' | 'PUSH' | 'REPLACE'
@@ -43,18 +43,18 @@ export class ScrollMemory {
   }
 }
 
-/** 进到一条历史记录时该怎么滚 */
+/** How to scroll when entering a history entry */
 export function planScroll(nav: NavKind, saved: ScrollEntry | undefined): Plan {
   if (nav === 'REPLACE') return { mode: 'keep' }
   if (nav === 'POP' && saved && (saved.y > 0 || Object.values(saved.areas).some((v) => v > 0))) return { mode: 'restore', entry: saved }
-  // 后退回来但当时就在顶部（或者没记录，比如冷启动后按了返回）：回顶部
+  // Went back but was at the top anyway (or nothing recorded, e.g. back pressed after a cold start): back to top
   return { mode: 'top' }
 }
 
 /**
- * 恢复的某一帧：目标位置现在能不能到。
- * · max = 当前内容能滚到的最大位置（scrollHeight - clientHeight）
- * · 能到 → apply；还不能到、没超时 → wait；超时 → clamp（滚到能到的最远处，别停在顶部）
+ * One frame of restoration: can the target position be reached now.
+ * · max = the current content's maximum scrollable position (scrollHeight − clientHeight)
+ * · reachable → apply; not yet, not timed out → wait; timed out → clamp (scroll to the farthest reachable point, don't stay at the top)
  */
 export function restoreStep(target: number, max: number, elapsed: number, timeout = RESTORE_TIMEOUT): 'apply' | 'wait' | 'clamp' {
   if (target <= 0 || max >= target - 1) return 'apply'

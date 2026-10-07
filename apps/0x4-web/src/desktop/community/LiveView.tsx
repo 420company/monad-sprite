@@ -1,8 +1,8 @@
-// 社区 → 直播（/live，2026-10-01 社区合并，设计稿「2-社区-直播」）：
-//   页头：直播 + 「PK 排行」「开直播」；
-//   有主播在 PK 时最上面一张大卡：两边房间 + 比分盘口（K 线式：领先的一方往上涨、落后的往下跌，数据是这一局真实的比分走势）；
-//   下面三列：其它正在直播的房间（封面插画 + 主播头像、LIVE / 付费 / 语音、人数、标题、主播）。
-// 房间列表和顶栏红点、左边菜单数字同一份（liveRooms.ts）；PK 状态每 3 秒拉一次公开接口 /api/rooms/:id/pk。
+// Community → Live (/live, 2026-10-01 community merge, design "2-community-live"):
+//   Header: Live + "PK rankings" / "Go live";
+//   when streamers are in a PK, a big card on top: both rooms + the score chart (candlestick-style: the leader trends up, the laggard trends down — real score movement of this round);
+//   three columns below: other live rooms (cover art + streamer avatar, LIVE / paid / voice, viewer count, title, streamer).
+// The room list shares its data with the top-bar red dot and the left-menu count (liveRooms.ts); PK state polls the public endpoint /api/rooms/:id/pk every 3s.
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, Radio, RefreshCw, WifiOff } from 'lucide-react'
@@ -37,11 +37,11 @@ function LiveBody() {
   const [creating, setCreating] = useState(false)
   const [ranking, setRanking] = useState(false)
   const avOk = livekit !== false
-  // 连了钱包但社区 / 音视频没就绪：开播按钮置灰，原因在页头下面说一次
+  // Wallet connected but community / audio-video not ready: the go-live button is disabled, with the reason stated once under the header
   const liveBlock = connected && (status !== 'ready' || !avOk)
   const goLive = () => { if (!needLogin()) setCreating(true) }
   const enter = (id: string) => { if (!needLogin()) nav(`/room/${id}`) }
-  // 正在 PK 的房间里挑看的人最多的一个做大卡；它和对面房间不再出现在下面的列表里
+  // Pick the most-watched of the rooms currently in a PK for the big card; it and its opponent no longer appear in the list below
   const featured = useMemo(() => (rooms ?? []).find((r) => r.pk && r.pk.phase !== 'linked') ?? null, [rooms])
   const pk = usePk(featured?.id ?? null)
   const others = useMemo(() => (rooms ?? []).filter((r) => !featured || (r.id !== featured.id && r.id !== pk?.opp.room)), [rooms, featured, pk])
@@ -66,7 +66,7 @@ function LiveBody() {
   )
 }
 
-/** 某个房间的 PK 状态：每 3 秒拉一次；倒计时用服务器时间 */
+/** A room's PK state: polled every 3s; the countdown uses server time */
 function usePk(roomId: string | null): (PkState & { skew: number }) | null {
   const [pk, setPk] = useState<(PkState & { skew: number }) | null>(null)
   useEffect(() => {
@@ -74,7 +74,7 @@ function usePk(roomId: string | null): (PkState & { skew: number }) | null {
     let alive = true
     const load = () => api<{ pk: PkState | null }>(`/api/rooms/${roomId}/pk`, {}, { anonymous: true })
       .then((r) => { if (alive) setPk(r?.pk ? { ...r.pk, skew: r.pk.serverNow - Date.now() } : null) })
-      .catch(() => { /* 下一轮再拉 */ })
+      .catch(() => { /* Poll again next round */ })
     void load()
     const id = setInterval(() => { if (!document.hidden) void load() }, 3000)
     return () => { alive = false; clearInterval(id) }
@@ -82,7 +82,7 @@ function usePk(roomId: string | null): (PkState & { skew: number }) | null {
   return pk
 }
 
-/** PK 大卡：左边这个房间、右边对面房间；下面是比分盘口 */
+/** PK big card: this room on the left, the opponent room on the right; the score chart below */
 function PkHero({ room, pk, onEnter, coverFor }: { room: RoomInfo; pk: PkState & { skew: number }; onEnter: () => void; coverFor: (id: string) => string }) {
   useTicker(pk.phase === 'running', 1000)
   const left = pk.me, right = pk.opp
@@ -128,9 +128,9 @@ function PkHero({ room, pk, onEnter, coverFor }: { room: RoomInfo; pk: PkState &
 }
 
 /**
- * K 线式比分：把这一局的时间切成若干段，每段一根蜡烛（开 = 段首占比、收 = 段末占比、高低 = 段内最高最低）。
- * 左图画「左边占比」，右图画「右边占比」（= 1 - 左边），所以领先的一方一路涨（绿）、落后的一方一路跌（红）。
- * 还没人送礼时是一条 50% 的平线。只用真实比分点，不插值编数据。
+ * Candlestick-style scores: slice this round's time into segments, one candle per segment (open = share at segment start, close = share at segment end, high/low = segment extremes).
+ * The left chart plots "left share", the right chart "right share" (= 1 − left) — so the leader trends up (green) all the way and the laggard trends down (red).
+ * Before any gifts, it's a flat 50% line. Only real score points are used; no interpolated data.
  */
 function ShareChart({ series, start, end, invert, label, side }: { series: { t: number; v: number }[]; start: number; end: number; invert: boolean; label: number; side: 'l' | 'r' }) {
   const N = 22
@@ -174,10 +174,10 @@ function ShareChart({ series, start, end, invert, label, side }: { series: { t: 
 }
 
 /**
- * 一个直播间卡片（2026-10-02 goat：原来的卡片很丑、标题被下一行压住，重做）：
- *   封面 = 主播选的直播间氛围图（压暗做底），中间主播头像，外面一圈慢慢转的渐变光环 + 两圈往外扩的波纹 = 正在播；
- *   左上 LIVE（红点闪）/ PK / 付费，右上观看人数，标题压在封面底部（最多两行），下面一行主播、连胜、开播多久。
- *   鼠标移上去整张卡微微上浮发光、封面慢慢放大。
+ * One live-room card (2026-10-02 goat: the old cards were ugly and the next row overlapped the titles — redone):
+ *   cover = the streamer's chosen room ambience image (darkened as the base), streamer avatar in the middle, a slowly rotating gradient halo + two expanding ripples outside = live;
+ *   top-left LIVE (flashing red dot) / PK / paid, top-right viewer count, title pressed to the cover's bottom (max two lines), one line below: streamer, win streak, how long live.
+ *   Hovering lifts the whole card slightly with a glow and slowly zooms the cover.
  */
 function RoomTile({ r, onEnter, disabled }: { r: RoomInfo; onEnter: () => void; disabled: boolean }) {
   const name = displayName({ address: r.host, nickname: r.hostNickname })

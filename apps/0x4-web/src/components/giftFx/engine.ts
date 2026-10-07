@@ -1,7 +1,7 @@
-// 礼物动画引擎（网页版直播间、会议、手机 App 共用；不依赖 React / Tailwind，会议工程 meet/ 可以直接引用）。
-// 规矩：只动 transform / opacity，礼花用一块 canvas；每个效果 ≤ 3 秒，播完整块 DOM 删掉、定时器清掉；
-// 页面隐藏时全部停掉、回来不补播；系统开了「减少动态效果」只显示静态图 + 说明；低端机粒子数减半。
-// 哈基米 = 猫咪币雨：正在下时再来的不重开，合并成「哈基米 ×N」并继续下；音效由 sound.ts 保证同时只播一遍。
+// Gift animation engine (shared by web live rooms, meetings, and the mobile app; no React / Tailwind dependency, so meet/ can reference it directly).
+// Rules: only transform / opacity move, confetti uses one canvas; each effect ≤ 3 seconds, after playing the whole DOM chunk is removed and timers cleared;
+// everything stops when the page hides, with no catch-up on return; systems with "reduce motion" show only a static image + description; low-end devices get half the particles.
+// Hakimi = cat-coin rain: new ones arriving mid-rain don't restart it, they merge into "Hakimi ×N" and keep falling; sound.ts guarantees the sound effect plays only once at a time.
 import { injectGiftFxCss } from './styles'
 import { giftSound, type GiftSound } from './sound'
 
@@ -13,29 +13,29 @@ export interface GiftFxGift {
   nameZh: string
   nameEn: string
   icon: string | null
-  /** 后台上传的动画文件（动图 / 视频），有就优先播它 */
+  /** Animation file uploaded from the admin (GIF / video); played first when present */
   anim?: string | null
   fx?: string | null
   sound?: string | null
 }
 export interface GiftFxEvent {
   gift: GiftFxGift
-  /** 送礼人 */
+  /** The gifter */
   from?: { id?: string; nickname?: string | null; avatar?: string | null }
   count?: number
 }
 export interface GiftFxOptions {
   lang?: 'zh' | 'en'
-  /** 把 /files/xxx 变成能直接加载的地址（原生 App 要拼 API 域名）；默认原样 */
+  /** Turn /files/xxx into a directly loadable URL (native apps must prepend the API domain); default is as-is */
   resolve?: (url: string) => string
-  /** 没图标时用的通用礼盒图 */
+  /** Generic gift-box image used when there's no icon */
   fallbackIcon?: string
   sound?: GiftSound | null
   reducedMotion?: boolean
   lowEnd?: boolean
 }
 
-/** 每种效果的时长（毫秒，都 ≤ 3 秒） */
+/** Duration of each effect (milliseconds, all ≤ 3 seconds) */
 export const FX_MS: Record<GiftFxKind, number> = { pop: 2200, heart: 2600, coinrain: 3000, kline: 2800, rose: 2800, rocket: 2800, car: 2400, yacht: 3000, fireworks: 3000, satoshi: 2600 }
 const MEDIA_MS = 4000
 const STILL_MS = 1600
@@ -89,7 +89,7 @@ export class GiftFxEngine {
 
   setLang(l: 'zh' | 'en') { this.o.lang = l }
 
-  /** 有人送了礼物（服务器确认后才调用：先扣后播，永远不会播了又收回） */
+  /** Someone sent a gift (called only after server confirmation: deducted first, then played — never played and taken back) */
   play(ev: GiftFxEvent) {
     if (this.dead || document.visibilityState === 'hidden') return
     const g = ev.gift
@@ -103,7 +103,7 @@ export class GiftFxEngine {
     this.enqueue(ev, n)
   }
 
-  /** 正在排队 / 正在播的数量（测试用） */
+  /** Number queued / playing (test-only) */
   get pending() { return this.queue.length + (this.busy ? 1 : 0) }
   get rainCount() { return this.rain?.count ?? 0 }
 
@@ -127,15 +127,15 @@ export class GiftFxEngine {
     this.stage.remove()
   }
 
-  // ---------------------------------------------------------------- 排队（一次放一个大效果）
+  // ---------------------------------------------------------------- Queue (one big effect at a time)
 
   private enqueue(ev: GiftFxEvent, n: number) {
     const key = `${ev.gift.id}|${ev.from?.id || ''}`
     const last = this.queue[this.queue.length - 1]
-    if (last && last.key === key) { last.count += n; return }        // 同一个人连送同一个：合并成 ×N
+    if (last && last.key === key) { last.count += n; return }        // Same person gifting the same gift consecutively: merge into ×N
     if (this.queue.length >= QUEUE_MAX) {
       const same = this.queue.find((j) => j.ev.gift.id === ev.gift.id)
-      if (same) same.count += n                                    // 排满了：并进同一种礼物
+      if (same) same.count += n                                    // Queue full: merge into the same gift type
       return
     }
     this.queue.push({ key, ev, count: n })
@@ -175,7 +175,7 @@ export class GiftFxEngine {
     return ms
   }
 
-  // ---------------------------------------------------------------- 小工具
+  // ---------------------------------------------------------------- Utilities
 
   private later(fn: () => void, ms: number) {
     const t = setTimeout(() => { this.timers.delete(t); fn() }, ms)
@@ -232,11 +232,11 @@ export class GiftFxEngine {
       : this.img(src)
     el.className = 'gfx-media'
     el.style.setProperty('--d', `${ms}ms`)
-    if (el instanceof HTMLVideoElement) { el.src = src; el.setAttribute('playsinline', ''); void el.play?.()?.catch?.(() => { /* 静音也放不了就算了 */ }) }
+    if (el instanceof HTMLVideoElement) { el.src = src; el.setAttribute('playsinline', ''); void el.play?.()?.catch?.(() => { /* If it can't play even unmuted, give up */ }) }
     layer.appendChild(el)
   }
 
-  // ---------------------------------------------------------------- 爱心 / 猫咪币雨（可以和排队的大效果同时出现）
+  // ---------------------------------------------------------------- Hearts / cat-coin rain (can appear alongside the queued big effect)
 
   private heartBurst(ev: GiftFxEvent, count: number) {
     this.hearts++
@@ -259,7 +259,7 @@ export class GiftFxEngine {
     const src = this.icon(ev.gift)
     const now = Date.now()
     if (this.rain) {
-      // 正在下：不重开，计数 +N，再补几枚、往后延 3 秒
+      // Already raining: don't restart, count += N, add a few more coins, extend 3 seconds
       const r = this.rain
       r.count += count
       r.combo.replaceWith(r.combo = this.comboEl(ev.gift, r.count))
@@ -287,7 +287,7 @@ export class GiftFxEngine {
   private comboEl(g: GiftFxGift, n: number): HTMLDivElement {
     const d = document.createElement('div')
     d.className = 'gfx-combo'
-    if (n < 2) d.style.visibility = 'hidden'   // 只有一枚时不显示 ×1
+    if (n < 2) d.style.visibility = 'hidden'   // Don't show ×1 when there's only one coin
     const s = document.createElement('small')
     s.textContent = this.o.lang === 'en' ? g.nameEn : g.nameZh
     d.appendChild(s)
@@ -295,7 +295,7 @@ export class GiftFxEngine {
     return d
   }
 
-  /** 加几枚币（同一张图反复用）；最多同时 24 枚，旧的落完自己删 */
+  /** Add a few coins (reusing the same image); at most 24 at once, fallen ones remove themselves */
   private addCoins(layer: HTMLElement, src: string, n: number, spread: number) {
     const r = this.rain
     for (let i = 0; i < n; i++) {
@@ -312,7 +312,7 @@ export class GiftFxEngine {
     }
   }
 
-  // ---------------------------------------------------------------- 礼花（一块 canvas，粒子数封顶）
+  // ---------------------------------------------------------------- Confetti (one canvas, particle count capped)
 
   fireworks(layer: HTMLElement, ms: number) {
     const cv = document.createElement('canvas')
@@ -327,7 +327,7 @@ export class GiftFxEngine {
     ctx.scale(dpr, dpr)
     const COLORS = ['#ffd66b', '#ff5fd2', '#5fe8ff', '#ffffff', '#ff9d3d', '#9dff7a']
     const bursts = this.n(5), per = this.n(70)
-    const R = W >= 900 ? 4.5 : 3.5   // 粒子边长（CSS 像素）
+    const R = W >= 900 ? 4.5 : 3.5   // Particle side length (CSS pixels)
     type P = { x: number; y: number; vx: number; vy: number; c: string; born: number; life: number }
     const ps: P[] = []
     for (let b = 0; b < bursts; b++) {
@@ -349,11 +349,11 @@ export class GiftFxEngine {
         const age = el - p.born
         if (age < 0 || age > p.life) continue
         const k = age / 16.7
-        const x = p.x + p.vx * k * 1.6, y = p.y + p.vy * k * 1.6 + 0.018 * k * k   // 往外散 + 一点重力
+        const x = p.x + p.vx * k * 1.6, y = p.y + p.vy * k * 1.6 + 0.018 * k * k   // Scatter outward + a bit of gravity
         const a = 1 - age / p.life
         ctx.fillStyle = p.c
         ctx.globalAlpha = a * 0.45
-        ctx.fillRect(x - p.vx * 5 - R / 2, y - p.vy * 5 - R / 2, R, R)   // 拖尾：往回一点再画一个淡的
+        ctx.fillRect(x - p.vx * 5 - R / 2, y - p.vy * 5 - R / 2, R, R)   // Trail: draw a faded one slightly behind
         ctx.globalAlpha = a
         ctx.fillRect(x - R / 2, y - R / 2, R, R)
       }
@@ -368,7 +368,7 @@ export class GiftFxEngine {
   private onVisibility = () => { if (document.visibilityState === 'hidden') this.clear() }
 }
 
-// ---------------------------------------------------------------- 每种效果怎么画（this = 引擎）
+// ---------------------------------------------------------------- How each effect is drawn (this = engine)
 
 type Render = (this: GiftFxEngine, layer: HTMLElement, g: GiftFxGift, ms: number) => void
 const FX_RENDER: Record<GiftFxKind, Render> = {
@@ -393,7 +393,7 @@ const FX_RENDER: Record<GiftFxKind, Render> = {
     pct.style.setProperty('--d', `${ms}ms`)
     pct.textContent = '+0%'
     layer.appendChild(pct)
-    // 涨幅跳到 +420.69%（goat 定），最后一跳正好落在这个数
+    // Gain jumps to +420.69% (goat's call); the final jump lands exactly on it
     const target = 420.69, steps = 20
     for (let s = 1; s <= steps; s++) this['later'](() => { pct.textContent = `+${(target * (s / steps) ** 1.6).toFixed(2)}%` }, (s / steps) * ms * 0.6)
   },

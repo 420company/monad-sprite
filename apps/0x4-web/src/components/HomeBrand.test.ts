@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
-// 首页顶栏官方滚动公告（2026-09-29）：
-// ① 没有公告时 logo 右边照旧显示 0x4；有公告时显示标题，页面标题 0x4 留给读屏
-// ② 点开弹窗看全文：标题、正文、发布时间；多条可以前后翻
-// ③ 正文和标题里的 HTML 按文字显示，不会变成真的标签
-// ④ 拉取：5 分钟内用缓存、同时进来的请求合并；接口失败不报错，首页照常显示 0x4
+// Home top-bar official scrolling announcements (2026-09-29):
+// ① With no announcement, the logo keeps showing 0x4 on its right; with one, it shows the title, and the 0x4 page title is left for screen readers
+// 2. Tap to open the modal for the full text: title, body, publish time; multiple ones can be flipped through
+// 3. HTML in the body and title renders as text — never becomes real tags
+// ④ Fetch: use cache within 5 minutes, coalesce concurrent requests; API failures don't throw, the home page still shows 0x4
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { HomeNotice } from '@/lib/homeNotices'
 
-// 弹窗在减弱动态效果下不跑 Web Animations（jsdom 没有 element.animate）；有模块在加载时就读 matchMedia，要在 import 之前装好
+// Modals don't run Web Animations under reduced motion (jsdom has no element.animate); some modules read matchMedia at load time, so it must be installed before import
 vi.hoisted(() => {
   window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia
 })
@@ -38,9 +38,9 @@ describe('首页顶栏公告', () => {
   it('没有公告：logo 右边显示 0x4，没有公告按钮', () => {
     render([])
     const h1 = host.querySelector('h1')!
-    expect(h1.getAttribute('aria-label')).toBe('0x4')   // 读屏读 0x4
-    expect(h1.classList.contains('brand-wordmark')).toBe(true)   // 像素字标
-    expect(h1.textContent).toBe('Øx4')   // 画面上的 0 是带斜线的像素 Ø
+    expect(h1.getAttribute('aria-label')).toBe('0x4')   // Screen readers read "0x4"
+    expect(h1.classList.contains('brand-wordmark')).toBe(true)   // Pixel wordmark
+    expect(h1.textContent).toBe('Øx4')   // The 0 on screen is the slashed pixel Ø
     expect(h1.className).not.toContain('sr-only')
     expect(host.querySelector('.notice-ticker')).toBeNull()
   })

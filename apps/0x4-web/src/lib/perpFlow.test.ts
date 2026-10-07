@@ -1,4 +1,4 @@
-// 买卖力量和大单气泡（2026-10-02 goat 第二批）：净买入怎么算、大单门槛、按 K 线聚合、最后一根补最新价。
+// Buy/sell pressure and whale bubbles (goat's second batch, 2026-10-02): net-buying math, whale threshold, aggregation by candle, last candle patched with the latest price.
 import { describe, expect, it } from 'vitest'
 import type { Candle } from './aster'
 import type { TapeTrade } from './asterBook'
@@ -17,7 +17,7 @@ describe('买卖力量', () => {
 
 describe('大单', () => {
   it('门槛按最近成交的金额分位算：样本少于 50 笔或算出来太小，用最低门槛', () => {
-    const many = Array.from({ length: 100 }, (_, i) => ({ px: 10, sz: i + 1 }))   // 金额 10..1000
+    const many = Array.from({ length: 100 }, (_, i) => ({ px: 10, sz: i + 1 }))   // Amounts 10..1000
     expect(bigThreshold(many, 0.98, 100)).toBe(990)
     expect(bigThreshold(many, 0.98, 5000)).toBe(5000)
     expect(bigThreshold(many.slice(0, 49), 0.98, 1000)).toBe(1000)
@@ -47,7 +47,7 @@ describe('大单', () => {
       { time: 60, isBuy: false, usd: 500, px: 105, n: 1 },
       { time: 120, isBuy: false, usd: 700, px: 120, n: 1 },
     ])
-    // 换成 5 分钟线：四笔都在同一根里
+    // Switched to 5m candles: all four trades in one candle
     expect(bubblesOf(big, 300).map((b) => [b.time, b.isBuy, b.usd, b.n])).toEqual([[0, true, 4000, 2], [0, false, 1200, 2]])
   })
 

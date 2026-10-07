@@ -1,8 +1,8 @@
-// 礼物贴纸图标：按礼物 id 画内联 SVG，外面一圈白边 + 一圈淡投影，亮 / 暗背景都看得清
+// Gift sticker icons: inline SVG drawn per gift id, with a white outline ring + a soft shadow ring — legible on light and dark backgrounds
 import { useId } from 'react'
 import { FALLBACK_ART, GIFT_ART } from './art'
 
-/** 礼物显示名（简体原文，渲染时再 t()）。id 是历史送礼记录的主键，不能改，名字在前端按 id 映射 */
+/** Gift display name (simplified-Chinese source, t() at render time). id is the primary key of historical gift records and must not change; names map per id on the frontend */
 export const GIFT_NAMES: Record<string, string> = {
   rose: '韭菜',
   beer: '大阳线',
@@ -14,19 +14,19 @@ export const GIFT_NAMES: Record<string, string> = {
   lambo: '兰博',
 }
 
-/** 礼物名：已知 id 用新名字，未知的退回服务器给的名字 */
+/** Gift name: known ids use the new name; unknown ones fall back to the server's name */
 export function giftName(id: string | undefined | null, fallback = '礼物'): string {
   return (id && GIFT_NAMES[id]) || fallback
 }
 
-/** 送礼文字里的礼物名换成前端这套名字。旧消息是「emoji+名字」（比如「🌹玫瑰」），
- *  2026-09-25 起服务器只发名字，两种都认；emoji 一律去掉 */
+/** Swap the gift name in gifting text to this frontend set of names. Old messages were "emoji+name",
+ *  since 2026-09-25 the server sends only the name; both are recognized, and emoji is always stripped */
 export function giftText(text: string, meta: { giftId?: unknown; emoji?: unknown; name?: unknown }): string {
   const id = typeof meta.giftId === 'string' ? meta.giftId : ''
   const emoji = typeof meta.emoji === 'string' ? meta.emoji : ''
   if (!GIFT_NAMES[id] || typeof meta.name !== 'string') return emoji ? text.replace(emoji, '') : text
   if (emoji && text.includes(emoji + meta.name)) return text.replace(emoji + meta.name, GIFT_NAMES[id])
-  // 新格式：名字紧跟在「个」后面，锚住它，免得撞到昵称里的同名字样
+  // New format: the name sits right after the measure-word character — anchor on it to avoid colliding with the same text in nicknames
   return text.replace(`个${meta.name}`, `个${GIFT_NAMES[id]}`)
 }
 

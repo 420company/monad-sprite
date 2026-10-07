@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// 官方社区金色认证标 + 币详情页社区榜单：
-// ① OfficialBadge 渲染成金色锯齿章 + 白色对勾，读屏念「官方社区」
-// ② 榜单只有「持币最多的社区」前 3 名，官方社区不再单独成块（哪怕老接口还带着 official 字段），上榜时行内带金色标，普通群永远没有
+// Official community gold verification badge + token detail page community rankings:
+// (1) OfficialBadge renders as a gold serrated seal + white checkmark; screen readers announce the official-community label
+// (2) the ranking only lists the top 3 "biggest holder communities"; the official community no longer gets its own block (even if the old API still carries an official field) — it shows an inline gold badge when ranked, regular groups never do
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -22,8 +22,8 @@ beforeEach(() => {
   host = document.createElement('div'); document.body.appendChild(host)
   root = createRoot(host)
 })
-// 员工标记是 80 毫秒后批量去问的：先清掉还没发出的那一批，再清接口替身。
-// 顺序反了的话，慢的机器上那一批会在清空之后才发出，拿到 undefined 调 .then 抛出未处理的异常，整轮测试退出码变 1（GPT 复审 b01f159 时复现）
+// Staff marks are batch-queried 80ms later: clear the not-yet-sent batch first, then the API stub.
+// Reversed, the batch fires after the clearing on slow machines, calling .then on undefined throws an unhandled exception and flips the whole test run's exit code to 1 (reproduced during GPT review b01f159)
 afterEach(() => { act(() => root.unmount()); host.remove(); resetStaffBadges(); apiMock.mockReset() })
 const inRouter = (el: ReturnType<typeof createElement>) => createElement(MemoryRouter, null, el)
 const badges = () => host.querySelectorAll('[data-official-badge]')
@@ -35,7 +35,7 @@ describe('OfficialBadge', () => {
     expect(svg.getAttribute('aria-label')).toBe('官方社区')
     expect(svg.getAttribute('width')).toBe('20')
     const seal = svg.querySelector('polygon')!
-    expect(seal.getAttribute('points')!.split(' ').length).toBe(24) // 12 个尖角
+    expect(seal.getAttribute('points')!.split(' ').length).toBe(24) // 12 points
     expect(seal.getAttribute('fill')).toMatch(/^url\(#ob-/)
     const stops = [...svg.querySelectorAll('stop')].map((s) => s.getAttribute('stop-color'))
     expect(stops).toEqual(['#F8D66A', '#E2A93B', '#C98A1E'])

@@ -1,7 +1,7 @@
-// 社区 → 动态（/community，2026-10-01 社区合并，设计稿「1-社区-动态」）：
-//   中间：全部 / 关注 + 发动态框 + 动态流（复用手机同一个 Feed，交易帖带「持有中」和买入后涨跌）；
-//   右边：正在直播（前 3）· 排行（交易 / 小精灵前 3）· 热门社区（前 3，成员盈亏合计）。
-// 全部来自真实接口，没有数据就显示空状态，不放示例。
+// Community → feed (/community; 2026-10-01 community merge, design "1-community-feed"):
+//   Middle: all / following + composer + feed (same Feed as phone; trade posts carry "holding" and post-buy PnL);
+//   Right: live now (top 3) · rankings (top-3 traders / sprites) · hot communities (top 3, by members' combined PnL).
+// All from real APIs; empty states when there's no data, no placeholders.
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { SquarePen } from 'lucide-react'
@@ -36,7 +36,7 @@ function FeedBody() {
   const [scope, setScope] = usePageState<'global' | 'friends'>('community.scope', 'global', oneOf('global', 'friends'))
   const [postKey, setPostKey] = useState(0)
   useEffect(() => onPosted(() => setPostKey((k) => k + 1)), [])
-  // 「关注」要登录后才有：没连钱包或社区没连上时一律看全部
+  // "Following" needs login: without a wallet or community connection, always show all
   const eff = ready ? scope : 'global'
   return (
     <div className="cm-feedgrid">
@@ -64,7 +64,7 @@ function FeedBody() {
   )
 }
 
-/** 右栏：正在直播（看的人最多的 3 个） */
+/** Right rail: live now (3 most-watched) */
 function LiveRail() {
   const nav = useNavigate()
   const rooms = useLiveRooms((s) => s.rooms)
@@ -95,7 +95,7 @@ function LiveRail() {
 
 interface LbRow { address: string; nickname: string | null; avatar: string | null; pnl: number; n: number }
 
-/** 右栏：排行（交易 = 24 小时盈亏前 3；小精灵 = 账户盈亏前 3） */
+/** Right rail: rankings (traders = top-3 24h PnL; sprites = top-3 account PnL) */
 function RankRail() {
   const nav = useNavigate()
   const status = useSocial((s) => s.status)
@@ -143,7 +143,7 @@ function RankRail() {
 
 export interface Community { id: string; name: string; avatar: string | null; members: number; pnl: number; official?: number | boolean | null }
 
-/** 右栏：热门社区（/api/communities：一个群就是一个社区，按成员盈亏合计排，前 3） */
+/** Right rail: hot communities (/api/communities: one group = one community, ranked by members' combined PnL, top 3) */
 function HotCommunities() {
   const nav = useNavigate()
   const status = useSocial((s) => s.status)

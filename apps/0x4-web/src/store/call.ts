@@ -1,8 +1,8 @@
-// 一对一语音 / 视频通话的状态机（只管信令与界面状态；LiveKit 连接在 CallOverlay 里）。
+// 1:1 voice / video call state machine (signaling and UI state only; the LiveKit connection lives in CallOverlay).
 //
-// idle → outgoing（我打出去，等对方）→ connecting（对方接了 / 我接了，正在连音视频）→ active → ended → idle
-// idle → incoming（来电响铃）→ connecting …
-// ended 停留一会儿显示结果（对方已拒绝、无人接听…），然后自动回 idle。
+// idle → outgoing (I called, waiting for them) → connecting (they picked up / I picked up, connecting audio-video) → active → ended → idle
+// idle → incoming (incoming call ringing) → connecting …
+// ended lingers briefly to show the outcome (declined, no answer…), then auto-returns to idle.
 import { create } from 'zustand'
 import { api } from '@/lib/social'
 import { t } from '@/lib/i18n'
@@ -16,33 +16,33 @@ interface CallState {
   callId: string | null
   peer: CallPeer | null
   video: boolean
-  /** 我是主叫 */
+  /** I am the caller */
   outgoingCall: boolean
-  /** 被叫当前有没有连着（离线时只能靠推送叫醒） */
+  /** Whether the callee is currently connected (offline callees can only be woken by push) */
   peerOnline: boolean
   token: string | null
   url: string | null
   startedAt: number | null
-  /** ended 时显示的一句话 */
+  /** The one-liner shown at ended */
   reason: string | null
 
   startCall: (peer: CallPeer, video: boolean) => Promise<void>
   accept: () => Promise<void>
   decline: () => Promise<void>
-  /** 主叫取消 / 通话中挂断，统一入口 */
+  /** Caller cancel / hang up mid-call — single entry point */
   hangup: (reason?: string) => Promise<void>
-  /** LiveKit 连上了 */
+  /** LiveKit connected */
   connected: () => void
-  /** 本机音视频出错或对方断开，结束通话并告诉服务器 */
+  /** Local audio-video error or the other side disconnected: end the call and tell the server */
   fail: (reason: string) => void
-  /** ws 事件 */
+  /** ws events */
   onEvent: (d: { type: string } & Record<string, unknown>) => void
-  /** 打开 App / ws 重连后补拿正在响铃的来电 */
+  /** After app open / ws reconnect, catch up on incoming calls still ringing */
   syncIncoming: () => Promise<void>
   reset: () => void
 }
 
-/** 结束画面停留时长 */
+/** How long the ended screen lingers */
 export const ENDED_HOLD_MS = 1800
 
 const IDLE = { phase: 'idle' as CallPhase, callId: null, peer: null, video: false, outgoingCall: false, peerOnline: true, token: null, url: null, startedAt: null, reason: null }
@@ -67,7 +67,7 @@ export const useCall = create<CallState>()((set, get) => {
       set({ ...IDLE, phase: 'outgoing', peer, video, outgoingCall: true })
       try {
         const r = await api<{ status: 'ringing' | 'busy'; callId?: string; online?: boolean; token?: string; url?: string; peer?: CallPeer }>('/api/calls', { method: 'POST', body: JSON.stringify({ to: peer.address, video }) })
-        // 等待期间用户已取消
+        // User cancelled during the wait
         if (get().phase !== 'outgoing' || get().peer?.address !== peer.address) {
           if (r.callId) void api(`/api/calls/${r.callId}/cancel`, { method: 'POST' }).catch(() => {})
           return
@@ -122,7 +122,7 @@ export const useCall = create<CallState>()((set, get) => {
       if (!id) return
       const s = get()
       if (d.type === 'call_invite') {
-        // 本机正在通话（多设备同账号时服务端也会判占线，这里再兜一层）
+        // This device is already in a call (the server also reports busy for multi-device same-account — this is a second layer)
         if (busy()) return
         if (holdTimer) { clearTimeout(holdTimer); holdTimer = null }
         set({ ...IDLE, phase: 'incoming', callId: id, video: !!d.video, peer: { address: String(d.from || ''), nickname: (d.nickname as string | null) ?? null, avatar: (d.avatar as string | null) ?? null } })
@@ -132,7 +132,7 @@ export const useCall = create<CallState>()((set, get) => {
       switch (d.type) {
         case 'call_accepted':
           if (s.phase === 'outgoing') set({ phase: 'connecting' })
-          // 还在响铃 = 是同账号的另一台设备接的
+          // Still ringing = another device on the same account picked up
           else if (s.phase === 'incoming') end(t('已在其他设备接听'))
           break
         case 'call_declined': if (s.phase === 'outgoing') end(t('对方已拒绝')); break

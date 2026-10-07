@@ -1,6 +1,6 @@
-// 合约小精灵开的单（2026-10-05 goat：「小精灵开的单子没地方能看」）。小精灵页「交易」里给主人看：
-// 当前持仓 = 服务器用小精灵自己的交易密钥向交易所读的账户（GET /api/flies/:id/perp-positions，15 秒一份）；
-// 最近成交 = 小精灵回报的成交（和「数据」里的成交记录同一份）。账户是主人自己的合约账户，手动开的仓也会在这里。
+// Orders opened by the perps sprite (2026-10-05 goat: "there's nowhere to see the sprite's orders"). Shown to the owner under the sprite page's "Trades":
+// Current positions = the account the server reads from the exchange with the sprite's own trading key (GET /api/flies/:id/perp-positions, every 15 seconds);
+// Recent fills = fills reported by the sprite (the same copy as the fill history under "Data"). The account is the owner's own perps account — manually opened positions show here too.
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/social'
 import { fmtUsd, timeAgo } from '@/lib/format'
@@ -15,7 +15,7 @@ export interface PerpFill { id: string; side: 'buy' | 'sell'; symbol: string; qt
 const num = (n: number, d = 4) => n.toLocaleString(undefined, { maximumFractionDigits: d })
 const pnl = (n: number) => `${n >= 0 ? '+' : '-'}${fmtUsd(Math.abs(n))}`
 
-export default function FlyPerpPositions({ flyId, tick, fills, marginUsd }: { flyId: string; tick?: number | null; fills: PerpFill[]; /** 单次保证金：可用比它少就开不了新单 */ marginUsd: number }) {
+export default function FlyPerpPositions({ flyId, tick, fills, marginUsd }: { flyId: string; tick?: number | null; fills: PerpFill[]; /** Per-order margin: less available than this means no new orders */ marginUsd: number }) {
   const [r, setR] = useState<Reply | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
@@ -25,12 +25,12 @@ export default function FlyPerpPositions({ flyId, tick, fills, marginUsd }: { fl
     const timer = setInterval(load, 30_000)
     return () => { alive = false; clearInterval(timer) }
   }, [flyId, tick])
-  // 合约成交（小精灵按「币-PERP」记），最近 5 笔
+  // Perps fills (the sprite records them as "COIN-PERP"), latest 5
   const recent = fills.filter((f) => /-PERP$/.test(f.symbol)).slice(0, 5)
   return (
     <section className="mt-3 overflow-hidden rounded-2xl bg-card" aria-label={t('合约账户持仓')}>
       <div className="flex items-baseline justify-between px-4 pt-3"><h3 className="text-sm font-semibold">{t('合约账户持仓')}</h3>{r?.available != null && <span className="text-xs text-muted">{t('可用 {usd}', { usd: fmtUsd(r.available) })}</span>}</div>
-      {/* 可用保证金不够单次保证金：小精灵每次开新单都会被交易所拒（2026-10-05 goat 的账户：可用 8.91 < 10） */}
+      {/* Available margin below the per-order margin: every new order the sprite opens gets rejected by the exchange (2026-10-05 goat's account: 8.91 available < 10) */}
       {r?.available != null && r.available < marginUsd && <p className="mx-4 mt-2 rounded-xl bg-down/10 px-3 py-2 text-xs text-down">{t('可用保证金 {a} 不够单次保证金 {m}，小精灵开不了新单。存入更多 USDT，或在「交易方式」里调低单次保证金。', { a: fmtUsd(r.available), m: fmtUsd(marginUsd) })}</p>}
       {err && !r ? <p className="px-4 py-4 text-sm text-muted">{err}</p>
         : !r ? <div className="mx-4 my-4 skeleton h-12" />

@@ -1,4 +1,4 @@
-// 铃铛：未读通知数
+// Bell: unread notification count
 import { useNavigate } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import { useSocial } from '@/store/social'
@@ -8,7 +8,7 @@ export default function BellButton() {
   const nav = useNavigate()
   const { unreadNotifs, pendingRequests, status } = useSocial()
   if (status !== 'ready') return null
-  // 入群申请本身也会生成一条通知，取两者较大值避免重复计数
+  // Join requests also generate a notification — take the larger of the two to avoid double counting
   const n = Math.max(unreadNotifs, pendingRequests)
   return (
     <button onClick={() => nav('/notifications')} className="relative rounded-full p-2 text-muted" aria-label={t('通知')}>

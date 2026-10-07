@@ -1,8 +1,8 @@
-// 网页版「社区」外框（2026-10-01 goat 社区合并，设计稿桌面「社区合并预览-美化版」）：
-// 原来顶栏的「流媒体」「排行」并进社区。左边固定一列菜单：动态 · 流媒体（正在直播的房间数）· 排行 —— 消息（未读数）· 群组，
-// （2026-10-03 goat：直播和会议合成一个入口「流媒体」，页里切换直播 / 会议，见 StreamHead.tsx）
-// 下面「发动态」（弹窗发，任何一页都能发），最底下是我（昵称、关注、粉丝）。右边换内容。
-// 每一项是自己的地址（/community、/live、/meetings、/rank、/messages、/groups），以前分享出去的 /live、/rank 照样能打开。
+// Web "Community" shell (2026-10-01 goat community merge; desktop mock "community merge preview - beautified"):
+// The top bar's old "Streams" and "Rankings" merged into Community. A fixed left menu: Feed · Streams (live room count) · Rankings — Messages (unread count) · Groups,
+// (2026-10-03 goat: livestreams and meetings merged into one "Streams" entry, switching live / meetings inside the page — see StreamHead.tsx)
+// Below: "Post" (pops a composer, postable from any page); at the very bottom, me (nickname, following, followers). The right side swaps content.
+// Each item has its own address (/community, /live, /meetings, /rank, /messages, /groups) — previously shared /live and /rank links still open.
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { ListTree, MessageCircle, Radio, SquarePen, Trophy, UserRound, Users } from 'lucide-react'
@@ -18,7 +18,7 @@ import { needWallet } from '../walletGate'
 import { useLiveRooms, useLiveRoomsPoll } from '../liveRooms'
 import './community.css'
 
-/** 发动态成功后通知动态页刷新（动态页订阅这个计数） */
+/** Notify the feed page to refresh after a successful post (the feed page subscribes to this counter) */
 const postedListeners = new Set<() => void>()
 export function onPosted(fn: () => void) { postedListeners.add(fn); return () => { postedListeners.delete(fn) } }
 
@@ -28,7 +28,7 @@ export default function CommunityShell({ children }: { children: ReactNode }) {
   const liveCount = useLiveRooms((s) => s.rooms?.length ?? 0)
   const unread = useCommunityUnread()
   const [composing, setComposing] = useState(false)
-  // 「流媒体」在直播页和会议页都算选中
+  // "Streams" counts as selected on both the livestream and meeting pages
   const { pathname } = useLocation()
   const streamOn = pathname === '/live' || pathname === '/meetings'
   const item = (to: string, icon: ReactNode, label: string, badge?: ReactNode, end = false) => (
@@ -62,7 +62,7 @@ export default function CommunityShell({ children }: { children: ReactNode }) {
   )
 }
 
-/** 左下角的我：头像、昵称、关注 / 粉丝（/api/users/:address/social）；没登录不显示 */
+/** Bottom-left me: avatar, nickname, following / followers (/api/users/:address/social); hidden when not logged in */
 function MeCard() {
   const me = useSocial((s) => s.me)
   const ready = useSocial((s) => s.status === 'ready')
@@ -70,7 +70,7 @@ function MeCard() {
   useEffect(() => {
     if (!me || !ready) { setStats(null); return }
     let alive = true
-    api<{ followers: number; following: number }>(`/api/users/${me.address}/social`).then((s) => { if (alive) setStats({ followers: s.followers ?? 0, following: s.following ?? 0 }) }).catch(() => { /* 只是少显示两个数字 */ })
+    api<{ followers: number; following: number }>(`/api/users/${me.address}/social`).then((s) => { if (alive) setStats({ followers: s.followers ?? 0, following: s.following ?? 0 }) }).catch(() => { /* Just hides two numbers */ })
     return () => { alive = false }
   }, [me, ready])
   if (!me || !ready) return null
@@ -85,7 +85,7 @@ function MeCard() {
   )
 }
 
-/** 小标题行：左边标题 + 副标题，右边按钮（直播 / 会议 / 排行三页的页头） */
+/** Subtitle row: title + subtitle on the left, buttons on the right (the header of the live / meeting / ranking pages) */
 export function CmHead({ title, sub, right }: { title: string; sub?: string; right?: ReactNode }) {
   return (
     <header className="cm-head">

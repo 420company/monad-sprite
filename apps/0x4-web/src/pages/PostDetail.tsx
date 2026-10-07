@@ -1,7 +1,7 @@
-// 动态详情 = 这条帖子的完整对话页（2026-09-25 改版）：
-// 上面是帖子原文（全文、全部大图），下面是全部评论（时间正序，每页 20 条，滚到底加载更多），
-// 最底下固定输入框带表情按钮。整屏布局（Layout 里 /post/ 走 chatMode，隐藏 Tab 栏），键盘弹起时输入栏贴在键盘上方。
-// 信息流里点「查看全部 N 条评论」/ 正文 / 时间进来；点评论按钮或「写评论…」进来会直接聚焦输入框。
+// Post detail = this post's full conversation page (2026-09-25 revamp):
+// Post body on top (full text, full-size images), all comments below (chronological, 20 per page, infinite scroll),
+// Pinned input box with an emoji button at the very bottom. Full-screen layout (/post/ uses chatMode in Layout, hiding the tab bar); the input bar hugs the top of the keyboard when it opens.
+// Entered from the feed via "view all N comments" / body / timestamp; entering via the comment button or "write a comment…" focuses the input box directly.
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Heart, Keyboard, LoaderCircle, MessageSquare, Send, Smile, Trash2 } from 'lucide-react'
@@ -47,7 +47,7 @@ export default function PostDetail() {
   const emoji = useEmojiInput<HTMLTextAreaElement>(text, setText, 500)
   const [sending, setSending] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
-  // 从推送直接打开时没有上一页，返回去社区
+  // Opened directly from a push with no previous page: back goes to community
   const back = useBack('/community')
   const wantsCompose = !!(location.state as { compose?: boolean } | null)?.compose
 
@@ -60,17 +60,17 @@ export default function PostDetail() {
     return () => { alive = false }
   }, [id, retry, status])
 
-  // 评论分页：登录与否影响「我赞过没有」，所以登录状态也算进 key
+  // Comment pagination: login state affects "did I like", so it's part of the key too
   const comments = usePaged<Comment>(state === 'ok' ? `${id}|${status === 'ready' ? 'in' : 'out'}` : null, async (cursor, signal) => {
     const r = await api<CommentPage | Comment[]>(`/api/posts/${encodeURIComponent(id)}/comments?limit=${COMMENT_PAGE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { signal })
-    // 老服务端不认分页参数，直接回全部（数组）
+    // Old servers don't recognize pagination params and return everything directly (array)
     if (Array.isArray(r)) { setTotal(r.length); return { items: r.map(normComment), next: null } }
     setTotal(r.total)
     return { items: r.items.map(normComment), next: r.nextCursor }
-  }, (c) => c.id, { cache: 'comments' })   // 后退回来保留已加载的评论页
+  }, (c) => c.id, { cache: 'comments' })   // Going back keeps the loaded comment pages
   const count = total ?? post?.comments ?? 0
 
-  // 从评论按钮 /「写评论…」进来：帖子加载好就把光标放进输入框（只做一次，返回再进来不重复弹键盘）
+  // Coming from the comment button / "Write a comment…": focus the input once the post loads (one-shot; don't pop the keyboard again when navigating back)
   const composed = useRef(false)
   useEffect(() => {
     if (!wantsCompose || composed.current || state !== 'ok' || status !== 'ready') return
@@ -103,7 +103,7 @@ export default function PostDetail() {
     try {
       const c = await api<Comment>(`/api/posts/${post.id}/comments`, { method: 'POST', body: JSON.stringify({ text: body }) })
       const mine = normComment({ ...c, nickname: me?.nickname ?? null, avatar: me?.avatar ?? null, handle: (me as { handle?: string | null } | null)?.handle ?? null })
-      // 新评论接在列表最后（时间正序）；还没翻到底时下一页如果又带回这条，usePaged 按 id 去重
+      // New comments append at the end of the list (chronological); if the next page brings the same one back before you've scrolled to the bottom, usePaged dedupes by id
       comments.setItems((list) => [...list, mine])
       setTotal((n) => (n ?? post.comments ?? 0) + 1)
       setText(''); emoji.dismiss()
@@ -117,7 +117,7 @@ export default function PostDetail() {
         <button onClick={back} className="rounded-full p-2 text-muted" aria-label={t('返回')}><ArrowLeft size={22} /></button>
         <h1 className="text-lg font-bold">{t('动态')}</h1>
       </header>
-      {/* data-scroll-key：从这里点进个人主页再返回，评论区停在原来的位置（components/ScrollRestorer） */}
+      {/* data-scroll-key: tapping into a profile from here and back keeps the comment section where it was (components/ScrollRestorer) */}
       <div ref={scroller} data-scroll-key="post" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {state === 'loading' && <PostFeedback state="loading" />}
         {state === 'error' && <PostFeedback state="error" onRetry={() => setRetry((n) => n + 1)} />}

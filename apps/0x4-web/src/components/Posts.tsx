@@ -1,4 +1,4 @@
-// 动态：发布器与个人 / 代币动态，失败和成功后的空列表分别呈现。
+// Posts: the composer plus personal / token feeds; failed and post-success empty lists render separately.
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Heart, Image as ImageIcon, Keyboard, LoaderCircle, MessageSquare, RefreshCw, Send, Smile, Trash2, WifiOff, X, Pin } from 'lucide-react'
@@ -27,7 +27,7 @@ import { canModerate, useStaffRole } from '@/lib/staff'
 import UserName from './UserName'
 import { errorText } from '@/lib/errors'
 
-// 确认文案挪到 Comments.tsx（评论菜单也要用），这里转出去，老的引用不用改
+// Confirmation copy moved to Comments.tsx (the comment menu uses it too) — re-exported here so old imports don't change
 export { confirmDeleteText }
 
 export interface Post { id: string; author: string; nickname: string | null; avatar: string | null; handle?: string | null; text: string; image: string | null; images?: PostImage[]; token: { chain: string; address: string; symbol: string | null } | null; likes: number; comments?: number; liked: boolean; createdAt: number; topComments?: Comment[] }
@@ -47,7 +47,7 @@ export function PostComposer({ token, onPosted, onBusyChange }: { token?: { chai
   const mounted = useRef(true)
   const inputId = useId()
   const disabled = busy || uploading || status !== 'ready'
-  // 管理员发全球动态时可以直接置顶（2026-09-27 goat）；币种页的帖子不置顶
+  // Admins can pin global posts directly (2026-09-27 goat); token-page posts can't be pinned
   const staffRole = useStaffRole()
   const canPin = !token && (staffRole === 'admin' || staffRole === 'super')
   const [pin, setPin] = useState(false)
@@ -55,7 +55,7 @@ export function PostComposer({ token, onPosted, onBusyChange }: { token?: { chai
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   useEffect(() => { onBusyChange?.(busy || uploading) }, [busy, uploading, onBusyChange])
   useEffect(() => () => onBusyChange?.(false), [onBusyChange])
-  // 多选图片逐张上传：先在本机压一遍（长边 2048），服务端再统一出大图 + 缩略图
+  // Multi-image selection uploads one by one: compressed on-device first (long edge 2048), then the server uniformly produces full-size + thumbnails
   const upload = async (list: FileList | null) => {
     const files = [...(list || [])].slice(0, MAX_IMAGES - images.length)
     if (!files.length || disabled || pending.current) return
@@ -109,14 +109,14 @@ export function PostComposer({ token, onPosted, onBusyChange }: { token?: { chai
   )
 }
 
-// 两种动态列表共用状态反馈，避免接口错误被解释为没有内容。
+// Both post lists share status feedback, so API errors aren't mistaken for empty content.
 export function PostFeedback({ state, onRetry, emptyText = t('还没有动态') }: { state: 'loading' | 'offline' | 'error' | 'empty'; onRetry?: () => void; emptyText?: string }) {
   if (state === 'loading') return <div className="space-y-4 py-5" role="status" aria-label={t('正在加载动态')}><div className="skeleton h-12 w-2/3" /><div className="skeleton h-24" /></div>
   return <EmptyState icon={state === 'empty' ? MessageSquare : WifiOff} title={state === 'empty' ? emptyText : state === 'offline' ? t('社交服务未连接') : t('暂时无法加载动态')}
     action={onRetry && <Button size="sm" variant="secondary" onClick={onRetry}><RefreshCw size={15} />{t('重试')}</Button>} />
 }
 
-/** 个人主页 / 代币页的帖子：每页 10 条，滚到底加载更多；每条下面露最多 2 条评论 */
+/** Profile / token page posts: 10 per page, infinite scroll; at most 2 comments peek under each post */
 export const POST_PAGE = 10
 
 export function PostList({ filter, refreshKey }: { filter?: { token?: string; author?: string }; refreshKey?: number }) {
@@ -130,9 +130,9 @@ export function PostList({ filter, refreshKey }: { filter?: { token?: string; au
     const list = await api<Post[]>(`/api/posts?${query}${query ? '&' : ''}limit=${POST_PAGE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { signal })
     if (!Array.isArray(list)) throw new Error(t('无效的动态响应'))
     return { items: list, next: nextCursorOf(list, POST_PAGE) }
-  }, (p) => p.id, { cache: 'posts' })   // 后退回来保留已加载的几页
+  }, (p) => p.id, { cache: 'posts' })   // Going back preserves the already-loaded pages
   const { items: posts, setItems, reload } = paged
-  // 发帖后刷新：新的第一页到了才替换，失败继续显示旧的
+  // Refresh after posting: swap only when the new first page arrives; keep showing the old one on failure
   const firstKey = useRef(refreshKey)
   useEffect(() => { if (firstKey.current !== refreshKey) { firstKey.current = refreshKey; reload() } }, [refreshKey, reload])
   const patch = (id: string, change: Partial<Post>) => setItems((list) => list.map((x) => (x.id === id ? { ...x, ...change } : x)))
@@ -167,8 +167,8 @@ export function PostList({ filter, refreshKey }: { filter?: { token?: string; au
           <PostReport id={p.id} author={p.author} name={p.nickname} />
         </div>
         <PostBody post={p} />
-        {/* 评论 / 点赞：同一行、同样 18px 图标、数字同一基线；数量为 0 时两个都不显示数字（2026-09-25 goat：没对齐）。
-            评论按钮进完整对话页并聚焦输入框，信息流里不再展开整串评论 */}
+        {/* Comments / likes: same row, same 18px icons, numbers on one baseline; hide both numbers at 0 (2026-09-25 goat: misaligned).
+            The comment button opens the full thread page and focuses the input — threads no longer expand inline in the feed */}
         <div className="mt-2 flex items-center gap-4">
         <button onClick={() => nav(postPath(p.id), { state: { compose: true } })} aria-label={t('评论')} className="flex min-h-11 items-center gap-1.5 text-[13px] text-muted"><MessageSquare size={18} /><span className="number min-w-[1ch]">{p.comments || ''}</span></button>
         <button onClick={() => void act(p)} disabled={pending.has(p.id)} aria-label={p.liked ? t('取消点赞') : t('点赞')} aria-pressed={p.liked} className={`flex min-h-11 items-center gap-1.5 text-[13px] disabled:opacity-50 ${p.liked ? 'text-down' : 'text-muted'}`}><Heart size={18} fill={p.liked ? 'currentColor' : 'none'} /><span className="number min-w-[1ch]">{p.likes || ''}</span></button>

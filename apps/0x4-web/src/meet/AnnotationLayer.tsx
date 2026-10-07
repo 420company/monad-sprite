@@ -1,6 +1,6 @@
-// 共享画面上的画笔标注：叠在共享画面上的画布 + 讲课人用的工具条（规则见 annotate.ts）。
-// 画布跟着容器大小和设备像素比走，只在笔画变化 / 尺寸变化时重绘；有激光笔在淡出时才连续刷新。
-// 自己正在画的这一笔先在本地画出来（跟手），每 ~50ms 把新点打包发出去。
+// Pen annotations on the shared view: a canvas over the shared view + the presenter's toolbar (rules in annotate.ts).
+// Canvas follows container size and device pixel ratio; repaints only on stroke/size changes — continuous refresh only while a laser pointer is fading.
+// The stroke I'm drawing renders locally first (follows the hand); new points are batched out every ~50ms.
 import { useEffect, useRef } from 'react'
 import { Crosshair, Pencil, Trash2, Undo2, X } from 'lucide-react'
 import { t } from '@/lib/i18n'
@@ -9,10 +9,10 @@ import {
   type AnnColor, type AnnMsg, type AnnTool, type Rect, type Stroke,
 } from './annotate'
 
-/** 共享画面的 video 元素上带这个类名，标注层靠它读视频原始尺寸（算黑边） */
+/** The shared view's video element carries this class; the annotation layer reads the video's native size from it (to compute letterboxing) */
 export const SCREEN_VIDEO_CLASS = 'meet-screen'
 const SEND_EVERY_MS = 50
-/** 一条 seg 消息最多带多少个数（和 annotate.ts sanitizeAnn 的上限一致） */
+/** Max numbers per seg message (matches the sanitizeAnn cap in annotate.ts) */
 const SEG_MAX = 400
 
 type Live = { id: string; tool: AnnTool; color: AnnColor; pts: number[] }
@@ -39,7 +39,7 @@ export function AnnotationLayer({ strokes, localId, drawing, tool, color, onLoca
     return contentRect(box.clientWidth, box.clientHeight, v?.videoWidth || 0, v?.videoHeight || 0)
   }
 
-  // 画一次；返回还有没有正在淡出的激光笔（有就要继续刷新）
+  // Paint once; returns whether a laser pointer is still fading (keep refreshing if so)
   const paint = (): boolean => {
     const cv = canvasRef.current, box = boxRef.current
     if (!cv || !box) return false
@@ -57,7 +57,7 @@ export function AnnotationLayer({ strokes, localId, drawing, tool, color, onLoca
     const lv = live.current
     const list: { tool: AnnTool; color: AnnColor; pts: number[]; alpha: number }[] = []
     for (const s of strokesRef.current) {
-      if (lv && s.id === lv.id && s.by === localId) continue   // 自己正在画的这一笔用本地的，不重复画
+      if (lv && s.id === lv.id && s.by === localId) continue   // The stroke I'm drawing uses the local one — don't draw twice
       const alpha = s.tool === 'laser' ? laserAlpha(s, now) : 1
       if (alpha <= 0) continue
       if (s.tool === 'laser' && s.endAt !== null) fading = true
@@ -79,7 +79,7 @@ export function AnnotationLayer({ strokes, localId, drawing, tool, color, onLoca
       ctx.beginPath(); ctx.moveTo(x0, y0)
       for (let i = 2; i < s.pts.length; i += 2) { const [x, y] = fromNorm(s.pts[i], s.pts[i + 1], r); ctx.lineTo(x, y) }
       ctx.stroke()
-      // 激光笔：外面一圈红光，中间一道白芯，和红色画笔一眼能分开
+      // Laser pointer: red halo outside, white core inside — instantly distinct from the red pen
       if (laser) {
         ctx.shadowBlur = 0
         ctx.strokeStyle = 'rgba(255,255,255,.92)'
@@ -95,7 +95,7 @@ export function AnnotationLayer({ strokes, localId, drawing, tool, color, onLoca
     raf.current = requestAnimationFrame(function loop() { if (paint()) raf.current = requestAnimationFrame(loop) })
   }
 
-  // 笔画变了 / 尺寸变了 / 视频尺寸出来了：重画
+  // Strokes changed / size changed / video dimensions arrived: repaint
   useEffect(() => { redraw() }, [strokes]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const box = boxRef.current
@@ -107,7 +107,7 @@ export function AnnotationLayer({ strokes, localId, drawing, tool, color, onLoca
     return () => { ro.disconnect(); v?.removeEventListener('resize', redraw); v?.removeEventListener('loadedmetadata', redraw); cancelAnimationFrame(raf.current) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 画的过程中每 50ms 把新点发出去
+  // While drawing, send new points every 50ms
   const flush = () => {
     const lv = live.current
     const pts = pending.current
@@ -160,14 +160,14 @@ export function AnnotationLayer({ strokes, localId, drawing, tool, color, onLoca
   </div>
 }
 
-/** 讲课人的标注工具条：画笔三色、激光笔、撤销、全部清除、退出 */
+/** The presenter's annotation toolbar: pen in three colors, laser pointer, undo, clear all, exit */
 export function AnnotateToolbar({ tool, color, onTool, onColor, onUndo, onClear, onExit, canUndo, canClear }: {
   tool: AnnTool; color: AnnColor; onTool: (t: AnnTool) => void; onColor: (c: AnnColor) => void; onUndo: () => void; onClear: () => void; onExit: () => void; canUndo: boolean; canClear: boolean
 }) {
   const btn = 'flex h-9 w-9 items-center justify-center rounded-full text-fg/85 transition hover:bg-[var(--mt-3)] disabled:opacity-35 disabled:hover:bg-transparent'
   const on = 'bg-[var(--mt-4)] text-fg'
   const names: Record<AnnColor, string> = { red: t('红色画笔'), yellow: t('黄色画笔'), green: t('绿色画笔') }
-  // 工具栏放在视频窗口上方单独一行（2026-10-02 goat：以前浮在画面上，挡住共享的内容），由 MeetingRoom 摆位置
+  // Toolbar sits on its own row above the video window (2026-10-02 goat: it used to float over the picture, covering shared content); positioned by MeetingRoom
   return <div className="meet-fade meet-glass mx-auto flex w-fit items-center gap-1 rounded-full bg-[var(--mt-panel)] p-1.5 shadow-[0_20px_60px_-10px_var(--mt-shadow),inset_0_0_0_1px_var(--mt-line)]" role="toolbar" aria-label={t('标注工具')} data-testid="ann-toolbar">
     <span className="flex items-center gap-1.5 pl-2.5 pr-1.5 text-[12.5px] font-medium text-muted"><Pencil size={14} />{t('标注')}</span>
     {(['red', 'yellow', 'green'] as AnnColor[]).map((c) => <button key={c} type="button" className={`${btn} ${tool === 'pen' && color === c ? on : ''}`} onClick={() => { onTool('pen'); onColor(c) }} aria-label={names[c]} title={names[c]} aria-pressed={tool === 'pen' && color === c} data-testid={`ann-${c}`}>

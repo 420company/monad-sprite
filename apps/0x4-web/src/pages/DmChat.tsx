@@ -1,4 +1,4 @@
-// 私信：端到端加密，服务器只存密文（每条两份：给对方的、给自己的），打开时拉历史在本机解密；互相关注的好友、群管理员对成员可以发起
+// DMs: end-to-end encrypted; the server only stores ciphertext (two copies per message: one for them, one for me); history is pulled and decrypted on-device when opened; mutual-follow friends and group admins→members can initiate
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { BALANCE_FEATURES } from '@/lib/features'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -30,18 +30,18 @@ import { useBack } from '@/lib/useBack'
 import { errorText } from '@/lib/errors'
 import { ensureUnlocked } from '@/lib/vault/gate'
 
-/** 消息撤回时限：发出后 2 分钟内 */
+/** Unsend window: within 2 minutes of sending */
 const RECALL_MS = 2 * 60_000
 
 export default function DmChat() {
   const { address = '' } = useParams()
   const nav = useNavigate()
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /community
+  // Back: go back if there is a previous page (its state / scroll get restored); push / deep-link opens go to /community
   const back = useBack('/community')
   const { me, dms, dmHasMore, sendDm, markDmRead, loadDmHistory, deleteDm, clearDm, status, chatMode } = useSocial()
   const [peer, setPeer] = useState<Profile | null>(null)
   const [allowed, setAllowed] = useState<boolean | null>(null)
-  // 不能私信是因为群里开了「禁止群成员私信」（2026-09-29，服务器 /api/dm/can 的 locked）
+  // Can't DM because the group has "block member DMs" on (2026-09-29, the server's /api/dm/can locked)
   const [dmLocked, setDmLocked] = useState(false)
   const [text, setText] = useState('')
   const emoji = useEmojiInput<HTMLTextAreaElement>(text, setText)
@@ -49,13 +49,13 @@ export default function DmChat() {
   const fileInput = useRef2<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [transfer, setTransfer] = useState(false)
-  // 语音：本机加密 → 上传密文 → 密钥随加密私信一起发给对方（上传中屏幕中间出一个小浮层）
+  // Voice: encrypted on-device → ciphertext uploaded → the key travels to the other side inside an encrypted DM (a small floating indicator mid-screen while uploading)
   const sendVoice = async (file: Blob, duration: number) => {
     if (!peer?.encPub) return toast.error(t('对方还没有登录过，无法建立加密通道'))
     setUploading(true)
     try { const text = await encryptAndUpload(file, 'voice', duration); await sendDm(address, peer.encPub, text) } catch (e) { toast.error(errorText(e, t('发送失败'))) } finally { setUploading(false) }
   }
-  // 图片 / 视频：选完立刻以「发送中」出现在列表底部；每张各自加密上传（同时最多 3 张），全部传完合成一条加密私信
+  // Images / videos: appear at the bottom as "sending" right after picking; each encrypted and uploaded separately (max 3 at a time), then combined into one encrypted DM once all finish
   const media = usePendingMedia<DmMedia>({
     upload: (f, onProgress) => encryptMedia(f.file, f.kind, { onProgress }),
     send: async (_album, results) => {
@@ -76,14 +76,14 @@ export default function DmChat() {
   const loadOlder = useCallback(() => loadDmHistory(address, true), [address, loadDmHistory])
   const scrollList = useMemo(() => (media.list.length ? [...list, ...media.list.map((a) => ({ id: a.id, from: me?.address || '' }))] : list), [list, media.list, me?.address])
   const { box, onScroll, loadingOlder } = useChatScroll(scrollList, !!dmHasMore[address], loadOlder, me?.address)
-  // 长按气泡 / 右上角更多：step=delete 选删除范围；target=all 表示清空整个会话
+  // Long-press bubble / top-right more: step=delete picks the delete scope; target=all means clear the whole conversation
   const [menu, setMenu] = useState<{ m: DmMessage | 'all'; anchor: MenuAnchor; step: 'main' | 'delete' } | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
 
   useEffect(() => {
     if (status !== 'ready') return
     api<{ allowed: boolean; locked?: boolean; peer: Profile }>(`/api/dm/can/${address}`).then((r) => { setAllowed(r.allowed); setDmLocked(!!r.locked); setPeer(r.peer) }).catch((e) => toast.error(errorText(e, t('加载失败'))))
-    // 服务器上的密文记录，本机解密
+    // Ciphertext records on the server, decrypted on-device
     loadDmHistory(address).catch(() => {})
     markDmRead(address)
   }, [address, status, markDmRead, loadDmHistory])
@@ -97,7 +97,7 @@ export default function DmChat() {
       else await deleteDm(address, target.id, scope)
     } catch (e) { toast.error(errorText(e, t('删除失败'))) }
   }
-  // 右上角菜单里的「举报」「拉黑 / 取消拉黑」（私信是加密的，举报时由用户自己写明情况）
+  // Top-right menu's "Report" and "Block / Unblock" (DMs are encrypted — the user describes the situation themselves when reporting)
   const safetyItems = useUserSafetyItems(address, peer ? displayName(peer) : undefined, () => setMenu(null), 'dm')
   const menuItems = (): MenuItem[] => {
     if (!menu) return []
@@ -108,7 +108,7 @@ export default function DmChat() {
     ]
     if (target === 'all') return [...safetyItems, { key: 'clear', label: t('清空聊天记录'), icon: <Trash2 size={17} />, danger: true, onSelect: () => setMenu({ ...menu, step: 'delete' }) }]
     const plain = !target.legacy && !target.undecryptable && !parseDmMedia(target.text)
-    // 撤回：自己发的、2 分钟内，双方都删掉且不留「已撤回」提示（2026-09-25 goat：无痕撤回）
+    // Unsend: own messages, within 2 minutes, deleted on both sides with no "unsent" trace (2026-09-25 goat: traceless unsend)
     const recallable = target.from === me?.address && Date.now() - target.ts < RECALL_MS
     return [
       ...(recallable ? [{ key: 'recall', label: t('撤回'), icon: <Undo2 size={17} />, onSelect: () => { setMenu(null); deleteDm(address, target.id, 'all').then(() => toast.success(t('已撤回'))).catch((e) => toast.error(errorText(e, t('撤回失败')))) } }] : []),
@@ -137,7 +137,7 @@ export default function DmChat() {
           <div className="flex items-center gap-1"><UserName address={address} name={peer ? displayName(peer) : shortId(address)} className="truncate font-bold" /><XBadge address={address} /></div>
           <div className="flex items-center gap-1 text-[11px] text-muted"><Lock size={10} /> {t('端到端加密')}</div>
         </div>
-        {/* 语音 / 视频通话：和私信同一个准入规则，好友才显示 */}
+        {/* Voice / video calls: same access rule as DMs — shown for friends only */}
         {allowed && <>
           <button onClick={() => void useCall.getState().startCall({ address, nickname: peer?.nickname, avatar: peer?.avatar }, false)} className="icon-button" aria-label={t('语音通话')}><Phone size={21} /></button>
           <button onClick={() => void useCall.getState().startCall({ address, nickname: peer?.nickname, avatar: peer?.avatar }, true)} className="icon-button" aria-label={t('视频通话')}><Video size={22} /></button>
@@ -147,7 +147,7 @@ export default function DmChat() {
       <div className="relative min-h-0 flex-1">
       {loadingOlder && <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center" role="status"><span className="toast-solid rounded-full border border-line px-3 py-1 text-[11px] text-muted">{t('加载中…')}</span></div>}
       <div ref={box} onScroll={onScroll} onClick={emoji.dismiss} className="h-full overflow-y-auto px-3 py-3">
-        {/* 网页版 0x4 插件锁着：私信先不解密（解密要插件解锁），点「解锁」请插件弹解锁窗口，解锁后自动重新拉（store/social.ts） */}
+        {/* Web 0x4 extension locked: DMs aren't decrypted yet (decryption needs the extension unlocked); tapping "Unlock" asks the extension to pop the unlock window, and history is re-pulled automatically after unlocking (store/social.ts) */}
         {list.some((m) => m.locked) && <div className="mx-auto mb-2 flex max-w-xs items-center justify-center gap-2 rounded-2xl bg-card px-4 py-2.5 text-center text-xs text-muted" role="status">{t('0x4 Wallet 已锁定，解锁后查看私信')}<button type="button" onClick={() => void ensureUnlocked(t('查看私信')).catch(() => {})} className="shrink-0 font-semibold text-accent">{t('解锁')}</button></div>}
         {allowed === false && (dmLocked
           ? <div className="mx-auto max-w-xs rounded-2xl bg-card p-4 text-center text-sm text-muted">{t('群管理员已关闭群成员私信')}<br />{t('互相关注成为好友后仍可以私聊。')}</div>
@@ -155,10 +155,10 @@ export default function DmChat() {
         {allowed && !list.length && <div className="py-10 text-center text-xs text-muted">{chatMode === 'device' ? t('消息端到端加密，记录只存在这台手机。') : chatMode === 'daily' ? t('消息端到端加密，每天 00:00 自动清空。') : t('消息端到端加密，云端只保存加密内容。换手机后导入同一个钱包即可恢复。')}</div>}
         {list.map((m, i) => {
           const mine = m.from === me?.address
-          // 连发（同一人 1 分钟内）只在第一条显示头像和昵称，后面留空位对齐
+          // Consecutive messages (same person within 1 minute): avatar and nickname only on the first, blank space left to align afterwards
           const prev = list[i - 1]
           const grouped = !!prev && prev.from === m.from && m.ts - prev.ts < 60_000
-          // 时间不再放在每条气泡里，间隔 5 分钟以上才在中间出一条（和群聊一致）
+          // Timestamps no longer sit in every bubble — a centered divider only when the gap exceeds 5 minutes (same as group chat)
           const showTime = !prev || m.ts - prev.ts > 5 * 60_000
           return (
             <Fragment key={m.id}>
@@ -183,7 +183,7 @@ export default function DmChat() {
       <MessageMenu anchor={menu?.anchor ?? null} items={menuItems()} note={menu?.step === 'delete' ? (menu.m === 'all' ? t('清空后无法恢复') : t('删除后无法恢复')) : undefined} onClose={closeMenu} label={t('消息操作')} />
       {allowed && (
         <div className="safe-bottom border-t border-line bar-glass px-3 pt-2 pb-2">
-        {/* 2026-09-26 goat：表情面板改到输入框上方（输入框钉在最底下），不再像键盘那样从输入框下面顶出来 */}
+        {/* 2026-09-26 goat: emoji panel moved above the input (input pinned at the very bottom), no longer pushing up from under the input like a keyboard */}
         {emoji.open && <EmojiPicker className="-mx-3 mb-2" onPick={emoji.pick} onBackspace={emoji.backspace} />}
         <div className="flex items-end gap-2">
           <button onClick={() => fileInput.current?.click()} className="rounded-full bg-card p-2.5 text-muted" aria-label={t('图片或视频')}><ImageIcon size={20} /></button>
@@ -200,7 +200,7 @@ export default function DmChat() {
   )
 }
 
-/** 私信气泡：长按 / 右键出菜单。解不开的、旧版本发的显示灰字 */
+/** DM bubbles: long-press / right-click for the menu. Undecryptable or old-version messages show in gray */
 function DmBubble({ m, mine, onMenu }: { m: DmMessage; mine: boolean; onMenu: (a: MenuAnchor) => void }) {
   const press = useLongPress(onMenu)
   const flagged = m.legacy || m.undecryptable
@@ -214,7 +214,7 @@ function DmBubble({ m, mine, onMenu }: { m: DmMessage; mine: boolean; onMenu: (a
   )
 }
 
-/** 聊天里的时间分隔：今天只显示时分，其他日子带月日 */
+/** Chat time dividers: today shows HH:mm only, other days include month/day */
 function chatTime(ts: number) {
   const d = new Date(ts), now = new Date()
   const hm = d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })

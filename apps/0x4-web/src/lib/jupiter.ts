@@ -1,5 +1,5 @@
-// Jupiter 聚合器：报价 + 构建兑换交易
-// 文档：https://dev.jup.ag/docs/swap-api
+// Jupiter aggregator: quotes + swap transaction building
+// Docs: https://dev.jup.ag/docs/swap-api
 import { VersionedTransaction } from '@solana/web3.js'
 import type { SolanaWallet } from '@/lib/vault/signers'
 import { Buffer } from 'buffer'
@@ -8,7 +8,7 @@ import { fetchJson } from './http'
 import { signAndSend } from './rpc'
 
 export interface JupQuote {
-  /** 我们自己加的：这笔报价对应的平台收费账户（不是 Jupiter 返回的字段，下单前拆掉） */
+  /** Added by us: the platform fee account for this quote (not a Jupiter-returned field — stripped before ordering) */
   feeAccount?: string
   inputMint: string
   outputMint: string
@@ -29,8 +29,8 @@ interface JupSwapResponse {
   prioritizationFeeLamports?: number
 }
 
-/** 获取报价（amount 为输入代币的最小单位） */
-/** fee：平台手续费（见 lib/fees.ts 的 jupiterFee，只在收费账户的币等于输入或输出币时才有）；报价和下单必须用同一个 */
+/** Get a quote (amount in the input token's smallest unit) */
+/** fee: platform fee (see lib/fees.ts's jupiterFee — only present when the fee account's token equals the input or output token); quote and order must use the same one */
 export async function getQuote(params: { inputMint: string; outputMint: string; amount: bigint; slippageBps: number; fee?: { bps: number; account: string } | null }): Promise<JupQuote> {
   const q = new URLSearchParams({
     inputMint: params.inputMint,
@@ -41,11 +41,11 @@ export async function getQuote(params: { inputMint: string; outputMint: string; 
   })
   if (params.fee && params.fee.bps > 0) q.set('platformFeeBps', String(params.fee.bps))
   const quote = await fetchJson<JupQuote>(`${ENV.jupiterApi}/swap/v1/quote?${q.toString()}`)
-  // 收费账户跟着报价走，下单时原样带上（报价带了费率却不给账户，或者反过来，都会出错）
+  // The fee account travels with the quote — pass it through unchanged when ordering (a quoted fee without an account, or vice versa, both error out)
   return params.fee && params.fee.bps > 0 ? { ...quote, feeAccount: params.fee.account } : quote
 }
 
-/** 请求 Jupiter 构建交易并本地签名发送 */
+/** Ask Jupiter to build the transaction, then sign and send locally */
 export async function executeSwap(rpcUrl: string, signer: SolanaWallet, quote: JupQuote): Promise<string> {
   const body: Record<string, unknown> = {
     quoteResponse: quote,
@@ -53,7 +53,7 @@ export async function executeSwap(rpcUrl: string, signer: SolanaWallet, quote: J
     wrapAndUnwrapSol: true,
     dynamicComputeUnitLimit: true,
     dynamicSlippage: false,
-    // 自动设置优先费，上限 0.005 SOL，避免网络拥堵时交易卡住
+    // Priority fee set automatically, capped at 0.005 SOL, so transactions don't stall when the network is congested
     prioritizationFeeLamports: { priorityLevelWithMaxLamports: { maxLamports: 5_000_000, priorityLevel: 'high' } },
   }
   const { feeAccount, ...quoteResponse } = quote

@@ -1,18 +1,18 @@
-// 今日盈亏账本（2026-09-29 goat：「总盈亏里面充值进来的钱不要算到盈利和亏损里面」）：
-// 逐条锁住「资金进出不算盈亏」，每条都带一个对照（按总资产差值算会错成什么样），证明测试真的在区分两种算法。
+// Today's PnL ledger (2026-09-29 goat: "money topped up shouldn't count in total profit and loss"):
+// Each case pins "transfers in/out don't count as PnL", each with a control (showing how wrong the total-assets-difference math would be) — proving the test really distinguishes the two algorithms.
 import { describe, expect, it } from 'vitest'
 import { MIN_BASE, observe, pnlSign, startOfDayCst, summarize, type Ledger, type Obs, type PerpPart } from './dayPnl'
 
-// 2026-09-29 北京时间 10:00（UTC 02:00）
+// 2026-09-29 10:00 Beijing time (02:00 UTC)
 const T0 = Date.UTC(2026, 8, 29, 2, 0)
 const DAY = startOfDayCst(T0)
 const A = '56:0xaaa', B = '56:0xbbb', USDT = '56:0x55d', SOLTOK = '1151111081099710:Tok'
 const all = () => true
 const none = () => false
-/** 按「现在总值 − 起点总值」算的朴素做法：充值、提现都会被当成盈亏 */
+/** The naive "current total − starting total" math: top-ups and withdrawals all count as PnL */
 const naive = (before: Obs[], after: Obs[]) => after.reduce((s, a) => s + a.q * a.p, 0) - before.reduce((s, a) => s + a.q * a.p, 0)
 
-/** 一个从昨天带过来、0 点价已知的账本 */
+/** A ledger carried over from yesterday with a known midnight price */
 function dayStart(last: Ledger['last'], open: Record<string, number>, now = T0): Ledger {
   const y: Ledger = { v: 1, day: DAY - 86400_000, pnl: 0, base: 0, inflow: 0, outflow: 0, partial: [], pending: {}, last, t: DAY - 3600_000 }
   return observe(y, { now, assets: [], fresh: none, open })
@@ -31,8 +31,8 @@ describe('北京时间 0 点换日', () => {
     expect(L.day).toBe(DAY)
     expect(L.base).toBe(20)
     const L2 = observe(L, { now: T0 + 60_000, assets: [{ key: A, q: 10, p: 3 }], fresh: all })
-    expect(L2.pnl).toBe(10) // 从 0 点价 2 涨到 3
-    // 对照：拿昨天最后的价格 1 起算会是 20
+    expect(L2.pnl).toBe(10) // Rose from the midnight price of 2 to 3
+    // Control: starting from yesterday's last price of 1 would give 20
     expect(10 * (3 - 1)).toBe(20)
   })
 
@@ -57,7 +57,7 @@ describe('北京时间 0 点换日', () => {
     const L = observe(null, { now: T0, assets: [{ key: A, q: 10, p: 2 }, { key: USDT, q: 50, p: 1, stable: true }], fresh: all })
     expect(L.base).toBe(70)
     expect(L.pnl).toBe(0)
-    expect(L.inflow).toBe(0) // 不是充值
+    expect(L.inflow).toBe(0) // Not a top-up
     expect(L.partial.sort()).toEqual([A, USDT].sort())
   })
 })
@@ -68,10 +68,10 @@ describe('1. 充值 / 从别的钱包转入：不算盈利，转入后的涨跌�
     const after = [{ key: A, q: 15, p: 2 }]
     const L2 = observe(L, { now: T0, assets: after, fresh: all })
     expect(L2.pnl).toBe(10)
-    expect(L2.inflow).toBe(10) // 5 个 × 转入时价格 2
-    // 对照：按总值差算 = 15×2 − 10×1 = 20，把充值算成了盈利
+    expect(L2.inflow).toBe(10) // 5 units × transfer-time price of 2
+    // Control: total-difference math = 15×2 − 10×1 = 20, counting the top-up as profit
     expect(naive([{ key: A, q: 10, p: 1 }], after)).toBe(20)
-    // 转入之后再涨：15 个都算
+    // Rising after the transfer: all 15 count
     const L3 = observe(L2, { now: T0 + 60_000, assets: [{ key: A, q: 15, p: 3 }], fresh: all })
     expect(L3.pnl).toBe(25)
   })
@@ -93,7 +93,7 @@ describe('2. 提现 / 转出给别人：不算亏损，转出前的涨跌照算'
     const L3 = observe(L2, { now: T0 + 60_000, assets: [], fresh: all })
     expect(L3.pnl).toBe(10)
     expect(L3.outflow).toBe(20)
-    // 对照：按总值差算 = 0 − 20 = −20
+    // Control: total-difference math = 0 − 20 = −20
     expect(naive([{ key: A, q: 10, p: 2 }], [])).toBe(-20)
   })
 
@@ -130,9 +130,9 @@ describe('3. 自己钱包内闪兑、跨链、补燃料费：只是换形态，�
     expect(L2.pnl).toBe(0)
     expect(L2.outflow).toBe(20)
     expect(L2.inflow).toBeCloseTo(19.8)
-    // 对照：按总值差算会显示 −0.2
+    // Control: total-difference math would show −0.2
     expect(naive([{ key: A, q: 10, p: 2 }], [{ key: B, q: 19.8, p: 1 }])).toBeCloseTo(-0.2)
-    // 之后 B 涨了才算
+    // Only counts once B rises afterwards
     const L3 = observe(L2, { now: T0 + 60_000, assets: [{ key: B, q: 19.8, p: 1.1 }], fresh: all })
     expect(L3.pnl).toBeCloseTo(1.98)
   })
@@ -150,7 +150,7 @@ describe('3. 自己钱包内闪兑、跨链、补燃料费：只是换形态，�
     const L = dayStart({ [USDT]: { q: 10_000, p: 1, s: 1 } }, {})
     const L2 = observe(L, { now: T0, assets: [{ key: USDT, q: 10_000, p: 1.001, stable: true }], fresh: all })
     expect(L2.pnl).toBe(0)
-    // 对照：不按 1 算会显示 +10
+    // Control: not starting at 1 would show +10
     expect(10_000 * (1.001 - 1)).toBeCloseTo(10)
   })
 })
@@ -184,7 +184,7 @@ describe('5. 合约：存取 USDT 不算盈亏（服务器算好合约部分，�
     const s = summarize(L2, perp, T0)!
     expect(s.pnl).toBe(0)
     expect(s.pct).toBe(0)
-    // 分母 = 0 点资产 1000 + 合约 0 + 净转入 max(0, −100 + 100) = 1000
+    // denominator = midnight assets 1000 + perps 0 + net transfers max(0, −100 + 100) = 1000
     const s2 = summarize(L2, { ...perp, pnl: 10 }, T0)!
     expect(s2.pct).toBeCloseTo(1)
   })
@@ -194,7 +194,7 @@ describe('5. 合约：存取 USDT 不算盈亏（服务器算好合约部分，�
     const s = summarize(observe(L, { now: T0, assets: [{ key: A, q: 10, p: 2 }], fresh: all }), null, T0)!
     expect(s.perp).toBeNull()
     expect(s.pnl).toBe(10)
-    // 阴性对照：读得到时合约部分出现并合进总数
+    // Negative control: when readable, the perps part appears and merges into the total
     const s2 = summarize(observe(L, { now: T0, assets: [{ key: A, q: 10, p: 2 }], fresh: all }), { pnl: -3, base: 50, netIn: 0, equity: 47, since: DAY }, T0)!
     expect(s2.perp?.pnl).toBe(-3)
     expect(s2.pnl).toBe(7)
@@ -203,7 +203,7 @@ describe('5. 合约：存取 USDT 不算盈亏（服务器算好合约部分，�
   it('合约起点晚于 0 点 15 分钟以上：标出来，面板注明从几点起算', () => {
     expect(summarize(null, { pnl: 1, base: 10, netIn: 0, equity: 11, since: DAY + 5 * 60_000 }, T0)!.perp!.late).toBe(false)
     expect(summarize(null, { pnl: 1, base: 10, netIn: 0, equity: 11, since: DAY + 3 * 3600_000 }, T0)!.perp!.late).toBe(true)
-    // 昨天的合约数据不当成今天的
+    // Yesterday's perps data doesn't count as today's
     expect(summarize(null, { pnl: 1, base: 10, netIn: 0, equity: 11, since: DAY - 60_000 }, T0)).toBeNull()
   })
 })
@@ -231,16 +231,16 @@ describe('6. 百分比 = 今日盈亏 ÷（0 点资产 + 当天净转入）', ()
     const L3 = observe(L2, { now: T0 + 60_000, assets: [{ key: A, q: 10, p: 1.1 }], fresh: all })
     const s = summarize(L3, null, T0)!
     expect(s.pnl).toBeCloseTo(10)
-    expect(s.pct).toBeCloseTo(10) // 分母仍是 100
+    expect(s.pct).toBeCloseTo(10) // The denominator is still 100
   })
 
   it(`分母不到 ${MIN_BASE} 美元不显示百分比；分母够了照常显示`, () => {
     const L = dayStart({ [A]: { q: 1, p: 0.5 } }, { [A]: 0.5 })
     const tiny = summarize(observe(L, { now: T0, assets: [{ key: A, q: 1, p: 25 }], fresh: all }), null, T0)!
     expect(tiny.pnl).toBe(24.5)
-    expect(tiny.pct).toBeNull() // 对照：直接除会是 +4900%
+    expect(tiny.pct).toBeNull() // Control: dividing directly would give +4900%
     expect((24.5 / 0.5) * 100).toBe(4900)
-    // 0 点几乎没有，但白天充值了 1000：分母按 1000 算，照常显示
+    // Almost nothing at midnight, but 1000 was topped up during the day: denominator counts as 1000, displayed as usual
     const L2 = observe(dayStart({}, {}), { now: T0, assets: [{ key: A, q: 1000, p: 1 }], fresh: all })
     const s = summarize(observe(L2, { now: T0 + 60_000, assets: [{ key: A, q: 1000, p: 1.05 }], fresh: all }), null, T0)!
     expect(s.pct).toBeCloseTo(5)

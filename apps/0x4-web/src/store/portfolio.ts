@@ -1,4 +1,4 @@
-// 资产组合：Solana + EVM 各链 + 比特币余额 × 行情 = 持仓估值；活动记录
+// Portfolio: Solana + EVM chains + Bitcoin balances × market prices = holdings valuation; activity records
 import { create } from 'zustand'
 import type { ActivityItem, Holding } from '@/lib/types'
 import { getActivity, getSolBalance, getTokenAccounts } from '@/lib/rpc'
@@ -19,9 +19,10 @@ import { errorText } from '@/lib/errors'
 interface PortfolioState {
   holdings: Holding[]
   /**
-   * 比特币持仓单独放：holdings 被闪兑选币、授权扫描、红包等当成 EVM / Solana 资产用，BTC 混进去会出错。
-   * 资产页和发送页自己把它并进列表；totalUsd 已经含它。
-   */
+ * Bitcoin holdings live separately: swap coin-selection, approval scanning, red packets etc. treat
+ * holdings as EVM / Solana assets, and BTC mixed in would break them.
+ * The assets and send pages merge it into the list themselves; totalUsd already includes it.
+ */
   btc: Holding | null
   btcActivity: BtcActivity[]
   totalUsd: number
@@ -30,15 +31,15 @@ interface PortfolioState {
   loading: boolean
   error: string | null
   lastUpdated: number
-  /** 最近一次成功读到余额的链（Solana + 读成功的 EVM 链）。自动补充燃料费只对这些链判断余额，读失败的链不当成 0 */
+  /** Chains whose balances were last read successfully (Solana + successful EVM chains). Auto gas top-up only judges these chains; failed chains aren't treated as 0 */
   scannedChains: number[]
-  /** 比特币余额这次是新读到的（false = 这次没读到，btc 是沿用上一次的）；今日盈亏只拿新读到的算 */
+  /** Whether the Bitcoin balance is freshly read this round (false = missed this round, btc carries the previous value); today's PnL only uses fresh reads */
   btcFresh: boolean
   refresh: () => Promise<void>
   refreshActivity: () => Promise<void>
 }
 
-/** Solana 链持仓 */
+/** Solana holdings */
 async function loadSolana(rpc: string, address: string): Promise<{ holdings: Holding[]; sol: number }> {
   const [sol, tokens] = await Promise.all([getSolBalance(rpc, address), getTokenAccounts(rpc, address)])
   const mints = [SOL_MINT, ...tokens.map((t) => t.mint)]
@@ -76,12 +77,12 @@ async function loadSolana(rpc: string, address: string): Promise<{ holdings: Hol
   return { holdings, sol }
 }
 
-/** EVM 各链持仓：余额来自链上，价格来自 LI.FI（稳定币兜底为 1 美元） */
+/** Per-EVM-chain holdings: balances from chain, prices from LI.FI (stablecoins fall back to $1) */
 async function loadEvm(address: string, scanned?: Set<number>): Promise<Holding[]> {
   const extra: ChainToken[] = useFavorites.getState().items
     .filter((f) => f.chainId !== SOLANA_CHAIN_ID && f.decimals !== undefined)
     .map((f) => ({ chainId: f.chainId, address: f.address, symbol: f.symbol, name: f.name, decimals: f.decimals!, logo: f.logo }))
-  // 平台代币 BNG 永远纳入扫描
+  // Platform token BNG is always scanned
   const bng = useBng.getState().token
   if (bng) extra.push(bng)
   const balances = await getEvmBalances(address, extra, useSettings.getState().fuelChains, scanned)
@@ -91,14 +92,14 @@ async function loadEvm(address: string, scanned?: Set<number>): Promise<Holding[
       try {
         price = (await getLifiToken(b.chainId, b.address)).priceUsd || price
       } catch {
-        /* 价格接口失败时保留兜底值 */
+        /* Keep the fallback value when the price API fails */
       }
       return { chainId: b.chainId, mint: b.address, amount: b.amount, decimals: b.decimals, symbol: b.symbol, name: b.name, logo: b.logo, priceUsd: price, valueUsd: b.amount * price }
     }),
   )
 }
 
-/** 比特币持仓：余额 = 已确认 + 未确认净变化（收到还没确认的也先算上）；价格用 LI.FI（和 EVM 同一套行情） */
+/** Bitcoin holdings: balance = confirmed + unconfirmed net change (received-but-unconfirmed counted early); prices from LI.FI (same market feed as EVM) */
 async function loadBtc(address: string): Promise<Holding> {
   const [bal, price] = await Promise.all([
     getBtcBalance(address),
@@ -126,12 +127,12 @@ export const usePortfolio = create<PortfolioState>()((set, get) => ({
 
   async refresh() {
     const { address, evmAddress, btcAddress } = useWallet.getState()
-    // 网页版外部钱包（MetaMask 等，2026-09-30）只有 EVM 地址：Solana 那一路跳过
+    // Web external wallets (MetaMask etc., 2026-09-30) are EVM-only: skip the Solana leg
     if (!address && !evmAddress) return
     set({ loading: true, error: null })
     try {
       const rpc = useSettings.getState().rpcUrl
-      // EVM 链、比特币失败不应影响 Solana 侧展示，所以分别捕获
+      // EVM / Bitcoin failures must not affect the Solana side's display — caught separately
       const scanned = new Set<number>()
       const [solRes, evmRes, btcRes] = await Promise.allSettled([
         address ? loadSolana(rpc, address) : Promise.resolve({ holdings: [] as Holding[], sol: 0 }),
@@ -140,7 +141,7 @@ export const usePortfolio = create<PortfolioState>()((set, get) => ({
       ])
       if (solRes.status === 'rejected') throw solRes.reason
       const holdings = [...solRes.value.holdings, ...(evmRes.status === 'fulfilled' ? evmRes.value : [])].sort((a, b) => b.valueUsd - a.valueUsd)
-      // 比特币这次没拉到就沿用上一次的（地址没变的前提下），不让资产忽有忽无
+      // Reuse the previous Bitcoin balance when this fetch missed (address unchanged), so assets don't flicker in and out
       const prevBtc = get().btc
       const btc = btcRes.status === 'fulfilled' ? btcRes.value : (btcAddress ? prevBtc : null)
       const total = holdings.reduce((s, h) => s + h.valueUsd, 0) + (btc?.valueUsd || 0)
@@ -155,7 +156,7 @@ export const usePortfolio = create<PortfolioState>()((set, get) => ({
   async refreshActivity() {
     const { address, btcAddress } = useWallet.getState()
     if (!address) return
-    // 比特币记录单独拉，失败不影响 Solana 那一栏
+    // Bitcoin records fetched separately; failure doesn't affect the Solana column
     if (btcAddress) void getBtcActivity(btcAddress).then((btcActivity) => set({ btcActivity })).catch(() => {})
     try {
       set({ activity: await getActivity(useSettings.getState().rpcUrl, address) })

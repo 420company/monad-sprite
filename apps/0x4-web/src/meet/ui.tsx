@@ -1,5 +1,5 @@
-// 会议室用的小组件（2026-09-29 从 meet/src/components 搬进 App）：弹窗、转圈、画面、声音、参与者方块、设备预检。
-// 头像用 App 自己的 Avatar（地址像素头像 / NFT 头像，goat 定：不用照片头像）；提示用 App 的 toast。
+// Small widgets for the meeting room (moved from meet/src/components into the app on 2026-09-29): dialogs, spinners, video, audio, participant tiles, device pre-check.
+// Avatars use the app's own Avatar (address pixel avatar / NFT avatar — goat's call: no photo avatars); notices use the app's toast.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { RemoteTrack, Track } from 'livekit-client'
 import { Hand, Mic, MicOff, Minimize2, MonitorUp, ScanFace, Video, VideoOff, Volume2, X } from 'lucide-react'
@@ -9,7 +9,7 @@ import { listDevices, type PSnap } from './lk'
 import { SCREEN_VIDEO_CLASS } from './AnnotationLayer'
 import { fxActive, loadFx, saveFx } from '@/effects/settings'
 import type { FxProcessor } from '@/effects/processor'
-// 这些组件用 meet.css 的样式：自己引，直播间（Room.tsx）用开播检查页时也有样式（2026-10-02：以前只有会议页引，直播的「开始直播」按钮是黑的）
+// These components use meet.css styles: imported here; the live room (Room.tsx) needs them too when showing the go-live check page (2026-10-02: previously only the meeting page imported it, leaving the live "Go Live" button unstyled/black)
 import './meet.css'
 
 export function Modal({ open, onClose, title, children, width = 440 }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; width?: number }) {
@@ -40,18 +40,18 @@ export function VideoView({ track, mirror, fit = 'cover', className = '' }: { tr
     track.attach(el)
     return () => { track.detach(el) }
   }, [track])
-  // 自己的画面平时镜像（像照镜子）；挂着 0x4 猫头时不镜像，不然猫脸上的 0、x 是反的（2026-10-02 直播已经这样定，10-03 会议同样处理）
+  // Your own video is mirrored by default (like a mirror); with the 0x4 cat head on, no mirroring — otherwise the 0 and x on the cat's face flip (decided for live on 2026-10-02, same for meetings on 10-03)
   const flip = mirror && !catOn(track)
   return <video ref={ref} autoPlay playsInline muted className={`h-full w-full ${fit === 'cover' ? 'object-cover' : 'object-contain'} ${flip ? '-scale-x-100' : ''} ${className}`} />
 }
 
-/** 这条（本机摄像头）轨道正挂着 0x4 特效处理器、设置是猫头 */
+/** This (local camera) track currently has the 0x4 effects processor attached, set to the cat head */
 function catOn(track: Track): boolean {
   const p = (track as Track & { getProcessor?: () => { name?: string } | undefined }).getProcessor?.()
   return p?.name === '0x4-fx' && loadFx().avatar === 'cat'
 }
 
-/** 远端参与者的声音：每条音轨挂一个隐藏 audio 元素 */
+/** Remote participants' audio: one hidden audio element per track */
 export function AudioSink({ track }: { track: RemoteTrack }) {
   const ref = useRef<HTMLAudioElement>(null)
   useEffect(() => {
@@ -63,9 +63,9 @@ export function AudioSink({ track }: { track: RemoteTrack }) {
   return <audio ref={ref} autoPlay />
 }
 
-/** 一个参与者的方块：有画面显示画面，没有显示头像；左下角名字 + 静音标记；说话时描边。
- * 共享屏幕时主画面是屏幕，这个人开着摄像头的话摄像头作为小窗浮在右下角（2026-09-30 goat：原来共享时摄像头完全看不到），
- * 大画面上的小窗可以点一下收起 / 展开。overlay：叠在画面上的东西（画笔标注层） */
+/** One participant's tile: video when available, avatar otherwise; name + mute badge at bottom-left; outline while speaking.
+ * During screen share the main view is the screen; if this person has the camera on, it floats as a PiP at bottom-right (2026-09-30 goat: the camera used to vanish entirely during sharing),
+ * and the PiP on the big view can be tapped to collapse / expand. overlay: things layered over the video (annotation layer) */
 export function Tile({ p, hand, big, avatar, overlay }: { p: PSnap; hand?: boolean; big?: boolean; avatar?: string | null; overlay?: ReactNode }) {
   const track = p.screenTrack || p.camTrack
   const pip = !!p.screenTrack && !!p.camTrack
@@ -94,13 +94,13 @@ export function Tile({ p, hand, big, avatar, overlay }: { p: PSnap; hand?: boole
   </div>
 }
 
-// ---------- 屏幕共享权限（2026-09-30 goat：窗口 / 整个屏幕选不了，设置了也没用）----------
-// 浏览器不允许提前申请屏幕共享权限，只能在点共享那一刻弹。Mac 上共享窗口或整个屏幕还要系统权限：
-// 系统设置 → 隐私与安全性 → 屏幕与系统录音 里打开浏览器，而且要彻底退出浏览器再打开才生效。没开时浏览器仍然能共享标签页。
+// ---------- Screen-share permission (2026-09-30 goat: window / entire-screen options were unselectable — setting them did nothing) ----------
+// Browsers don't allow pre-requesting screen-share permission — it can only pop at the moment sharing starts. On Mac, sharing a window or the entire screen additionally needs system permission:
+// enable the browser in System Settings → Privacy & Security → Screen & System Audio Recording, then fully quit and relaunch the browser for it to take effect. Without it, browsers can still share tabs.
 export const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent)
-/** 被操作系统拦下（Chrome 的原话是 Permission denied by system）；用户自己点取消是 Permission denied */
+/** Blocked by the OS (Chrome's exact words: Permission denied by system); the user dismissing it themselves is Permission denied */
 export const deniedBySystem = (e: unknown) => e instanceof Error && e.name === 'NotAllowedError' && /system/i.test(e.message)
-/** 怎么打开系统的屏幕录制权限（Mac），在检查页和会议里共享失败时都用这一段 */
+/** How to enable the OS screen-recording permission (Mac); this block is reused on the check page and on in-meeting share failures */
 export function ScreenPermissionHelp() {
   return <ol className="list-decimal space-y-1.5 pl-5 text-[13px] leading-relaxed text-muted">
     <li>{t('打开「系统设置」→「隐私与安全性」→「屏幕与系统录音」')}</li>
@@ -109,12 +109,12 @@ export function ScreenPermissionHelp() {
   </ol>
 }
 
-// ---------- 进会前的设备预检 ----------
+// ---------- Pre-join device check ----------
 export interface JoinPrefs { camOn: boolean; micOn: boolean; camId?: string; micId?: string; spkId?: string }
 const PREF_KEY = '0x4.meet.devices'
 function loadPrefs(): Partial<JoinPrefs> { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') } catch { return {} } }
 
-/** screenCheck：要不要「屏幕共享」测试那一栏（会议要；直播没有屏幕共享，2026-10-02 goat：不显示）；tone="live"：开始按钮用直播的红色 */
+/** screenCheck: whether to include the "screen share" test row (meetings need it; live has no screen share — 2026-10-02 goat: hidden); tone="live": the start button uses live's red */
 export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camDefault = true, screenCheck = true, tone }: {
   heading: ReactNode; sub?: ReactNode; aside?: ReactNode; joinLabel: string; joining?: boolean; onJoin: (p: JoinPrefs) => void; camDefault?: boolean; screenCheck?: boolean; tone?: 'live'
 }) {
@@ -130,12 +130,12 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
   const [level, setLevel] = useState(0)
   const [loadingCam, setLoadingCam] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
-  // 形象（2026-10-03 goat：会议也要能「不露脸」）：存在特效设置里（和直播共用），进会 / 开播时按它开摄像头；预览直接显示处理后的画面
+  // Avatar (2026-10-03 goat: meetings need the "faceless" option too): stored in the effects settings (shared with live); camera opens per it when joining / going live; the preview shows the processed feed directly
   const [avatar, setAvatar] = useState<'none' | 'cat'>(() => loadFx().avatar)
   const [fxErr, setFxErr] = useState<string | null>(null)
   const pickAvatar = (a: 'none' | 'cat') => { saveFx({ ...loadFx(), avatar: a }); setAvatar(a) }
 
-  // 摄像头预览
+  // Camera preview
   useEffect(() => {
     if (!camOn) { setCamErr(null); return }
     let stream: MediaStream | null = null, alive = true, proc: FxProcessor | null = null
@@ -144,7 +144,7 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
       .then(async (s) => {
         if (!alive) { s.getTracks().forEach((x) => x.stop()); return }
         stream = s; setCamErr(null)
-        // 有特效：预览也走同一个处理器（第一次要下载识别模型，几秒）。虚拟形象开不起来时预览不显示真人，进去后摄像头也会先关着
+        // With effects: the preview runs through the same processor (first run downloads the recognition model — a few seconds). When the virtual avatar fails to start, the preview never shows the real person, and the camera stays off after joining too
         const fx = loadFx()
         if (fxActive(fx)) {
           try {
@@ -167,7 +167,7 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
     return () => { alive = false; void proc?.destroy(); stream?.getTracks().forEach((x) => x.stop()) }
   }, [camOn, camId, avatar])
 
-  // 麦克风音量（限到 30 帧，页面看不见时浏览器会自动停 rAF）
+  // Mic volume (capped at 30 fps; browsers auto-pause rAF when the page is hidden)
   useEffect(() => {
     if (!micOn) { setLevel(0); setMicErr(null); return }
     let stream: MediaStream | null = null, ctx: AudioContext | null = null, raf = 0, alive = true, last = 0
@@ -197,7 +197,7 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
 
   useEffect(() => { void listDevices().then(setDevs) }, [])
 
-  // 屏幕共享试一次（2026-09-30）：进会前就走一遍浏览器和系统的授权，Mac 没开系统权限当场说怎么开，不用进了会议才发现
+  // Screen-share dry run (2026-09-30): walks through browser + OS authorization before joining; on Mac without the OS permission it explains how to enable on the spot — no discovering it mid-meeting
   const [screen, setScreen] = useState<'idle' | 'testing' | 'ok' | 'tab' | 'system' | 'cancel' | 'unsupported'>('idle')
   const testScreen = async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) { setScreen('unsupported'); return }
@@ -206,7 +206,7 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
       const s = await navigator.mediaDevices.getDisplayMedia({ video: true })
       const surface = (s.getVideoTracks()[0]?.getSettings() as { displaySurface?: string }).displaySurface
       s.getTracks().forEach((x) => x.stop())
-      // 选的是标签页：在 Mac 上多半是窗口 / 整个屏幕被系统挡住了，提示一下怎么打开
+      // Tab selected: on Mac it's usually window / entire-screen being blocked by the OS — hint how to enable it
       setScreen(surface === 'browser' && isMac ? 'tab' : 'ok')
     } catch (e) {
       setScreen(deniedBySystem(e) ? 'system' : 'cancel')
@@ -215,7 +215,7 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
 
   const join = () => {
     const p = { camOn: camOn && !camErr, micOn: micOn && !micErr, camId, micId, spkId }
-    try { localStorage.setItem(PREF_KEY, JSON.stringify({ camOn, micOn, camId, micId, spkId })) } catch { /* 忽略 */ }
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ camOn, micOn, camId, micId, spkId })) } catch { /* Ignored */ }
     onJoin(p)
   }
   const testSpeaker = () => {
@@ -231,7 +231,7 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
   return <div className="mx-auto grid w-full max-w-[1180px] grid-cols-1 items-center gap-10 px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-14 lg:px-10">
     <div className="meet-fade">
       <div className="relative aspect-video w-full overflow-hidden rounded-[28px] bg-[var(--mt-surface)] shadow-[0_40px_100px_-30px_var(--mt-shadow),inset_0_0_0_1px_var(--mt-line)]" data-testid="preview">
-        {/* 预览镜像（像照镜子）；选了猫头且处理器开起来了就不镜像，不然猫脸上的字是反的 */}
+        {/* Preview mirrored (like a mirror); with the cat head selected and the processor running, no mirroring — otherwise the text on the cat's face flips */}
         {camOn && !camErr && <video ref={videoRef} autoPlay playsInline muted className={`h-full w-full object-cover ${avatar === 'cat' && !fxErr ? '' : '-scale-x-100'}`} />}
         {(!camOn || camErr) && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted">
           <VideoOff size={30} strokeWidth={1.6} />
@@ -255,7 +255,7 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
           <button type="button" role="radio" aria-checked={avatar === 'cat'} className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition ${avatar === 'cat' ? 'bg-[var(--mt-4)] text-fg' : 'text-muted hover:text-fg'}`} onClick={() => pickAvatar('cat')} data-testid="pre-avatar-cat"><img src={`${import.meta.env.BASE_URL}icons/cat.svg`} alt="" width={15} height={15} />{t('不露脸（0x4 猫头）')}</button>
         </div>
       </div>
-      {/* 设备一行一个（2026-10-02 goat：三个并排时设备名太长挤在一起） */}
+      {/* One device per row (2026-10-02 goat: three side-by-side squeezed long device names together) */}
       <div className="mt-3 grid grid-cols-1 gap-2">
         <DeviceSelect icon={<Video size={15} />} label={t('摄像头')} list={devs.cams} value={camId} onChange={setCamId} />
         <DeviceSelect icon={<Mic size={15} />} label={t('麦克风')} list={devs.mics} value={micId} onChange={setMicId} error={micErr} />
@@ -283,13 +283,13 @@ export function Precheck({ heading, sub, aside, joinLabel, joining, onJoin, camD
   </div>
 }
 
-/** 设备名去掉没用的部分：USB 编号「(05ac:8514)」、「默认 - 」「Default - 」前缀 */
+/** Strip useless parts from device names: USB ids like "(05ac:8514)", the "Default - " prefixes (all locales) */
 export function deviceName(label: string): string {
   return label.replace(/^(default|\u9ed8\u8ba4|communications|\u901a\u4fe1)\s*[-–]\s*/i, '').replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim()
 }
 
 function DeviceSelect({ icon, label, list, value, onChange, error, action }: { icon: ReactNode; label: string; list: MediaDeviceInfo[]; value?: string; onChange: (v: string) => void; error?: string | null; action?: ReactNode }) {
-  // 一行：左边图标 + 名称（固定宽度），中间下拉框占满，右边可选的「测试」
+  // One row: icon + name (fixed width) on the left, a full-width dropdown in the middle, optional "test" on the right
   return <div className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)_auto] items-center gap-3">
     <span className="flex items-center gap-1.5 whitespace-nowrap text-[13px] text-muted">{icon}{label}</span>
     <select className="meet-input meet-select h-10 min-w-0 truncate text-[13px]" value={value || list[0]?.deviceId || ''} onChange={(e) => onChange(e.target.value)} disabled={!list.length} aria-label={label}>
@@ -300,7 +300,7 @@ function DeviceSelect({ icon, label, list, value, onChange, error, action }: { i
   </div>
 }
 
-/** 通话计时 00:00 / 1:02:03 */
+/** Call timer 00:00 / 1:02:03 */
 export function clock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60

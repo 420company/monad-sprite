@@ -1,5 +1,5 @@
-// App 里的工作人员身份（客服 / 管理员 / 超级管理员）。只用来决定显不显示「删除」等管理入口，
-// 真正的权限每个接口在服务端都会再校验。普通用户拿到的永远是 null。
+// Staff identity in the app (support / admin / super-admin). Only decides whether management entries like "delete" are shown;
+// real permissions are re-verified per API on the server. Regular users always get null.
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { api, proveEvmLink } from '@/lib/social'
@@ -24,7 +24,7 @@ export async function loadStaff(force = false): Promise<StaffInfo | null> {
   } catch { useStaffStore.setState({ loading: false }); return null }
 }
 
-/** 当前账号的工作人员身份；第一次用时自动拉一次 */
+/** The current account's staff identity; auto-pulled once on first use */
 export function useStaffRole(): StaffRole | null {
   const me = useSocial((s) => s.me)
   const status = useSocial((s) => s.status)
@@ -35,14 +35,14 @@ export function useStaffRole(): StaffRole | null {
   return me && address === me.address ? info?.role ?? null : null
 }
 
-/** 能不能删别人的广场帖子 / 评论（客服及以上） */
+/** Whether they can delete others' square posts / comments (support and above) */
 export const canModerate = (role: StaffRole | null) => role === 'support' || role === 'admin' || role === 'super'
 
 /**
- * 绑定的 EVM 地址还没签名证明、但证明后是工作人员：用钱包的 EVM 私钥签一次（不花 gas，不上链）。
- * 只在扫码登录管理后台时调用（用户主动操作，弹解锁是预期内的）。普通用户永远不会走到这里。
- * 2026-09-26 起新版在登录 / 解锁时已经自动证明过，这里多半直接返回；签名走和登录同一套关联消息（lib/evmLink）。
- * 以前服务器不认新格式时退回老的登录消息格式；2026-09-29 安全审查后服务器删了老格式（能被钓鱼冒领 EVM 地址），这里也不再退回。
+ * The bound EVM address hasn't been signature-proved yet, but would be staff after proving: sign once with the wallet's EVM private key (no gas, not on-chain).
+ * Only called when scan-logging into the admin backend (user-initiated, so a pop-up unlock is expected). Regular users never reach here.
+ * Since 2026-09-26 new versions already prove automatically at login / unlock, this mostly returns directly; signing uses the same linked message as login (lib/evmLink).
+ * When the server didn't recognize the new format it used to fall back to the old login-message format; after the 2026-09-29 security review the server removed the old format (it could be phished to claim EVM addresses), and this no longer falls back.
  */
 export async function ensureStaffProof(): Promise<StaffRole | null> {
   const info = await loadStaff(true)

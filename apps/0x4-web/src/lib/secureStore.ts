@@ -1,9 +1,9 @@
-// 本机安全存储：iOS 钥匙串 / Android Keystore 加密。只给原生 App 用，网页版没有（返回空、写入忽略）。
+// On-device secure storage: iOS Keychain / Android Keystore encrypted. Native app only — web has none (reads return empty, writes are ignored).
 //
-// 能存的条目由原生白名单限定：
-//   social-token  社交登录令牌（iOS / Android）
-//   dm-key        私信私钥（仅 Android；iOS 的私信密钥在原生模块里自己管，网页层碰不到）
-//   chat-key      本机聊天记录的加密密钥（「只存在这台手机」模式，见 lib/localChat.ts）
+// Storable entries are limited by the native whitelist:
+//   social-token  social login token (iOS / Android)
+//   dm-key        DM private key (Android only; on iOS the DM key is managed inside the native module, the web layer never touches it)
+//   chat-key      encryption key for on-device chat history ("this phone only" mode, see lib/localChat.ts)
 import { registerPlugin } from '@capacitor/core'
 import { isNative, platform } from '@/lib/native'
 import { Vault } from '@/lib/vault/native'
@@ -16,7 +16,7 @@ const Android = registerPlugin<{
   remove(o: { key: Key }): Promise<void>
 }>('SecureStore')
 
-/** 这个运行环境能不能「关了 App 再开还保持登录」 */
+/** Whether this runtime supports "stay logged in after closing and reopening the app" */
 export const persistentSession = isNative && (platform === 'ios' || platform === 'android')
 
 export const secureStore = {
@@ -29,7 +29,7 @@ export const secureStore = {
   },
   async set(key: Key, value: string): Promise<void> {
     if (!persistentSession) return
-    try { await (platform === 'ios' ? Vault.secureSet({ key, value }) : Android.set({ key, value })) } catch { /* 存不上就下次重新登录 */ }
+    try { await (platform === 'ios' ? Vault.secureSet({ key, value }) : Android.set({ key, value })) } catch { /* If it can't be saved, re-login next time */ }
   },
   async remove(key: Key): Promise<void> {
     if (!persistentSession) return

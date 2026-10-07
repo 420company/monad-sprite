@@ -1,4 +1,4 @@
-// 网页版内容页共用的小零件（样式在 desktop/desk-content.css）：空状态、弹出层开关、复制地址。
+// Shared small widgets for web content pages (styles in desktop/desk-content.css): empty states, popover toggles, copy-address.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { FileText, LoaderCircle, RefreshCw, WifiOff, type LucideIcon } from 'lucide-react'
@@ -9,7 +9,7 @@ import { isWalletConnected, useWallet } from '@/store/wallet'
 import { copyText } from '@/lib/native'
 import { t } from '@/lib/i18n'
 
-/** 空状态 / 失败 / 未连接：图标 20 + 一句话 + 一个操作，居中在所属面板里（规范：一页里同一个状态只说一次） */
+/** Empty / failed / unconnected: 20px icon + one line + one action, centered in its panel (convention: one state is stated only once per page) */
 export function Empty({ icon: Icon, text, action, row = false, tall = false, className = '' }: { icon?: LucideIcon; text: ReactNode; action?: ReactNode; row?: boolean; tall?: boolean; className?: string }) {
   return (
     <div className={`wc-empty ${row ? 'is-row' : ''} ${tall ? 'is-tall' : ''} ${className}`} role="status">
@@ -20,7 +20,7 @@ export function Empty({ icon: Icon, text, action, row = false, tall = false, cla
   )
 }
 
-/** 顶栏下拉（通知、钱包菜单）：点外面 / Esc / 换页面就收起 */
+/** Top-bar dropdowns (notifications, wallet menu): dismiss on outside tap / Esc / page change */
 export function usePop() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -37,27 +37,27 @@ export function usePop() {
   return { open, setOpen, ref, toggle: () => setOpen((v) => !v) }
 }
 
-/** 复制地址并提示 */
+/** Copy the address with a toast */
 export function copyAddr(text: string) {
   if (!text) return
   copyText(text).then(() => toast.success(t('地址已复制')), () => toast.error(t('复制失败')))
 }
 
-/** 地址缩写：前 6 后 4（EVM / Solana / 比特币通用，表格和菜单里用） */
+/** Address abbreviation: first 6 + last 4 (works for EVM / Solana / Bitcoin; used in tables and menus) */
 export const midShort = (a: string) => (a && a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a)
 
 /**
- * 连了钱包、但社区（社交层）还没登录上时的一句话（2026-09-29：网页版登录失败后不自动重试，停在 status = 'error'，原因在 error）。
- * · 登录中（logging / idle）：转圈 + 「正在登录社区」；
- * · 失败（error）：原因（例如「你取消了登录签名」「登录已过期」）+「重新登录」（useSocial.login）。
- * 规范：一页里只放一处（页面顶部状态条，或者最需要它的那个面板里），其它地方只置灰、不再重复说。
- * 没连钱包或已经登录上时返回 null。bar = 页面顶部的细条样式；否则是面板里的空状态样式。
+ * One-liner for "wallet connected but community (social layer) not logged in" (2026-09-29: after a failed web login, don't auto-retry; stay at status = 'error' with the reason in error).
+ * - Logging in (logging / idle): spinner + "Signing in to community";
+ * - Failed (error): the reason (e.g. "You cancelled the login signature" / "Login expired") + "Sign in again" (useSocial.login).
+ * Convention: only one place per page (the status strip at the top of the page, or the panel that needs it most); everywhere else just grays out without repeating it.
+ * Returns null when no wallet is connected or already logged in. bar = slim strip style for the top of the page; otherwise an empty-state style inside a panel.
  */
 export function SocialLogin({ bar = false, row = true, tall = false }: { bar?: boolean; row?: boolean; tall?: boolean }) {
   const connected = useWallet(isWalletConnected)
   const { status, error, login, needTerms } = useSocial()
   if (!connected || status === 'ready') return null
-  // 还没同意条款：不是「正在登录」，说清楚并给入口
+  // Terms not yet agreed: not "logging in" — say so plainly and give the entry
   if (needTerms) {
     const agree = <button type="button" className="wc-btn is-sm is-primary" onClick={() => useTermsGate.getState().show(true)}>{t('查看并同意')}</button>
     if (bar) return <div className="wc-note" role="status"><span>{t('同意服务条款后才能使用社交功能')}</span>{agree}</div>
@@ -71,8 +71,8 @@ export function SocialLogin({ bar = false, row = true, tall = false }: { bar?: b
 }
 
 /**
- * 还没做电脑端专门设计的页面（动态详情、小精灵详情、帮助与客服、代币授权、奖励）：先放进居中一栏的面板里，
- * 不再铺满整个屏幕宽（2026-09-29 过渡做法，页面内部仍是手机的排版）。chat = 整屏聊天模式里的页面（动态详情），高度撑满一屏。
+ * Pages with no dedicated desktop design yet (post detail, sprite detail, help & support, token approvals, rewards): put them in a centered single-column panel,
+ * no longer stretched full-screen-width (2026-09-29 interim approach; the page interior is still the phone layout). chat = pages in full-screen chat mode (post detail), stretched to full screen height.
  */
 export function DeskColumn({ children, chat = false }: { children: ReactNode; chat?: boolean }) {
   if (chat) return <div className="wc-chatshell is-single"><section className="wc-panel wc-chatpane">{children}</section></div>

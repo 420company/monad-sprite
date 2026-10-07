@@ -1,4 +1,4 @@
-// 社交层客户端：签名登录、REST 调用、WebSocket、端到端加密私信
+// Social layer client: signed login, REST calls, WebSocket, end-to-end encrypted DMs
 import type { SolanaWallet } from '@/lib/vault/signers'
 import { translateServerError } from '@/lib/sysText'
 import { t } from '@/lib/i18n'
@@ -14,67 +14,67 @@ import { externalOf } from '@/lib/vault/external'
 export const SOCIAL_API = API_BASE
 const WS_URL = SOCIAL_API ? SOCIAL_API.replace(/^http/, 'ws') + '/ws' : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
 
-/** thumb = 索引服务给的缩略图（头像展示用它）；image = 链上 metadata 里那张原图 */
+/** thumb = the thumbnail from the indexing service (used for avatar display); image = the original from the on-chain metadata */
 export interface AvatarNft { chainId: number; contract: string; tokenId: string | null; image: string; name?: string | null; thumb?: string | null }
-export interface Profile { /** 这个地址是小精灵（动态里点小精灵进来）：页面跳去小精灵页（2026-10-05） */ sprite?: { id: string; name: string; owner: string; ownerNickname: string | null } | null; address: string; nickname: string | null
-  /** 这个账号的默认昵称（User + 编号，2026-09-29）；昵称和它一样说明用户还没自己起名。老服务器没有这个字段 */
+export interface Profile { /** This address is the sprite (entered by tapping the sprite in the feed): route to the sprite page (2026-10-05) */ sprite?: { id: string; name: string; owner: string; ownerNickname: string | null } | null; address: string; nickname: string | null
+  /** This account's default nickname (User + number, 2026-09-29); a matching nickname means the user hasn't picked one yet. Old servers lack this field */
   defaultNickname?: string | null
   avatar: string | null; bio: string | null; encPub: string | null; evmAddress?: string | null; handle?: string | null; lastSeen: number | null; avatarNft?: AvatarNft | null; xHandle?: string | null
-  /** 只有自己的资料（/api/me、登录返回）带：EVM 地址是否已签名证明。老服务器没有这个字段 = undefined */
+  /** Only your own profile (/api/me, login response) carries it: whether the EVM address has a signed proof. Old servers lack this field = undefined */
   evmVerified?: boolean }
 export interface GroupGate { kind: 'token' | 'nft'; chainId: number; token: string; symbol: string | null; min: number }
-/** 群会议（服务器 meetAuth.ts activeGroupMeeting）：participants = 此刻在会议里的人数，刚发起还没人进时是 0 */
+/** Group meeting (server meetAuth.ts activeGroupMeeting): participants = the number of people in the meeting right now, 0 when just created and nobody's joined yet */
 export interface GroupMeeting { id: string; title: string; host: string; hostNickname: string | null; hasPassword: boolean; participants: number; since: number | null }
 export interface Group {
   id: string; name: string; description: string | null; avatar: string | null; owner: string; isPublic: boolean
-  /** 群号（6 位起的数字，可在「找群」里直接搜） */
+  /** Group number (6+ digits, searchable directly in "find groups") */
   num?: number | null
   gate: GroupGate | null; token: { chain: string; address: string } | null; memberCount: number; role: 'owner' | 'admin' | 'member' | null; createdAt: number; joinMode?: 'open' | 'approval'
-  /** 官方社区（平台管理员在后台建的）：true 时群名旁显示金色认证标，普通群永远 false */
+  /** Official community (created by platform admins in the backend): true shows a gold verified badge beside the group name; regular groups are always false */
   official?: boolean
-  /** 群里正在开的会议（2026-10-07 群会议；只有群成员拿得到：我的群、群详情） */
+  /** Ongoing meeting in a group (2026-10-07 group meetings; members only: my groups, group details) */
   meeting?: GroupMeeting | null
-  /** 官方社区关联的币种（可选） */
+  /** The coin linked to an official community (optional) */
   officialToken?: { chain: string; address: string } | null
-  /** 全体禁言中：只有群主和管理员能发言 */
+  /** All-muted: only the owner and admins can speak */
   mutedAll?: boolean
-  /** 禁止群成员私信（2026-09-29）：普通成员不能私信群里的其他普通成员，群主 / 管理员 / 平台工作人员照常 */
+  /** No DMs between group members (2026-09-29): regular members can't DM other regular members in a group; owners / admins / platform staff as usual */
   dmLocked?: boolean
-  /** 群公告：只有群成员拿得到 */
+  /** Group announcement: members only */
   announcement?: string | null
   announcementAt?: number | null
 }
-/** 币详情页的社区卡片：只有汇总数字，不含谁持有多少 */
+/** Coin detail page's community card: aggregate numbers only, no per-holder amounts */
 export interface CommunityCard { id: string; name: string; avatar: string | null; memberCount: number; holders: number; totalUsd: number; joinMode: 'open' | 'approval'; gated: boolean; official?: boolean }
-/** 币详情页「持币最多的社区」前 3 名（官方社区不单独成块，上榜时 official = true） */
+/** Coin detail page's top 3 "communities holding the most" (official communities don't get their own block; official = true when ranked) */
 export interface TokenCommunities { top: CommunityCard[] }
-// perp 的账户权益来自 Hyperliquid；来源不可用时保持 null。
-export interface FlyTick { ts: number; tick: number; equity: number; accountEquity?: number | null; equitySource?: string; pnlDelta: number | null; product?: string; symbol?: string; chain?: string; token?: string; price?: number; execution: string; /** 交易进程写的原因（暂停时说明为什么暂停） */ executionReason?: string | null; changedEdges: number; neural: { side?: string; left_hz?: number; right_hz?: number; difference_hz?: number; gate_spikes?: number; total_spikes?: number; KC_spikes?: number; reward_spikes?: number; aversive_spikes?: number; stimulus?: string } }
-/** 自动找币（2026-09-27）：小精灵自己从热门 / 最新里挑币，最多 5 条链 */
+// Perp account equity comes from Hyperliquid; stays null when the source is unavailable.
+export interface FlyTick { ts: number; tick: number; equity: number; accountEquity?: number | null; equitySource?: string; pnlDelta: number | null; product?: string; symbol?: string; chain?: string; token?: string; price?: number; execution: string; /** The reason written by the trading process (explains why when paused) */ executionReason?: string | null; changedEdges: number; neural: { side?: string; left_hz?: number; right_hz?: number; difference_hz?: number; gate_spikes?: number; total_spikes?: number; KC_spikes?: number; reward_spikes?: number; aversive_spikes?: number; stimulus?: string } }
+/** Auto coin discovery (2026-09-27): the sprite picks coins from hot / new listings itself, max 5 chains */
 export interface FlyAutoPick { source: 'hot' | 'new' | 'both'; chains: string[] }
 export interface FlyParams { autoPick?: FlyAutoPick | null; tokens: { chain: string; address: string; symbol: string }[]; thresholdHz: number; learning: boolean; neuralMs: number; cadenceMin: number; budget: number; orderLimit: number; lossStop: number; leverage: number; market: 'spot' | 'perp'; senses?: ('funding' | 'oi')[]; decoderBaseline?: number }
 export type FlyPlan = 'basic' | 'pro'
-export type FlyMode = 'pending' | 'confirm' | 'perp'  // 没有纸面：pending = 领养了但还没选交易方式，worker 不派单
-/** 合约逐笔确认（2026-09-28）：主人电脑端在线、开了「每笔交易先经我确认」时，小精灵的合约单先等主人批准（服务器 fly_perp_asks，10 分钟有效） */
+export type FlyMode = 'pending' | 'confirm' | 'perp'  // No paper: pending = adopted but no trading mode chosen yet — the worker assigns no orders
+/** Per-order perps confirmation (2026-09-28): when the owner is online on desktop and has "confirm each trade with me" on, the sprite's perps orders wait for the owner's approval (server fly_perp_asks, valid 10 minutes) */
 export interface FlyAsk { id: string; flyId: string; flyName: string; side: 'BUY' | 'SELL'; coin: string; action: 'open' | 'close'; price: number; marginUsd: number; leverage: number; notional: number; status: string; createdAt: number; expiresAt: number }
-export interface FlyProposal { id: string; flyId: string; flyName: string; side: 'buy' | 'sell'; symbol: string; chain: string; token: string; usd: number; price: number | null; expiresAt: number; /** 小精灵自己说的话（大模型生成，可能没有） */ say?: string | null; sayEn?: string | null; /** half = 翻倍出本（卖一半拿回本金） */ kind?: string | null }
+export interface FlyProposal { id: string; flyId: string; flyName: string; side: 'buy' | 'sell'; symbol: string; chain: string; token: string; usd: number; price: number | null; expiresAt: number; /** The sprite's own words (LLM-generated, may be absent) */ say?: string | null; sayEn?: string | null; /** half = double-then-free-ride (sell half to recover principal) */ kind?: string | null }
 export interface FlyPlanDef { price: number; slots: number; minCadence: number; label: string }
 export type HoldStyle = 'quick' | 'double' | 'diamond'
-export interface FlyPrefs { askWhenOnline: boolean; autoApproveUsd: number; dailyStopUsd: number; publicPnl: boolean; publicPositions: boolean; /** 现货持有方式（钻石手三档）：快进快出 / 翻倍出本 / 钻石手 */ holdStyle?: HoldStyle }
-/** Zalien 卡（2026-09-27）：free = 从没领过、领的时候送 1 个月；idle = 免费月已用、现在空闲；busy = 上面挂着果蝇 */
+export interface FlyPrefs { askWhenOnline: boolean; autoApproveUsd: number; dailyStopUsd: number; publicPnl: boolean; publicPositions: boolean; /** Spot holding styles (three diamond-hand tiers): quick in-out / double-then-free-ride / diamond hands */ holdStyle?: HoldStyle }
+/** Zalien card (2026-09-27): free = never claimed, claiming grants 1 month; idle = free month used up, currently idle; busy = a fly is running on it */
 export interface ZalienCard { tokenId: number; name: string; image: string; status: 'free' | 'idle' | 'busy'; fly: { id: string; name: string; mine: boolean; paidUntil: number | null; releaseAt: number | null } | null }
 export interface ZalienCards { cards: ZalienCard[]; evmAddresses: number; liveFlies: number; maxFlies: number; contract: string }
-export interface Fly { /** 只给主人：现货确认模式下没批、过期作废的交易申请次数（上次看过之后，2026-10-04） */ missedAsks?: number; autoTokens?: { chain: string; address: string; symbol: string }[]; nftToken?: number | null; /** 主人现在还持有这张 Zalien（服务器 60 秒持有快照；null = 没绑卡或暂时不知道） */ nftHolder?: boolean | null; releaseAt?: number | null; prefs?: Partial<FlyPrefs>; pnlHidden?: boolean; activated: boolean; realEquity: number | null; realAnchor: number | null; realizedTrades: number | null; turnover: number | null; plan: FlyPlan; paidUntil: number | null; expired: boolean; mode: FlyMode; leverage: number; marginUsd: number; agreementAt: number | null; /** 同意的是不是当前版本的真金协议 */ agreementCurrent?: boolean; perp: { mainAddress: string } | null; id: string; owner: string; ownerNickname: string | null; ownerAvatar: string | null; address: string; name: string; params: FlyParams; paused: boolean; tick: number; equity: number | null; cash: number | null; positions: Record<string, number>; halted: string | null; lastTickAt: number | null; createdAt: number; followers: number; online: boolean; pnl: number | null; frameUrl: string | null; ticks?: FlyTick[] }
-/** key / params：2026-09-26 起服务端带模板（简体原文）和参数，前端按界面语言渲染；老通知只有 text */
+export interface Fly { /** Owner only: count of trade requests that went unapproved and expired-void under spot confirm mode (since last viewed, 2026-10-04) */ missedAsks?: number; autoTokens?: { chain: string; address: string; symbol: string }[]; nftToken?: number | null; /** The owner still holds this Zalien (server 60-second holding snapshot; null = no card bound or temporarily unknown) */ nftHolder?: boolean | null; releaseAt?: number | null; prefs?: Partial<FlyPrefs>; pnlHidden?: boolean; activated: boolean; realEquity: number | null; realAnchor: number | null; realizedTrades: number | null; turnover: number | null; plan: FlyPlan; paidUntil: number | null; expired: boolean; mode: FlyMode; leverage: number; marginUsd: number; agreementAt: number | null; /** Whether the agreed agreement is the current real-money version */ agreementCurrent?: boolean; perp: { mainAddress: string } | null; id: string; owner: string; ownerNickname: string | null; ownerAvatar: string | null; address: string; name: string; params: FlyParams; paused: boolean; tick: number; equity: number | null; cash: number | null; positions: Record<string, number>; halted: string | null; lastTickAt: number | null; createdAt: number; followers: number; online: boolean; pnl: number | null; frameUrl: string | null; ticks?: FlyTick[] }
+/** key / params: since 2026-09-26 the server sends a template (Simplified Chinese source) plus params, and the client renders per UI language; old notifications only have text */
 export interface Notification { id: number; type: string; actor: string | null; actorNickname: string | null; actorAvatar: string | null; ref: string | null; text: string; key?: string; params?: Record<string, string | number> | null; read: boolean; createdAt: number }
-export interface Member extends Profile { role: 'owner' | 'admin' | 'member'; joinedAt: number; /** 禁言到期时间（毫秒），没被禁言没有这个字段 */ mutedUntil?: number }
+export interface Member extends Profile { role: 'owner' | 'admin' | 'member'; joinedAt: number; /** Mute expiry (ms); absent when not muted */ mutedUntil?: number }
 export interface ChatMessage { id: string; groupId: string; from: string; text: string; ts: number; replyTo?: string; mentions?: string[]; kind?: 'text' | 'image' | 'video' | 'voice' | 'tip' | 'system'; meta?: Record<string, unknown> }
 /**
- * legacy：旧版客户端发出的，服务器上没有发件人自己那份密文；undecryptable：密文解不开（不是给这个钱包的）；
- * locked：网页版 0x4 插件锁着、这条还没解密（同时也是 undecryptable，不存本机、不 ack），插件解锁后重新拉
+ * legacy: sent by an old client — the server has no copy of the sender's own ciphertext; undecryptable: the ciphertext can't be decrypted (not for this wallet);
+ * locked: web 0x4 extension is locked and this message isn't decrypted yet (also undecryptable — not stored locally, not acked); re-pulled after the extension unlocks
  */
 export interface DmMessage { id: string; from: string; to: string; text: string; ts: number; failed?: boolean; legacy?: boolean; undecryptable?: boolean; locked?: boolean }
-/** 私信会话对方的公开资料（会话列表用） */
+/** The DM conversation peer's public profile (for the conversation list) */
 export interface DmPeer { nickname: string | null; avatar: string | null; evmAddress: string | null; encPub: string | null }
 
 let token: string | null = null
@@ -82,49 +82,49 @@ export const setToken = (t: string | null) => { token = t }
 export const getToken = () => token
 
 /**
- * 网页版没钱包时的写操作拦截（desktop/walletGate.ts 注册）：返回 true = 已打开钱包入口，这次请求不发。
- * 登录接口不会被拦（它只在钱包解锁后调用，那时拦截函数返回 false），手机 App 不注册。
+ * Web write-op interception when there's no wallet (registered in desktop/walletGate.ts): returning true = the wallet entry is already open, this request is not sent.
+ * The login endpoint is never intercepted (it's only called after the wallet unlocks, when the interceptor returns false); the phone app doesn't register it.
  */
 let writeGuard: (() => boolean) | null = null
 export function setWriteGuard(fn: (() => boolean) | null) { writeGuard = fn }
 /**
- * 只靠手机扫码登录的网页版做了要连钱包的事（动钱、改交易、私信…），服务器回 403 + code WALLET_REQUIRED（server/src/webQrScope.ts）：
- * 直接弹出连接钱包（desktop/walletGate.ts 注册），不报红色错误。连上钱包后这些功能都能用
+ * Web logged in via phone QR scan only, attempting something that needs a wallet (moving money, changing trades, DMs…): the server returns 403 + code WALLET_REQUIRED (server/src/webQrScope.ts):
+ * pop the wallet-connect flow directly (registered in desktop/walletGate.ts), no red error. Once a wallet is connected, all these features work.
  */
 let walletRequired: (() => void) | null = null
 export function setWalletRequiredHandler(fn: (() => void) | null) { walletRequired = fn }
 
-/** anonymous：登录接口用。不带令牌、不拦写操作、401 也不当「令牌过期」（两次登录并发时，前一次的 nonce 被后一次作废会回 401，
- *  以前这会触发 onUnauthorized → 清掉后一次刚拿到的令牌再重登，网页版上就是登录窗口一个接一个弹，2026-09-29）
- *  token：这一次请求用指定的令牌、不用全局令牌（登录时先验本机存的令牌，确认钱包没换之前不能把它设成全局的，store/social.ts runLogin） */
+/** anonymous: for the login endpoints. No token, write ops not blocked, and a 401 is not treated as "token expired" (with two concurrent logins, the first login's nonce is invalidated by the second and returns 401 —
+ *  that used to trigger onUnauthorized -> wipe the just-obtained token of the second login and re-login, i.e. login popups one after another on web, 2026-09-29)
+ *  token: this request uses the given token instead of the global one (during login, first verify the locally stored token and confirm the wallet hasn't changed before promoting it to global — store/social.ts runLogin) */
 export async function api<T>(path: string, init: RequestInit = {}, opts: { anonymous?: boolean; token?: string } = {}): Promise<T> {
   const method = (init.method || 'GET').toUpperCase()
   const bearer = opts.anonymous ? null : opts.token ?? token
-  // 名字 WalletRequired + 文案「已取消」：报错过滤认作用户取消，不弹红色提示（lib/errors.ts）
+  // Named WalletRequired with the copy "cancelled": the error filter treats it as user-cancelled, no red toast (lib/errors.ts)
   if (!bearer && !opts.anonymous && method !== 'GET' && writeGuard?.()) throw Object.assign(new Error('已取消'), { name: 'WalletRequired' })
   const res = await fetch(SOCIAL_API + path, {
     ...init,
-    // 没有请求体时不带 content-type，否则 Fastify 会拒绝空 JSON
+    // Omit content-type when there's no body, otherwise Fastify rejects the empty JSON
     headers: { ...(typeof init.body === 'string' ? { 'content-type': 'application/json' } : {}), ...(bearer ? { authorization: `Bearer ${bearer}` } : {}), ...(init.headers || {}) },
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
-    // 带着令牌却被拒 = 令牌过期或作废（登录接口走 anonymous，不会走到这里）
+    // Rejected despite carrying a token = the token expired or was revoked (login endpoints go through anonymous and never reach here)
     if (res.status === 401 && bearer && bearer === token && onUnauthorized) onUnauthorized()
     if (res.status === 403 && (body as { code?: unknown }).code === 'WALLET_REQUIRED' && walletRequired) { walletRequired(); throw Object.assign(new Error('已取消'), { name: 'WalletRequired' }) }
-    // 服务器报错是简体原文，按当前语言翻译（字典里没有就原样）
-    // code：服务器给的机器可读原因（比如会议的 PASSWORD_REQUIRED / PASSWORD_WRONG / KICKED），界面按它分支，不靠比对文案
+    // Server errors come in Simplified Chinese source; translate per current language (as-is when the dictionary lacks it)
+    // code: the machine-readable reason from the server (e.g. meeting PASSWORD_REQUIRED / PASSWORD_WRONG / KICKED) — the UI branches on it, never on comparing copy
     throw Object.assign(new Error(translateServerError((body as { error?: string }).error || `HTTP ${res.status}`)), { status: res.status, code: (body as { code?: unknown }).code })
   }
   return body as T
 }
 
-/** /api/upload 的返回：图片带缩略图和宽高，其它只有 url */
+/** /api/upload response: images come with thumbnail and dimensions; everything else is url-only */
 export interface UploadResult { url: string; kind: string; thumb?: string; width?: number; height?: number }
 
 /**
- * 上传一个文件。传了 onProgress 就走 XMLHttpRequest 拿上传进度（fetch 拿不到），
- * 错误处理和 api() 一样：401 触发重新登录，服务器报错按界面语言翻译。
+ * Upload a file. With onProgress, go through XMLHttpRequest for upload progress (fetch can't provide it);
+ * error handling is the same as api(): 401 triggers re-login, server errors are translated into the UI language.
  */
 export function uploadFile(file: Blob, name?: string, onProgress?: (fraction: number) => void): Promise<UploadResult> {
   const fd = new FormData()
@@ -137,7 +137,7 @@ export function uploadFile(file: Blob, name?: string, onProgress?: (fraction: nu
     xhr.upload.onprogress = (e) => { if (e.lengthComputable && e.total) onProgress(e.loaded / e.total) }
     xhr.onload = () => {
       let body: unknown = {}
-      try { body = JSON.parse(xhr.responseText) } catch { /* 非 JSON 当空 */ }
+      try { body = JSON.parse(xhr.responseText) } catch { /* Non-JSON treated as empty */ }
       if (xhr.status >= 200 && xhr.status < 300) { onProgress(1); resolve(body as UploadResult); return }
       if (xhr.status === 401 && token && onUnauthorized) onUnauthorized()
       reject(Object.assign(new Error(translateServerError((body as { error?: string }).error || `HTTP ${xhr.status}`)), { status: xhr.status }))
@@ -148,25 +148,25 @@ export function uploadFile(file: Blob, name?: string, onProgress?: (fraction: nu
   })
 }
 
-/** 令牌失效时的回调，由社交 store 装上（清掉本机保存的令牌、回到重新验证） */
+/** Callback for expired tokens, installed by the social store (clears the locally saved token, returns to re-verification) */
 let onUnauthorized: (() => void) | null = null
 export const setOnUnauthorized = (fn: (() => void) | null) => { onUnauthorized = fn }
 
 /**
- * 签登录消息，换取 JWT。手机 App 用 Solana 私钥（私钥在哪由签名器决定，App 里在原生模块内）；电脑网页版用插件的 0x 地址（见函数里）。
- * ★只返回令牌、不设成全局令牌（2026-09-29 审查）：签名要等用户在插件里点确认，这期间可能换了号；
- * 以前这里直接 setToken，换号后新地址的登录会接着用上旧地址的令牌。由调用方确认钱包还是原来那个之后再设（store/social.ts runLogin）。
+ * Sign the login message to exchange for a JWT. The phone app signs with the Solana private key (where the key lives is the signer's business; in-app it's inside the native module); the desktop web signs with the extension's 0x address (see inside the function).
+ * Only returns the token — never promotes it to global (2026-09-29 review): signing waits on the user confirming in the extension, during which they might switch accounts;
+ * it used to setToken here directly, so logging in with a new address would keep using the old address's token. The caller promotes it only after confirming the wallet is still the same one (store/social.ts runLogin).
  */
 export async function loginWithWallet(wallet: SolanaWallet | null, evmAddress?: string | null, evmAccount?: Account | null): Promise<{ token: string; user: Profile }> {
   const ext = wallet ? (wallet as SolanaWallet & { signLogin?: (m: string, evmLink?: string) => Promise<{ signature: string; chain: 'solana' | 'evm'; evmSignature?: string }> }).signLogin : undefined
-  // ★网页版（2026-09-30 goat 定）：用插件的 0x 地址登录。服务器发 SIWE（EIP-4361，domain = 网页版域名、Chain ID 56，/api/auth/nonce?surface=web），
-  // 插件用 EVM 私钥签（核对 domain 就是这个网站、地址是自己的），服务器按 evm_proofs 登进证明过这个 0x 的账号（和手机 App 同一个账号），
-  // 没人证明过就是这个 0x 地址本身。令牌带网页标记（不能批准电脑 / 管理后台扫码），由签名命中的 nonce 决定，请求体里不带 surface。
-  // 网页版只连插件，没有插件的 signLogin 就不登录（不退回「网页自己签」的老路）
+  // Web (goat's call 2026-09-30): log in with the extension's 0x address. The server issues SIWE (EIP-4361, domain = the web domain, Chain ID 56, /api/auth/nonce?surface=web),
+  // The extension signs with the EVM private key (verifying the domain is this site and the address is its own); the server logs into this 0x account per the evm_proofs proof (the same account as the phone app),
+  // Nobody has proven this is the 0x address itself. The token carries a web mark (can't approve desktop / admin QR scans), decided by the nonce the signature hit — the request body carries no surface.
+  // Web only connects via the plugin; without the plugin's signLogin there's no login (no falling back to the old "web signs itself" path)
   if (WEB_SURFACE) {
-    // 外部钱包（2026-09-30：MetaMask、Phantom 等）：同一条 SIWE 登录消息，用它的 personal_sign 签（这些钱包自己会核对消息里的网站和当前网页是否一致）
+    // External wallets (2026-09-30: MetaMask, Phantom, etc.): sign the same SIWE login message with their personal_sign (these wallets check the message's site against the current page themselves)
     const external = !!evmAccount && !!externalOf(evmAccount)
-    // domain：网页版现在在哪个域名（0x4-site.vercel.app 或 420.meme），服务器按它出题，插件 / 外部钱包核对它就是当前网站
+    // domain: which domain the web build is currently on (0x4-site.vercel.app or 420.meme) — the server issues the challenge against it, and the extension / external wallets verify it matches the current site
     if ((!ext && !external) || !evmAddress) throw new Error(t('请先连接钱包'))
     const n = await api<{ nonce: string; issuedAt: string; message: string }>(`/api/auth/nonce?address=${evmAddress}&surface=web&domain=${currentWebDomain()}`, {}, { anonymous: true })
     let signature: string
@@ -179,8 +179,8 @@ export async function loginWithWallet(wallet: SolanaWallet | null, evmAddress?: 
   }
   if (!wallet) throw new Error(t('请先连接钱包'))
   const address = wallet.publicKey.toBase58()
-  // 手机 App：Solana 私钥签服务器给的登录消息（SIWS，domain = app.420.meme），原样签。
-  // 传了已解锁的 evmAccount 就用同一个 nonce 顺带签 EVM 关联消息（lib/evmLink），服务器据此认定 EVM 地址归这个账号。EVM 签名失败不挡登录，之后解锁时再补
+  // Phone app: the Solana private key signs the server-issued login message (SIWS, domain = app.420.meme), signed as-is.
+  // With an unlocked evmAccount passed in, sign the EVM link message with the same nonce on the way (lib/evmLink) — the server attributes the EVM address to this account. An EVM signature failure doesn't block login; it's retried at the next unlock
   const n = await api<{ nonce: string; issuedAt: string; message: string }>(`/api/auth/nonce?address=${address}`, {}, { anonymous: true })
   const linkable = !!evmAccount && !!evmAddress && evmAccount.address.toLowerCase() === evmAddress.toLowerCase()
   const sig = bs58.encode(await wallet.signMessage(new TextEncoder().encode(n.message)))
@@ -188,14 +188,14 @@ export async function loginWithWallet(wallet: SolanaWallet | null, evmAddress?: 
   return api<{ token: string; user: Profile }>('/api/auth/verify', { method: 'POST', body: JSON.stringify({ address, chainType: 'solana', signature: sig, issuedAt: n.issuedAt, evmAddress: evmAddress || undefined, evmSignature }) }, { anonymous: true })
 }
 
-/** 已登录状态下补签 EVM 地址证明：拿一次性 nonce → 签 → 提交。返回服务端给的工作人员身份（普通用户 null） */
+/** Backfill the EVM address proof while logged in: fetch a one-time nonce → sign → submit. Returns the staff identity the server assigns (null for regular users) */
 export async function proveEvmLink(solanaAddress: string, account: Account): Promise<{ role: string | null }> {
   const { nonce } = await api<{ nonce: string }>('/api/me/evm-proof/challenge?v=2')
   const signature = await signEvmLink(account, solanaAddress, nonce)
   return api<{ role: string | null }>('/api/me/evm-proof', { method: 'POST', body: JSON.stringify({ evmAddress: account.address, nonce, signature }) })
 }
 
-// 端到端加密私信的实现已移到 src/lib/vault/dm.ts（App 里在原生完成，网页版仍在 JS）
+// The end-to-end encrypted DM implementation has moved to src/lib/vault/dm.ts (done natively in the app, still in JS on web)
 
 // ---------- WebSocket ----------
 
@@ -226,7 +226,7 @@ export class SocialSocket {
     }
     ws.onclose = (ev) => {
       this.status = 'closed'; this.onStatus?.(this.status)
-      // 服务器说这台电脑的登录被下线了（手机上让它下线、或扫码登录太久没操作）：不再重连，按登录失效处理
+      // Server says this computer's session was logged out elsewhere (kicked from the phone, or the QR login sat idle too long): don't reconnect, treat it as an expired session
       if (ev?.code === 4003 && ev.reason === 'revoked') { this.closed = true; onUnauthorized?.(); return }
       if (!this.closed) setTimeout(() => this.connect(), Math.min(15_000, 1000 * 2 ** this.retry++))
     }

@@ -1,12 +1,12 @@
-// 让自己的小精灵看一眼图（2026-10-02 goat 第三批）：POST /api/flies/:id/look?stream=1，服务器边说边推（SSE）。
-// 只读回答，不发任何交易请求。
+// Have your sprite look at a chart (2026-10-02 goat, batch 3): POST /api/flies/:id/look?stream=1, the server narrates while pushing (SSE).
+// Read-only answers — never sends any trading requests.
 import { SOCIAL_API, getToken } from './social'
 import { translateServerError } from './sysText'
 import type { ChartBrief } from './chartBrief'
 
 export interface LookReply { text: string; textEn: string; ts?: number }
 
-/** 把收到的一段段文字切成 SSE 事件：返回解析出来的事件和还没收完的尾巴 */
+/** Split received text chunks into SSE events: returns the parsed events and the not-yet-complete tail */
 export function parseSse(buf: string): { events: Record<string, unknown>[]; rest: string } {
   const parts = buf.split('\n\n')
   const rest = parts.pop() ?? ''
@@ -14,14 +14,14 @@ export function parseSse(buf: string): { events: Record<string, unknown>[]; rest
   for (const p of parts) {
     const line = p.split('\n').find((l) => l.startsWith('data: '))
     if (!line) continue
-    try { const ev = JSON.parse(line.slice(6)) as unknown; if (ev && typeof ev === 'object') events.push(ev as Record<string, unknown>) } catch { /* 半截的不算 */ }
+    try { const ev = JSON.parse(line.slice(6)) as unknown; if (ev && typeof ev === 'object') events.push(ev as Record<string, unknown>) } catch { /* Partial chunks don't count */ }
   }
   return { events, rest }
 }
 
 /**
- * 问一次。onDelta：它说到哪儿回调到哪儿（当前已经说出来的中文 / 英文全文，不是增量）。
- * 失败抛错，文案已经按界面语言翻好；status 是 HTTP 状态码（429 = 问得太频繁，409 = 在休眠，503 = 没回应）
+ * Ask once. onDelta: fires as it speaks (the full Chinese / English text spoken so far, not a delta).
+ * Failures throw with copy already translated to the UI language; status is the HTTP code (429 = asked too often, 409 = dormant, 503 = no response)
  */
 export async function askSpriteLook(flyId: string, brief: ChartBrief, onDelta: (p: LookReply) => void, signal?: AbortSignal): Promise<LookReply> {
   const token = getToken()
@@ -37,7 +37,7 @@ export async function askSpriteLook(flyId: string, brief: ChartBrief, onDelta: (
     const r = ev.reply as { text?: unknown; textEn?: unknown; ts?: unknown } | undefined
     return r && typeof r.text === 'string' ? { text: r.text, textEn: str(r.textEn) || r.text, ts: typeof r.ts === 'number' ? r.ts : undefined } : null
   }
-  // 不是流（老服务器 / 代理把流攒成了一整块）：按普通 JSON 读
+  // Not a stream (old server / proxy buffered the stream into one chunk): read as plain JSON
   if (!res.body || !/event-stream/.test(res.headers.get('content-type') || '')) {
     const r = replyOf(await res.json().catch(() => ({})) as Record<string, unknown>)
     if (!r) throw fail('它现在没有回应，稍后再试', 503)

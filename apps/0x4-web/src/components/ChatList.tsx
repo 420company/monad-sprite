@@ -1,7 +1,7 @@
-// 统一消息列表：群、私信、代币社区，按最后消息排序，带未读数与筛选。
-// 有全员公告时最上面固定一个「0x4 官方」会话（store/announcements），无论别的会话多新都置顶（lib/chatOrder）。
-// 会话数据本来就在本地 store 里（未读数、实时消息都靠它），这里只做分批渲染：先画 30 个，滚到底再画下一批，
-// 几百个会话也不会一次铺满几百行 DOM
+// Unified message list: groups, DMs, token communities — sorted by last message, with unread counts and filters.
+// With an all-member announcement, pin a "0x4 official" conversation on top (store/announcements) — always first no matter how new the others are (lib/chatOrder).
+// Conversation data already lives in the local store (unread counts and realtime messages depend on it); this only batches rendering: 30 first, more on scroll-to-bottom,
+// so hundreds of conversations never lay out hundreds of DOM rows at once
 import { useMemo } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Lock, MessageCircle, RefreshCw, Video, WifiOff } from 'lucide-react'
@@ -26,7 +26,7 @@ export default function ChatList({ loading = false, failed = false, onRetry }: {
   const { status, myGroups, lastMsg, unreadGroup, dms, unreadDm, dmPeers, details } = useSocial()
   const announcements = useAnnouncements((s) => s.list)
   const announceUnread = useAnnouncements((s) => s.unread)
-  // 筛选和已显示条数记在会话里：点进群 / 私信再返回还是原样（lib/pageState）
+  // Filter and shown-count persist across navigation: entering a group / DM and coming back restores the view (lib/pageState)
   const [filter, setFilter] = usePageState<Filter>('chats.filter', 'all', oneOf('all', 'group', 'dm'))
 
   const items = useMemo(() => {
@@ -40,19 +40,19 @@ export default function ChatList({ loading = false, failed = false, onRetry }: {
       const last = list[list.length - 1]
       if (!last) continue
       const lm = parseDmMedia(last.text)
-      // 会话对方的资料来自服务器会话列表；没有时用地址缩写（EVM 优先）
+      // Peer profiles come from the server conversation list; address abbreviation when absent (EVM preferred)
       const p = dmPeers[peer]
       const sub = last.locked ? t('解锁后查看') : last.undecryptable ? t('无法解密') : last.legacy ? t('这条消息在旧版本发送') : lm ? mediaLabel(lm) : last.text
       rows.push({ key: 'd' + peer, to: `/dm/${peer}`, title: p?.nickname || shortId(p?.evmAddress || peer), sub, ts: last.ts, unread: unreadDm[peer] || 0, avatarAddr: peer, avatar: p?.avatar, kind: 'dm' })
     }
     const shown = rows.filter((r) => filter === 'all' || (filter === 'group' ? r.kind !== 'dm' : r.kind === filter))
-    // 「0x4 官方」：只读的公告会话，算在私信一类（「群聊」筛选里不出现）
+    // "0x4 official": a read-only announcement conversation, classed as DM (excluded from the "groups" filter)
     const off = officialPreview(announcements)
     if (off && filter !== 'group') shown.push({ key: 'official', to: '/official', title: t('0x4 官方'), sub: off.sub, ts: off.ts, unread: announceUnread, avatarAddr: 'official', kind: 'announce', official: true, pinned: true })
     return orderChats(shown)
   }, [myGroups, lastMsg, unreadGroup, dms, unreadDm, dmPeers, details, filter, announcements, announceUnread])
 
-  // 每页最多 30 条，切筛选回到第 1 页
+  // 30 per page max; switching filters returns to page 1
   const pager = usePager(items, { reset: filter, size: CHAT_PAGE })
   return (
     <section aria-label={t('会话列表')}>
@@ -63,7 +63,7 @@ export default function ChatList({ loading = false, failed = false, onRetry }: {
       {failed && <div className="page-gutter status-notice" role="status"><WifiOff size={16} className="shrink-0" /><span className="flex-1">{items.length ? t('消息列表暂时无法更新，显示的是已有记录') : t('暂时无法加载会话')}</span><button onClick={onRetry} className="icon-button" aria-label={t('重新加载')} data-tooltip={t('重试')}><RefreshCw size={18} /></button></div>}
       <div className="page-gutter mt-2 divide-y divide-line/60">
         {pager.pageItems.map((r) => (
-          // NavLink：当前打开的会话自动带 aria-current="page"（网页版电脑端左栏据此高亮；手机列表页不会命中）
+          // NavLink: the open conversation automatically gets aria-current="page" (desktop web's left rail highlights off it; phone list pages never match)
           <NavLink key={r.key} to={r.to} className="flex min-h-22 items-center gap-3 py-4 active:bg-card">
             {r.kind === 'announce' ? <OfficialAvatar size={44} /> : <Avatar address={r.avatarAddr} src={r.avatar} name={r.title} size={44} />}
             <div className="min-w-0 flex-1">
@@ -80,7 +80,7 @@ export default function ChatList({ loading = false, failed = false, onRetry }: {
   )
 }
 
-/** 「0x4 官方」的头像：品牌猫头 logo（public/icons/cat.svg），公告页标题栏也用它 */
+/** The "0x4 official" avatar: brand cat-head logo (public/icons/cat.svg), also used in the announcement page's title bar */
 export function OfficialAvatar({ size }: { size: number }) {
   return <span className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-card2" style={{ width: size, height: size }}><img src={`${import.meta.env.BASE_URL}icons/cat.svg`} alt="" width={size * 0.72} height={size * 0.72} draggable={false} /></span>
 }

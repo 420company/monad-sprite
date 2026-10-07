@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-// 震动设置只在原生 App 显示：网页版（app.420.meme）的「通知」面板里没有「震动」和「收到提醒时震动」
+// Vibration settings only show in the native app: the web (app.420.meme) "Notifications" panel has no "Vibration" or "Vibrate on notification"
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 
 vi.hoisted(() => {
-  // jsdom 没有 matchMedia，主题 / 弹层一加载就会调
+  // jsdom has no matchMedia; themes / overlays call it as soon as they load
   if (typeof window !== 'undefined' && !window.matchMedia) {
     window.matchMedia = ((q: string) => ({ matches: false, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia
   }

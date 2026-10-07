@@ -1,11 +1,11 @@
-/* 网页版（VITE_SURFACE=web，420.meme/app）外框样式。设计规范见 docs/WEB_DESIGN.md（2026-09-29 goat 第三轮反馈后重做）：
-   纯深色实底 + 细线面板（不挂流体壁纸、不用毛玻璃）；顶栏铺满全宽、栏目居中；全站 Geist，像素字只留在 logo；
-   交易终端铺满一屏不滚动，其他页面最大宽 1440。只有 html[data-surface="web"] 下生效的规则才会改到共用页面，手机 App 不加载这个属性。 */
+/* Web shell styles (VITE_SURFACE=web, 420.meme/app). Design spec docs/WEB_DESIGN.md (rebuilt after goat's 2026-09-29 third-round feedback):
+   solid dark base + hairline panels (no fluid wallpaper, no frosted glass); top bar spans full width, tabs centered; all Geist, pixel fonts only in the logo;
+   the trading terminal fills one screen without scrolling, other pages max 1440 wide. Only rules under html[data-surface="web"] can touch shared pages; the mobile app never loads that attribute. */
 
-/* ---------- token：网页版两套配色（2026-10-02 goat：午夜黑 / 香芋白，设置里选，lib/theme.ts 写 <html data-theme>）----------
-   下面这块是午夜黑（默认）；香芋白在后面 html:root[data-surface="web"][data-theme="light"] 只改颜色变量。
-   ★网页版样式里不要再写死深色：面板 / 文字 / 线用 --w-*；「在底色上提一点亮 / 压一点暗」的半透明层用 --w-tint-1~4（深色里是白、浅色里是深紫）；
-   压在视频、封面图上的白字、黑色遮罩不算，两种主题都一样。选择器比手机的 :root[data-theme="light"] 更具体，手机的浅色规则不会混进来。 */
+/* ---------- Tokens: two web colorways (2026-10-02 goat: midnight black / taro white, picked in settings, lib/theme.ts writes <html data-theme>) ----------
+   This block is midnight black (default); taro white later overrides only color variables under html:root[data-surface="web"][data-theme="light"].
+   ★ Never hardcode dark colors in web styles: use --w-* for panels / text / lines; translucent "lift lighter / press darker over the base" layers use --w-tint-1~4 (white in dark, deep purple in light);
+   white text and black scrims over videos/cover images don't count — they're identical in both themes. Selectors are more specific than the mobile :root[data-theme="light"], so mobile light rules never leak in. */
 html:root[data-surface="web"] {
   color-scheme: dark;
   --w-bg: #07080b;
@@ -29,7 +29,7 @@ html:root[data-surface="web"] {
   --w-font: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
   --w-bar-h: 52px;
   --w-status-h: 28px;
-  /* 共用组件（按钮、列表、弹层）读的是 --color-*：在网页版换成同一套实色 */
+  /* Shared components (buttons, lists, sheets) read --color-*: swapped to the same solid set on web */
   --color-bg: var(--w-bg);
   --color-card: var(--w-panel);
   --color-card2: var(--w-raised);
@@ -41,7 +41,7 @@ html:root[data-surface="web"] {
   --color-accent: var(--w-accent);
   --font-sans: var(--w-font);
 }
-/* 香芋白：淡芋紫的底、白色面板、深紫字，主色换成白底上看得清的紫 */
+/* Taro white: pale taro base, white panels, deep purple text; the accent becomes a purple legible on white */
 html:root[data-surface="web"][data-theme="light"] {
   color-scheme: light;
   --w-bg: #f5f2fb;
@@ -64,25 +64,25 @@ html:root[data-surface="web"][data-theme="light"] {
   --w-shade: rgb(29 23 51 / .32);
 }
 html[data-surface="web"] body { font-family: var(--w-font); background: var(--w-bg); color: var(--w-fg); }
-/* 网页版不挂流体背景 */
+/* No fluid background on web */
 html[data-surface="web"] .liquid-bg { display: none; }
-/* 共用页面里的毛玻璃在网页版换成实色面板 */
+/* Frosted glass in shared pages becomes solid panels on web */
 html[data-surface="web"] .glass, html[data-surface="web"] .glass-lite { background: var(--w-panel); -webkit-backdrop-filter: none; backdrop-filter: none; border: 1px solid var(--w-line); box-shadow: none; }
 html[data-surface="web"] .number, html[data-surface="web"] .tabular-nums { font-variant-numeric: tabular-nums; }
-/* 网页版滚动条：细、深色（手机 App 全局隐藏滚动条，电脑上要看得到可以滚） */
+/* Web scrollbars: thin, dark (the mobile app hides scrollbars globally; on desktop users need to see them to scroll) */
 html[data-surface="web"] * { scrollbar-width: thin; scrollbar-color: var(--w-tint-4) transparent; }
 
-/* 手机 App 在宽屏上把 #root 限成 480 宽居中（index.css）；网页版要铺满 */
+/* The mobile app caps #root at 480 wide centered on wide screens (index.css); web fills the width */
 @media (min-width: 600px) {
   html[data-surface="web"] #root { max-width: none; margin-inline: 0; border-inline: 0; }
 }
 
-/* ---------- 外框 ---------- */
+/* ---------- Shell ---------- */
 .desk { position: relative; min-height: 100dvh; display: flex; flex-direction: column; background: var(--w-bg); }
 .desk-bar { position: sticky; top: 0; z-index: 40; height: var(--w-bar-h); flex: none; background: var(--w-bg); border-bottom: 1px solid var(--w-line); }
 .desk-bar-in { height: 100%; padding: 0 20px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; }
 .desk-brand-link { justify-self: start; display: inline-flex; border-radius: 8px; }
-/* 猫和像素字都贴底：猫图标去了上下留白，字是 7 行点阵，底边就是最后一行 */
+/* Cat and pixel text both bottom-aligned: the cat icon has its top/bottom padding removed, the type is a 7-row pixel matrix, so its bottom edge is the last row */
 .desk-brand { display: inline-flex; align-items: flex-end; gap: 8px; }
 .desk-brand-cat { display: block; height: 22px; width: calc(22px * 114 / 82); }
 .desk-brand-word { display: block; height: 14px; width: calc(14px * 17 / 7); }
@@ -100,7 +100,7 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 .desk-lang button { padding: 6px 8px; border-radius: 6px; color: var(--w-mute); letter-spacing: inherit; transition: color .15s, background .15s; }
 .desk-lang button:hover { color: var(--w-fg); }
 .desk-lang button[aria-pressed="true"] { color: var(--w-fg); background: var(--w-hover); }
-/* 午夜黑 / 香芋白切换（和语言切换同一行、同一种外观） */
+/* Midnight black / taro white switch (same row and same look as the language switch) */
 .desk-theme { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--w-mute); background: var(--w-raised); border: 1px solid var(--w-line); transition: color .15s, background .15s; }
 .desk-theme:hover { color: var(--w-fg); background: var(--w-hover); }
 .desk-icon { position: relative; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; color: var(--w-mute); transition: color .15s, background-color .15s; }
@@ -109,7 +109,7 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 .desk-me:hover, .desk-me.on, .desk-me[aria-expanded="true"] { border-color: var(--w-line-2); }
 .desk-me-addr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desk-offline { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 16px; font-size: 12px; color: var(--color-warning); border-bottom: 1px solid var(--w-line); background: var(--w-panel); }
-/* 官方公告条（DeskNotices.tsx）：和网页同一套深色，不用彩色底；标题居中，右边收起 */
+/* Official notice bar (DeskNotices.tsx): same dark set as the web shell, no colored base; title centered, collapse on the right */
 .desk-notice { position: relative; display: flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 44px; border-bottom: 1px solid var(--w-line); background: var(--w-panel); }
 .desk-notice-main { display: inline-flex; align-items: center; gap: 8px; max-width: min(880px, 100%); min-width: 0; padding: 7px 10px; border-radius: 6px; font: 500 12.5px/1.3 var(--w-font); color: var(--w-fg); transition: background-color .15s; }
 .desk-notice-main:hover { background: var(--w-raised); }
@@ -121,7 +121,7 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 @keyframes desk-notice-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .desk-notice-title { animation: none; } }
 
-/* 底部状态栏：真实连接状态（行情推送、社区服务、钱包） */
+/* Bottom status bar: real connection status (market feed, community service, wallet) */
 .desk-status { position: sticky; bottom: 0; z-index: 30; flex: none; height: var(--w-status-h); display: flex; align-items: center; gap: 18px; padding: 0 16px; background: var(--w-bg); border-top: 1px solid var(--w-line); font: 500 11px/1 var(--w-font); color: var(--w-mute); }
 .desk-status-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .desk-status-item i { width: 6px; height: 6px; border-radius: 50%; background: var(--w-faint); }
@@ -131,38 +131,38 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 .desk-status-gap { flex: 1; }
 .desk-status button.desk-status-item:hover { color: var(--w-fg); }
 
-/* ---------- 内容区 ---------- */
+/* ---------- Content area ---------- */
 .desk-main { flex: 1; width: 100%; margin: 0 auto; padding: 20px 24px 48px; }
 .desk-wide, .desk-narrow { max-width: 1488px; }
-/* 交易终端（现货、币详情、合约）：铺满全宽，高度正好一屏（减顶栏和状态栏），整页不滚，面板各自滚 */
+/* Trading terminals (spot, token detail, perps): full width, exactly one screen tall (minus top bar and status bar); the whole page doesn't scroll, panels scroll individually */
 .desk-term .desk-main { max-width: none; padding: 6px; height: calc(100dvh - var(--w-bar-h) - var(--w-status-h)); min-height: 620px; overflow: hidden; }
-/* 群聊 / 私信 / 直播间 / 会议：内容区固定高度，页面自己滚 */
+/* Group chat / DMs / live rooms / meetings: fixed-height content area, the page scrolls itself */
 .desk-chat { height: 100dvh; overflow: hidden; }
 .desk-chat .desk-main { flex: 1; min-height: 0; padding: 0; display: flex; flex-direction: column; }
 .desk-chat .desk-main > * { min-height: 0; }
 .desk-chat .desk-main.desk-wide { max-width: none; }
 
-/* 创建 / 导入 / 解锁：屏幕中间一个手机宽度 */
+/* Create / import / unlock: one phone-width column in the screen center */
 .desk-auth { max-width: 480px; margin: 0 auto; min-height: 100dvh; }
 
-/* ---------- 现货：左持仓 / 自选，右闪兑跨链 ---------- */
+/* ---------- Spot: left positions / favorites, right swap & cross-chain ---------- */
 .spot-desk { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 28px; align-items: start; padding-top: 12px; }
 .spot-main { position: sticky; top: 84px; border-radius: 26px; background: var(--color-card); box-shadow: inset 0 0 0 1px var(--color-line); padding-bottom: 16px; }
 .spot-side { min-width: 0; }
 
-/* ---------- 币详情：左 K 线，右交易面板 ---------- */
+/* ---------- Token detail: left candles, right trade panel ---------- */
 .tok-desk { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
 .tok-main { min-width: 0; }
 .tok-side { position: sticky; top: 84px; margin-top: 16px; padding: 18px; border-radius: 24px; background: var(--color-card); box-shadow: inset 0 0 0 1px var(--color-line); }
 .tok-side-head { display: flex; align-items: center; gap: 10px; font-family: var(--w-font); }
 @media (min-width: 900px) { .tok-bar { display: none !important; } }
 
-/* ---------- 合约：左 K 线 + 仓位，右下单（粘住） ---------- */
+/* ---------- Perps: left candles + positions, right order entry (sticky) ---------- */
 .perp-desk { display: grid; grid-template-columns: minmax(0, 1fr) 380px; column-gap: 20px; align-items: start; }
 .perp-desk > * { grid-column: 1; }
 .perp-desk > .perp-order { grid-column: 2; grid-row: 1 / span 40; position: sticky; top: 84px; margin-top: 0; }
 
-/* ---------- 窄屏（手机浏览器打开网页版）：栏目放到底部胶囊栏 ---------- */
+/* ---------- Narrow screens (web app opened in a phone browser): tabs move to the bottom capsule bar ---------- */
 .desk-tabbar-floor { display: none; }
 @media (max-width: 899px) {
   .desk-bar-in { grid-template-columns: auto 1fr auto; padding: 0 14px; }
@@ -180,20 +180,20 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
   .perp-desk > .perp-order { position: static; }
 }
 
-/* ---------- 没连钱包（2026-09-29 goat：网页版不做创建 / 导入 / 解锁，钱包只连 0x4 浏览器插件） ---------- */
-/* 顶栏右边的「连接 0x4 Wallet」 */
+/* ---------- No wallet connected (2026-09-29 goat: web has no create / import / unlock; wallets only connect to the 0x4 browser extension) ---------- */
+/* The "Connect 0x4 Wallet" on the top bar's right */
 .desk-connect { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 8px; color: #0c0e13; background: var(--pearl); font: 600 13px/1 var(--w-font); white-space: nowrap; transition: filter .15s; }
 .desk-connect:hover { filter: brightness(1.06); }
-/* 要钱包的页面换成的占位 */
+/* Placeholder swapped in for pages that need a wallet */
 .desk-need { max-width: 460px; margin: 12vh auto 0; padding: 36px 32px 32px; border-radius: 14px; text-align: center; background: var(--w-panel); border: 1px solid var(--w-line); display: flex; flex-direction: column; align-items: center; }
 .desk-need.is-compact { margin: 0; max-width: none; padding: 32px 24px; }
 .desk-need-ic { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; color: #0c0e13; background: linear-gradient(135deg, #ffd9c2, #dccdff 48%, #b6ecff); }
 .desk-need-title { margin-top: 18px; font: 600 20px/1.3 var(--w-font); }
 .desk-need-text { margin-top: 10px; font-size: 14px; line-height: 1.6; color: var(--color-muted); max-width: 34ch; }
 .desk-need-btn { margin-top: 22px; min-width: 220px; }
-/* 「连接 0x4 Wallet」面板：深色实底遮罩（不用整屏毛玻璃，省显卡） */
+/* "Connect 0x4 Wallet" panel: dark solid scrim (no full-screen frosted glass, cheaper on the GPU) */
 .desk-gate { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: var(--w-shade); animation: desk-fade .22s ease both; }
-/* 扫码登录卡片顶上的 0x4 App / 其他钱包 切换（2026-10-03） */
+/* The 0x4 App / other wallets switch atop the QR-login card (2026-10-03) */
 .cw-scan-seg { display: flex; margin: -6px auto 14px; width: fit-content; }
 .cw-scan-seg button { min-width: 96px; justify-content: center; display: inline-flex; }
 .desk-gate-card { position: relative; width: min(100%, 420px); padding: 34px 30px 28px; border-radius: 14px; text-align: center; color: var(--w-fg); background: var(--w-panel); border: 1px solid var(--w-line-2); box-shadow: 0 40px 100px rgb(0 0 0 / .6); display: flex; flex-direction: column; align-items: center; animation: desk-pop .32s cubic-bezier(.2, .8, .2, 1) both; }
@@ -203,7 +203,7 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 .desk-gate-title { margin-top: 20px; font: 600 22px/1.3 var(--w-font); }
 .desk-gate-text { margin-top: 10px; font-size: 15px; line-height: 1.6; color: rgb(236 231 255 / .68); }
 .desk-gate-btn { margin-top: 24px; width: 100%; }
-/* ---- 连接钱包面板（2026-09-30：0x4 Wallet 推荐 + 其它钱包 + 手机扫码） ---- */
+/* ---- Connect-wallet panel (2026-09-30: 0x4 Wallet recommended + other wallets + phone QR scan) ---- */
 .cw-card { width: min(100%, 400px); padding: 26px 22px 22px; align-items: stretch; text-align: left; }
 .cw-title { font: 600 19px/1.3 var(--w-font); padding: 0 34px 0 4px; }
 .cw-sub { margin-top: 14px; text-align: center; font-size: 13px; color: var(--w-mute); }
@@ -213,7 +213,7 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 .cw-ox4 { position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px; margin-top: 18px; padding: 16px; border-radius: 14px; text-align: left; color: var(--w-fg);
   background: linear-gradient(var(--w-raised), var(--w-raised)) padding-box, linear-gradient(120deg, #ffd9c2, #dccdff 50%, #b6ecff) border-box; border: 1px solid transparent; transition: transform .15s, box-shadow .2s; }
 .cw-ox4:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 40px rgb(205 189 255 / .18); }
-/* 没装任何其它钱包：0x4 Wallet 放大、竖着排 */
+/* No other wallets installed: 0x4 Wallet enlarged, stacked vertically */
 .cw-ox4.is-solo { flex-direction: column; text-align: center; gap: 12px; padding: 26px 20px 22px; }
 .cw-ox4.is-solo .cw-cat { width: 84px; height: 84px; border-radius: 24px; }
 .cw-ox4.is-solo .cw-ox4-main { align-items: center; }
@@ -240,7 +240,7 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 .cw-soon .cw-cat { width: 84px; height: 84px; margin-top: 18px; border-radius: 24px; }
 .cw-soon-tag { margin-top: 8px; font-size: 14px; font-weight: 600; letter-spacing: .04em; background: linear-gradient(90deg, #ffd9c2, #dccdff 55%, #b6ecff); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
-/* ---- 0x4 Wallet 专属提示卡（外部钱包时替换合约 / 私信 / 小精灵全自动 / 比特币） ---- */
+/* ---- 0x4 Wallet exclusive hint card (replaces perps / DMs / sprite auto-trading / Bitcoin when an external wallet is used) ---- */
 .ox4-only { position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 440px; margin: 10vh auto 0; padding: 40px 32px 30px; border-radius: 20px; color: var(--w-fg);
   background: linear-gradient(var(--w-panel), var(--w-panel)) padding-box, linear-gradient(140deg, rgb(255 217 194 / .7), rgb(220 205 255 / .7) 50%, rgb(182 236 255 / .7)) border-box; border: 1px solid transparent; box-shadow: 0 30px 90px rgb(0 0 0 / .45); animation: desk-pop .32s cubic-bezier(.2, .8, .2, 1) both; }
 .ox4-only.is-compact { margin: 0 auto; box-shadow: none; }
@@ -252,21 +252,21 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 .ox4-only-btn { position: relative; margin-top: 26px; min-width: 220px; gap: 8px; }
 .ox4-only-link { position: relative; margin-top: 14px; font-size: 13px; color: var(--w-mute); }
 .ox4-only-link:hover { color: var(--w-fg); text-decoration: underline; }
-/* 资产页地址条里的「比特币 · 0x4 Wallet 专属」 */
+/* The "Bitcoin · 0x4 Wallet exclusive" in the assets page address bar */
 .wc-addr.is-ox4 span { font-size: 12px; background: linear-gradient(90deg, #ffd9c2, #cdbdff); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 600; }
 @keyframes desk-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes desk-pop { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
 @media (max-width: 899px) { .desk-connect span { display: none; } .desk-connect { width: 38px; padding: 0; justify-content: center; } }
 @media (prefers-reduced-motion: reduce) { .desk-gate, .desk-gate-card, .ox4-only { animation: none; } .cw-ox4 { transition: none; } }
 
-/* ---------- 从官网「Into the 0x4」过来的进场：满屏的光从按钮位置散开，页面从微放大落定（desktop/warp.js 在第一帧前加 .arrive） ---------- */
+/* ---------- Entrance from the website's "Into the 0x4": full-screen light radiates from the button's position, the page settles from a slight zoom (desktop/warp.js adds .arrive before the first frame) ---------- */
 .arrive .app-shell { animation: desk-arrive 1.1s cubic-bezier(.2, .7, .2, 1) .15s both; }
 .arrive::after { content: ""; position: fixed; inset: 0; z-index: 100; pointer-events: none; background: radial-gradient(circle at var(--warp-at, 50% 50%), #ffffff 0%, #ece6ff 35%, #cdbdff 70%, #b7a6f0 100%); transform-origin: var(--warp-at, 50% 50%); animation: desk-portal 1.15s cubic-bezier(.33, 0, .2, 1) both; }
 @keyframes desk-arrive { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
 @keyframes desk-portal { 0%, 18% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.3); } }
 @media (prefers-reduced-motion: reduce) { .arrive .app-shell, .arrive::after { animation: none; } .arrive::after { display: none; } }
 
-/* 顶栏钱包胶囊：头像右下角挂当前钱包的小图标（2026-09-30 外部钱包也能连） */
+/* Top-bar wallet capsule: a small icon of the current wallet hangs at the avatar's bottom-right (2026-09-30: external wallets can connect too) */
 .desk-me-av { position: relative; display: inline-flex; flex: none; isolation: isolate; margin-right: 3px; }
 .cw-waiting { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: rgb(205 189 255 / .08); border: 1px solid rgb(205 189 255 / .22); font-size: 13px; }
 .cw-waiting span:nth-child(2) { flex: 1; }
@@ -280,15 +280,15 @@ html[data-theme="light"] .desk-brand-word { --bw-1: #f0864f; --bw-2: #7656ef; --
 .desk-menu-ox4 { color: var(--w-accent); }
 .desk-menu-ox4 .desk-wallet-ic { width: 16px; height: 16px; }
 
-/* 社区红点：有人在直播（2026-10-01 社区合并）；底部状态栏的法律链接 */
+/* Community red dot: someone is live (2026-10-01 community merge); legal links in the bottom status bar */
 .desk-dot.is-live { background: #ff3b5c; box-shadow: 0 0 0 3px rgb(255 59 92 / .18); }
 .desk-status-legal { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 22px; font-size: 11.5px; }
 .desk-status-link { color: var(--w-mute); transition: color .15s; white-space: nowrap; }
 .desk-status-link:hover { color: var(--w-fg); }
 
-/* 直播间送礼侧栏（2026-10-02）：贴在视频右边，不盖画面 */
+/* Live-room gifting sidebar (2026-10-02): hugs the video's right side, never covers it */
 .gift-dock { width: 340px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--w-panel, #0f1016); border-left: 1px solid var(--w-line); animation: gift-dock-in .22s ease-out; }
 @keyframes gift-dock-in { from { transform: translateX(16px); opacity: 0 } to { transform: none; opacity: 1 } }
 @media (prefers-reduced-motion: reduce) { .gift-dock { animation: none } }
 
-/* 直播特效面板的样式在 src/effects/effects.css（手机 App 也要用） */
+/* Live effect panel styles live in src/effects/effects.css (the mobile app uses them too) */

@@ -1,8 +1,8 @@
-// 网页版「扫码登录」卡片（2026-10-01 goat：meet.420.meme 下线，会议只留网页版；没装插件的电脑也能登录）。
-// 2026-10-03 goat：「0x4 手机 App 扫码登录」和「其他钱包扫码登录」合成一个「扫码登录」，卡片顶上切换：
-// 0x4 App（我们的手机 App 扫，登录社交身份）/ 其他钱包（别家手机钱包扫，连那个钱包，内容由 WalletRequired 传进来）。
-// 出二维码 → 手机扫码（App 里扫或手机相机扫都行）→ 显示「请在手机上确认」→ 确认后拿网页版令牌登录。过期 / 被拒可以重新获取。
-// 扫码登录只能用社交、会议、直播；转账、交易、送礼要连接钱包（卡片底部说清楚）。
+// Web "Scan login" card (2026-10-01 goat: meet.420.meme retired, meetings stay web-only; computers without the extension can log in too).
+// 2026-10-03 goat: "0x4 mobile app scan login" and "other wallet scan login" merged into one "Scan login", switched at the card top:
+// 0x4 App (scanned by our mobile app, logs in the social identity) / Other wallets (scanned by another mobile wallet, connects that wallet — content passed in via WalletRequired).
+// QR appears → phone scans (in-app scan or phone camera both work) → shows "please confirm on your phone" → confirmed, then log in with the web token. Expired / rejected can be re-issued.
+// Scan login only covers social, meetings, livestreams; transfers, trading, gifting need a connected wallet (stated at the card bottom).
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import QRCode from 'qrcode'
 import { ArrowLeft, RefreshCw, X } from 'lucide-react'
@@ -16,7 +16,7 @@ type View = { k: 'loading' } | { k: 'qr'; img: string; url: string; status: QrLo
 
 export type ScanMode = 'app' | 'wc'
 
-/** 卡片壳：返回 / 关闭、标题「扫码登录」、顶上的 0x4 App / 其他钱包 切换（没配其他钱包就不显示切换） */
+/** Card shell: back / close, the "Scan login" title, the top 0x4 App / other-wallet switch (hidden when no other wallet is configured) */
 export function ScanLoginCard({ mode, onMode, hasWc, onBack, onClose, children }: { mode: ScanMode; onMode: (m: ScanMode) => void; hasWc: boolean; onBack: () => void; onClose: () => void; children: ReactNode }) {
   return (
     <div className="desk-gate-card cw-card" role="dialog" aria-modal="true" aria-labelledby="cw-app-title" data-testid="qr-login" data-mode={mode}>
@@ -34,7 +34,7 @@ export function ScanLoginCard({ mode, onMode, hasWc, onBack, onClose, children }
   )
 }
 
-/** 0x4 App 扫码的内容：二维码 + 状态 */
+/** 0x4 App scan content: QR code + status */
 export function QrLoginBody({ onDone }: { onDone: () => void }) {
   const [view, setView] = useState<View>({ k: 'loading' })
   const [round, setRound] = useState(0)
@@ -72,7 +72,7 @@ export function QrLoginBody({ onDone }: { onDone: () => void }) {
   return (
     <>
       <div className="cw-qr" aria-busy={view.k === 'loading'}>
-        {/* data-qr = 二维码里的内容（和图上的一样，屏幕上本来就看得到；走查脚本用它扮演手机） */}
+        {/* data-qr = the QR's content (same as on the image, already visible on screen; walkthrough scripts use it to play the phone) */}
         {view.k === 'qr' && <img src={view.img} alt={t('登录二维码')} data-qr={view.url} style={scanned ? { opacity: 0.18 } : undefined} />}
         {view.k === 'loading' && <span className="tx-spin" aria-hidden="true" />}
         {view.k === 'failed' && (

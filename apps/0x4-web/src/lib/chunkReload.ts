@@ -1,28 +1,28 @@
-// 发新版后，开着的旧页面再去拿旧版本的分包文件会失败（每次发布只保留新文件名）：
-// 「TypeError: Failed to fetch dynamically imported module …/MeetingRoom-xxxx.js」（2026-10-02 goat 创建会议时撞上）。
-// 遇到这类错误就原地刷新一次拿新版本，地址不变（还在原来要去的会议 / 页面）；30 秒内又失败（比如断网）就不再刷，交给兜底页。
+// After a new release, an open old page fetching the old build's chunk files fails (each release keeps only the new filenames):
+// "TypeError: Failed to fetch dynamically imported module …/MeetingRoom-xxxx.js" (2026-10-02 goat hit this while creating a meeting).
+// On this error, refresh in place once to fetch the new build — the URL stays the same (still the meeting / page you were headed to); if it fails again within 30 seconds (e.g. offline), stop refreshing and hand over to the fallback page.
 
 const KEY = '0x4.chunkReload'
 const WINDOW_MS = 30_000
 
-/** 是不是「分包文件拿不到」这一类错误（各浏览器措辞不同） */
+/** Whether it's a "chunk file unavailable" class of error (wording differs per browser) */
 export function isChunkError(e: unknown): boolean {
   const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e ?? '')
   return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS|Loading chunk [\w-]+ failed|ChunkLoadError/i.test(msg)
 }
 
-/** 刷新一次拿新版本；30 秒内已经刷过一次就不刷（返回 false，由调用方显示错误） */
+/** Reload once to pick up the new version; skip if already reloaded within 30s (return false, caller shows the error) */
 export function reloadForNewVersion(): boolean {
   try {
     const last = Number(sessionStorage.getItem(KEY) || 0)
     if (Date.now() - last < WINDOW_MS) return false
     sessionStorage.setItem(KEY, String(Date.now()))
-  } catch { /* 存储用不了：照样刷一次 */ }
+  } catch { /* Storage unavailable: still refresh once */ }
   location.reload()
   return true
 }
 
-// Vite 预加载依赖失败时发这个事件：拦下来直接刷新，不让错误冒到界面上
+// Vite fires this event when preload of a dependency fails: intercept it and refresh directly, never letting the error surface in the UI
 if (typeof window !== 'undefined') {
   window.addEventListener('vite:preloadError', (e) => { if (reloadForNewVersion()) e.preventDefault() })
 }

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-// 首页今日盈亏与账户勋章（2026-09-29 goat）：
-// ① 余额下面一行：涨绿跌红、零为中性；隐藏余额时金额和百分比一起隐藏；百分比拿不到时只显示金额
-// ② 面板：钱包 / 合约账户分项；合约读不到时不出现合约一行（不显示成 0）；注明起算方式
-// ③ 勋章：费率接口拿到当前账户的等级才显示，VIP 金色、普通账户中性；接口失败或切换了账户都不显示
-// ④ 首页刷新余额后记一次账：登记持有的币（不登记稳定币）、换日时取 0 点价、合约读不到时是 null
+// Home page's today-P&L and account badge (2026-09-29 goat):
+// (1) the line under the balance: green up, red down, neutral zero; hiding the balance hides amount and percentage together; when the percentage is unavailable show only the amount
+// (2) the panel: wallet / perp-account breakdown; when perp data is unreadable the perp row doesn't appear (never shown as 0); the baseline method is noted
+// (3) the badge: shown only when the fee-tier API returns the current account's tier — gold for VIP, neutral for regular accounts; hidden on API failure or account switch
+// (4) after the home page refreshes balances, record once: register held tokens (not stablecoins), take the midnight price at day change, null when perp data is unreadable
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -93,7 +93,7 @@ describe('今日盈亏面板', () => {
     expect(text()).toContain('资产 $47.00')
     expect(text()).toContain('-$3.00')
     expect(text()).toContain('2 项资产从今天首次读取时起算')
-    expect(text()).toContain('合约从北京时间 03:00 起算。') // 按北京时间显示，不按手机时区
+    expect(text()).toContain('合约从北京时间 03:00 起算。') // Display in Beijing time, not the phone's timezone
   })
   it('隐藏余额：面板里的金额也隐藏', () => {
     render(createElement(DayPnlSheet, { open: true, onClose: () => {}, summary: sum(), hidden: true, walletUsd: 1000 }))
@@ -182,7 +182,7 @@ describe('首页记账', () => {
   it('换日：向服务器要 0 点价（EVM 地址小写），拿到的按 0 点价起算', async () => {
     const now = Date.now(), today = startOfDayCst(now)
     localStorage.setItem('0x4.daypnl.v1:Acct111', JSON.stringify({ v: 1, day: today - 86400_000, pnl: 0, base: 0, inflow: 0, outflow: 0, partial: [], pending: {}, last: { '56:0xabc': { q: 10, p: 1 }, '56:0x55d': { q: 100, p: 1, s: 1 } }, t: today - 3600_000 }))
-    // 0 点价接口 2026-09-29 起要登录，走带令牌的 api()
+    // The midnight-price endpoint requires login since 2026-09-29; goes through the tokened api()
     const urls: string[] = []
     apiMock.mockImplementation(async (path: string) => {
       if (path.startsWith('/api/pnl/open')) { urls.push(path); return { day: today, prices: { '56:0xabc': 1.5 } } }
@@ -192,11 +192,11 @@ describe('首页记账', () => {
     await useDayPnl.getState().update()
     expect(urls).toHaveLength(1)
     expect(decodeURIComponent(urls[0])).toContain(`day=${today}&tokens=56:0xabc`)
-    expect(decodeURIComponent(urls[0])).not.toContain('0x55d') // 稳定币按 1 算，不用问
+    expect(decodeURIComponent(urls[0])).not.toContain('0x55d') // Stablecoins count as 1, no lookup needed
     const L = useDayPnl.getState().ledger!
     expect(L.day).toBe(today)
     expect(L.base).toBe(115)
-    expect(L.pnl).toBe(5) // 10 个从 0 点价 1.5 涨到 2
+    expect(L.pnl).toBe(5) // 10 units rising from a midnight price of 1.5 to 2
   })
 
   it('比特币这次没读到（沿用上一次的余额）：不算它（阴性对照：读到了就算）', async () => {

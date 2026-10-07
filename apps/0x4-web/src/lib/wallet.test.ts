@@ -1,8 +1,8 @@
-// 钱包密钥学的测试。
+// Tests for wallet key management.
 //
-// 这是整个产品里出错代价最高的一块：派生路径错一位，用户拿同一套助记词在
-// Phantom / MetaMask 里看到的是另一个地址，会以为币丢了；金库加密错一点，
-// 要么解不开（资产永久锁死），要么被人解开。所以这里测的都是真算法，不打桩。
+// This is the product's highest-cost-of-error area: one wrong derivation-path bit and a user restoring
+// the same mnemonic in Phantom / MetaMask sees a different address and thinks the coins are gone; one wrong bit in vault encryption
+// means either undecryptable (assets locked forever) or decryptable by others. So everything here tests the real algorithms, no stubs.
 import { describe, expect, it } from 'vitest'
 import { Keypair } from '@solana/web3.js'
 import bs58 from 'bs58'
@@ -14,7 +14,7 @@ import {
 } from './wallet'
 import type { Vault } from './types'
 
-// BIP-39 官方测试向量里最常用的那条。全世界的钱包都拿它对派生结果。
+// The most-used vector in BIP-39's official test set. Every wallet in the world cross-checks derivation against it.
 const VECTOR = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
 const PW = 'correct horse battery staple'
 
@@ -60,7 +60,7 @@ describe('助记词', () => {
 
 describe('EVM 派生（m/44\'/60\'/0\'/0/0）', () => {
   it('对得上公认测试向量，也就是和 MetaMask 导入同一条助记词看到的地址一致', () => {
-    // 这个地址是 BIP-39 那条测试助记词在标准以太坊路径下的结果，各家钱包都一样
+    // This address is that BIP-39 test mnemonic on the standard Ethereum path — identical across wallets
     expect(evmAccountFromKey(evmKeyFromMnemonic(VECTOR)).address)
       .toBe('0x9858EfFD232B4033E47d90003D41EC34EcaEda94')
   })
@@ -75,9 +75,9 @@ describe('EVM 派生（m/44\'/60\'/0\'/0/0）', () => {
 })
 
 describe('Solana 派生（m/44\'/501\'/index\'/0\'）', () => {
-  // 这三个地址是用 ed25519-hd-key（Solana 生态公认的 SLIP-0010 实现）独立算出来的，
-  // 不是从自家实现里抄的。派生路径错一位，用户拿同一条助记词在 Phantom 里会看到
-  // 另一个地址，会以为币丢了 —— 所以必须钉死在外部参考上。
+  // These three addresses were computed independently with ed25519-hd-key (the Solana ecosystem's canonical SLIP-0010 implementation),
+  // not copied from our own implementation. One wrong path bit and the same mnemonic shows
+  // a different address in Phantom, looking like lost coins — so it must be pinned to external references.
   it.each([
     [0, 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk'],
     [1, 'Hh8QwFUA6MtVu1qAoq12ucvFHNwCcVTV7hpWjeY1Hztb'],
@@ -196,7 +196,7 @@ describe('金库构建与解锁', () => {
 })
 
 describe('v1 老金库升级', () => {
-  /** 造一个只有 Solana 私钥的老金库 */
+  /** Build a legacy vault with only a Solana private key */
   async function v1Vault(withMnemonic: boolean): Promise<Vault> {
     const kp = withMnemonic ? keypairFromMnemonic(VECTOR) : Keypair.generate()
     const full = await buildVault(kp, randomEvmKey(), PW, withMnemonic ? VECTOR : undefined)
@@ -218,7 +218,7 @@ describe('v1 老金库升级', () => {
     expect(u.upgraded).toBeDefined()
     expect(u.keypair.publicKey.toBase58()).toBe(old.publicKey)
     expect(u.evm.address).toBe(evmAccountFromKey(evmKeyFromKeypair(u.keypair)).address)
-    // 同一个老金库在另一台设备上升级，补出来的是同一个 EVM 地址
+    // The same legacy vault upgraded on another device backfills the same EVM address
     expect((await unlockVault(old, PW)).evm.address).toBe(u.evm.address)
   })
 

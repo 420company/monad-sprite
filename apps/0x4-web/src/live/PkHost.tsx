@@ -1,6 +1,6 @@
-// 主播的 PK 操作（2026-09-30 goat 定）：随机匹配 / 邀请正在直播的主播 / 谁能邀请我；
-// 收到邀请 10 秒内接受或拒绝；进行中可以结束（算输）；平局或结束画面里「再来一局」（两边都点才开）、「结束连线」；
-// 赢了弹「5 秒后匹配下一个对手」（默认开始，可取消），输了可以「再找一个」。
+// The streamer's PK actions (set by goat 2026-09-30): random match / invite live streamers / who can invite me;
+// Accept or decline an invite within 10 seconds; ending mid-match counts as a loss; on a draw or the end screen: "Rematch" (only starts when both sides tap), "End call";
+// On a win, pop "matching the next opponent in 5 seconds" (auto-starts, cancellable); on a loss, offer "find another".
 import { useEffect, useState } from 'react'
 import { LoaderCircle, Shuffle, Swords, UserPlus, X } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -31,7 +31,7 @@ export function PkHostSheet({ open, onClose, pk }: { open: boolean; onClose: () 
     api<{ invites: Policy }>('/api/live/pk/prefs').then((p) => { if (alive) setPolicy(p.invites) }).catch(() => {})
     return () => { alive = false }
   }, [open])
-  // 开局了就关掉
+  // Close once the match starts
   useEffect(() => { if (pk.pk?.phase === 'running') onClose() }, [pk.pk?.phase]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const s = pk.inviteState
@@ -78,7 +78,7 @@ export function PkHostSheet({ open, onClose, pk }: { open: boolean; onClose: () 
   </Sheet>
 }
 
-/** 收到邀请：10 秒倒计时，接受 / 拒绝 */
+/** Invite received: 10-second countdown, accept / decline */
 export function PkInviteDialog({ pk }: { pk: Pk }) {
   const inv = pk.invite
   if (!inv) return null
@@ -104,8 +104,8 @@ function InviteCountdown({ expiresAt, serverNow }: { expiresAt: number; serverNo
 }
 
 /**
- * 主播画面下方的 PK 操作条：进行中「结束 PK」；结束画面 / 平局「再来一局」「结束连线」；
- * 赢了 5 秒后自动匹配下一个（可取消）；输了「再找一个」
+ * PK action bar under the streamer's picture: while live, "End PK"; on the end screen / draw, "Rematch" / "End call";
+ * after a win, auto-match the next opponent in 5 seconds (cancellable); after a loss, "Find another"
  */
 export function PkHostBar({ pk }: { pk: Pk }) {
   const s = pk.pk

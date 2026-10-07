@@ -93,7 +93,7 @@ describe('面板接到输入框', () => {
     act(() => { field.focus(); field.setSelectionRange(2, 2); field.dispatchEvent(new Event('select', { bubbles: true })) })
     act(() => (host.querySelector('[data-testid=toggle]') as HTMLButtonElement).click())
     expect(document.activeElement).not.toBe(field)
-    // jsdom 的选择器引擎认不出属性值里的表情，按 aria-label 手动找
+    // jsdom's selector engine can't match emoji in attribute values — find by aria-label manually
     const btn = [...host.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '👍') as HTMLButtonElement
     expect(btn).toBeTruthy()
     act(() => btn.click())
@@ -101,7 +101,7 @@ describe('面板接到输入框', () => {
     act(() => btn.click())
     expect(field.value).toBe('你好👍👍世界')
     expect(JSON.parse(localStorage.getItem(RECENT_KEY)!)).toEqual(['👍'])
-    // 删除键删一个整表情
+    // Backspace deletes one whole emoji
     act(() => (host.querySelector('button[aria-label="删除"]') as HTMLButtonElement).click())
     expect(field.value).toBe('你好👍世界')
     act(() => field.focus())

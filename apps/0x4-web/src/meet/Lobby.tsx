@@ -1,6 +1,6 @@
-// 会议等候室界面（2026-10-01 goat）：网页版 / 手机 App 的会议室用。逻辑在 lobbyCore.ts（和电脑端 meet/ 共用）。
-//   · LobbyWaiting：等主持人同意的页面（不连音视频，服务器也不签令牌）
-//   · LobbyHostCard：主持人 / 管理员看到的等待列表（允许 / 拒绝 / 全部允许），有人在等才出现
+// Meeting lobby UI (2026-10-01 goat): used by the web / mobile app meeting rooms. Logic lives in lobbyCore.ts (shared with the desktop meet/).
+//   · LobbyWaiting: the page shown while waiting for host approval (no audio/video connection; the server doesn't sign a token either)
+//   · LobbyHostCard: the waiting list the host / admin sees (allow / reject / allow all), appearing only when someone is waiting
 import { useEffect, useState } from 'react'
 import { Check, DoorOpen, Hourglass, X } from 'lucide-react'
 import Avatar from '@/components/Avatar'
@@ -20,7 +20,7 @@ export function LobbyWaiting({ title, hostName, onCancel }: { title: string; hos
 
 export function LobbyHostCard({ lobby }: { lobby: LobbyHost }) {
   const [, force] = useState(0)
-  // 「等了多久」每 10 秒走一下
+  // The "waited for" ticker advances every 10s
   useEffect(() => { if (!lobby.waiting.length) return; const id = setInterval(() => force((n) => n + 1), 10_000); return () => clearInterval(id) }, [lobby.waiting.length])
   if (!lobby.on || !lobby.waiting.length) return null
   const ago = (since: number) => { const w = waitedFor(since); return w.unit === 's' ? t('等了 {n} 秒', { n: w.n }) : t('等了 {n} 分钟', { n: w.n }) }

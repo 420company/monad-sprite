@@ -1,8 +1,8 @@
-// 合约交易页：BSC 原生永续（Aster），gas 全用 BNB；下单由本地派生的 agent 签名，不托管
-// 两层（2026-09-24 按设计稿重做）：
-//   /perp           合约首页：账户卡 → 我的仓位 / 挂单 → 选币列表（带 24h 迷你走势）
-//   /perp?coin=BTC  交易页：价格 → K 线 → 下单（方向 / 全仓逐仓 / 杠杆 / 价格 / 保证金）→ 这个币的仓位
-// 下单、平仓、撤单、存取款的逻辑和重做前完全一样，只换了界面。
+// Perps trading page: BSC-native perps (Aster), gas all in BNB; orders signed by a locally-derived agent key, non-custodial
+// Two layers (redone per design 2026-09-24):
+//   /perp           Perps home: account card → my positions / open orders → coin list (with 24h mini sparklines)
+//   /perp?coin=BTC  Trade page: price → chart → order form (side / cross-isolated / leverage / price / margin) → this coin's position
+// Order, close, cancel, deposit/withdraw logic is identical to before the redo — only the UI changed.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ArrowLeftRight, ChevronDown, ChevronRight, Search, SlidersHorizontal, Star } from 'lucide-react'
@@ -37,34 +37,34 @@ const pct = (n: number) => `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)}%`
 const fmtPx = (n: number) => n >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits: 1 }) : n >= 1 ? n.toFixed(2) : n.toPrecision(4)
 
 export default function Perp() {
-  // 进合约页先拉一次费率（VIP 按 0.04% 收），拉到后重新渲染手续费显示
+  // Fetch fee rates once on entering the perps page (VIP charged at 0.04%); re-render the fee display once loaded
   setPerpFeeRate(useFees((s) => s.fees.perpRate))
   useEffect(() => { useFees.getState().load() }, [])
   const nav = useNavigate()
   const { evmAccount, keysUnlocked } = useWallet()
-  /** 钱包锁着（原生 App 可以锁着逛）：读合约账户也要签名，先不读，等用户点「验证」 */
+  /** Wallet locked (native app allows locked browsing): reading the perps account also needs a signature, so don't read yet — wait until the user taps "Verify" */
   const [locked, setLocked] = useState(false)
   const { slippageBps } = useSettings()
   const [markets, setMarkets] = useState<PerpMarket[]>([])
-  // 带 ?coin=BTC 就是交易页，不带就是选币首页（从动态流点自己的合约交易进来也带 coin，直接落在交易页）
+  // With ?coin=BTC it's the trade page, without it's the coin-picker home (entering your own perp trade from the feed also carries coin, landing directly on the trade page)
   const [params, setParams] = useSearchParams()
   const coinParam = params.get('coin')?.toUpperCase() || null
   const coin = coinParam || 'BTC'
-  /** 从列表点进交易页时压了一层历史（记在这条历史的 state 里，离开再回来也认得），返回就 nav(-1)，列表的分类 / 滚动位置原样还原；
-   *  直接打开交易页的（动态流、深链）没有，返回时替换成列表并回到顶部 */
+  /** When entering the trade page from the list, push a history entry (recorded in that entry's state, so leaving and coming back still recognizes it); going back calls nav(-1), restoring the list's category / scroll position as-is;
+   *  Trade pages opened directly (feed, deep links) have none — going back replaces with the list and scrolls to top */
   const fromList = !!(useLocation().state as { fromList?: boolean } | null)?.fromList
   const openCoin = (c: string) => setParams({ coin: c }, { state: { fromList: true } })
   const backToList = () => { if (fromList) nav(-1); else { setParams({}, { replace: true }); window.scrollTo(0, 0) } }
-  // 滚动由全局的 ScrollRestorer 管：进交易页（新记录）回顶部，返回列表恢复原位（以前这里无条件回顶部，返回列表也被拉回顶部）
-  /** 合约首页左上角返回：有上一页退回上一页，深链直接打开的去资产首页 */
+  // Scrolling is managed by the global ScrollRestorer: entering the trade page (new entry) scrolls to top, going back to the list restores position (previously this scrolled to top unconditionally, yanking the list back to top on return)
+  /** Back button top-left of perps home: go back if there is a previous page, direct deep links go to the asset home */
   const goBack = useBack('/')
-  /** 选币列表的分类、搜索词、已显示条数记在会话里（lib/pageState）：离开合约页再回来还是原样 */
+  /** Coin list category, search term and shown-count are kept in session (lib/pageState): leaving the perps page and coming back restores them */
   const [listTab, setListTab] = usePageState<'hot' | 'gain' | 'lose' | 'fav'>('perp.tab', 'hot', oneOf('hot', 'gain', 'lose', 'fav'))
-  /** 自选：存本机。键名 0x4.* 前缀 */
+  /** Watchlist: stored on device. Key prefix 0x4.* */
   const [favs, setFavs] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('0x4.perpFav') || '[]') } catch { return [] } })
   const toggleFav = (c: string) => setFavs((cur) => {
     const next = cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]
-    try { localStorage.setItem('0x4.perpFav', JSON.stringify(next)) } catch { /* 存不了也不影响交易 */ }
+    try { localStorage.setItem('0x4.perpFav', JSON.stringify(next)) } catch { /* Failing to persist doesn't affect trading */ }
     return next
   })
   const [account, setAccount] = useState<PerpAccount | null>(null)
@@ -72,45 +72,45 @@ export default function Perp() {
   const [fills, setFills] = useState<PerpFill[]>([])
   const [picking, setPicking] = useState(false)
   const [q, setQ] = usePageState('perp.q', '', isString)
-  /** 交易页「切换币种」弹层自己的搜索词：和列表的搜索分开，在弹层里选币不会把列表的搜索清掉 */
+  /** The trade page's "switch coin" sheet keeps its own search term: separate from the list search, so picking a coin in the sheet doesn't clear the list's search */
   const [pickQ, setPickQ] = useState('')
   const [fund, setFund] = useState<'deposit' | 'withdraw' | null>(null)
-  // 从小精灵页「去存入 USDT」过来（?fund=deposit）：直接打开存入窗口（2026-10-05 goat）
+  // Arriving from the sprite page's "Deposit USDT" (?fund=deposit): open the deposit sheet directly (2026-10-05 goat)
   useEffect(() => { if (params.get('fund') === 'deposit') { setFund('deposit'); const p = new URLSearchParams(params); p.delete('fund'); setParams(p, { replace: true }) } }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [loadErr, setLoadErr] = useState<string | null>(null)
 
-  // 表单
+  // Form
   const [lev, setLev] = useState(5)
-  /** 下单金额。unit 决定这个数是「保证金（USDT）」还是「币的数量」。
-   *  2026-09-24 改：原来填的是仓位价值，用户要自己除杠杆才知道押多少钱；现在直接填押多少保证金 */
+  /** Order amount. unit decides whether this number is "margin (USDT)" or "coin quantity".
+   *  Changed 2026-09-24: previously it was the position value and users had to divide by leverage themselves to know how much margin they were putting in; now they enter the margin directly */
   const [amt, setAmt] = useState('')
   const [unit, setUnit] = useState<'margin' | 'coin'>('margin')
-  /** 做多 / 做空：顶部切换，下单按钮跟着变色 */
+  /** Long / short: switched at the top, the order button changes color with it */
   const [side, setSide] = useState<'long' | 'short'>('long')
-  /** 止盈止损、只减仓收在「高级」里，平时不占地方 */
+  /** Take-profit / stop-loss and reduce-only live under "Advanced", out of the way normally */
   const [showAdv, setShowAdv] = useState(false)
-  /** 只减仓：这笔单只能减少现有仓位，不会反向开新仓。手滑的保险 */
+  /** Reduce-only: this order can only shrink the existing position, never open a reverse one. Fat-finger insurance */
   const [reduceOnly, setReduceOnly] = useState(false)
-  /** 杠杆/保证金模式收在顶部一行，点开才展开——币安就是这么省空间的 */
+  /** Leverage / margin mode collapse into one top row, expanding on tap — that's how Binance saves space */
   const [type, setType] = useState<'market' | 'limit'>('market')
-  /** 全仓 / 逐仓。默认逐仓：亏损锁死在这个仓位的保证金里，不会把账户其它钱一起带走。
-   *  原来这里硬编码成全仓（isCross=true），用户没得选。 */
+  /** Cross / isolated. Isolated by default: losses are locked to this position's margin and can't drag the rest of the account down.
+   *  This used to be hardcoded to cross (isCross=true) with no user choice. */
   const [isCross, setIsCross] = useState(false)
   const [limitPx, setLimitPx] = useState('')
   const [tp, setTp] = useState('')
   const [sl, setSl] = useState('')
   const [busy, setBusy] = useState(false)
-  /** 账户区单独的错误；null 表示没账户（新用户的正常状态） */
+  /** Separate error for the account section; null means no account (normal state for new users) */
   const [accountErr, setAccountErr] = useState<string | null>(null)
-  /** 交易所确认这个钱包还没开通合约账户（没存过钱）：新用户的正常状态 */
+  /** The exchange confirms this wallet hasn't opened a perps account yet (never deposited): normal state for new users */
   const [noAccount, setNoAccount] = useState(false)
 
   const market = useMemo(() => markets.find((m) => m.coin === coin) || markets[0], [markets, coin])
   const canTrade = !!evmAccount
 
   const refresh = useCallback(async () => {
-    // 行情和账户分开：新用户在交易所还没有账户，账户接口会报错，
-    // 不能因此连行情也看不到（以前是一个 Promise.all 里全挂）。
+    // Market data and account are fetched separately: new users have no exchange account yet, so the account API errors,
+    // and market data must not go down with it (previously one Promise.all failed everything).
     let m: PerpMarket[] | null = null
     try {
       m = await loadMarkets()
@@ -120,24 +120,24 @@ export default function Perp() {
       setLoadErr(errorText(e, t('连接失败')))
     }
     if (!evmAccount) return
-    // 锁着不读：读账户要代理密钥签名，每 8 秒刷一次会反复弹验证
+    // Don't read while locked: reading the account needs the agent-key signature, and refreshing every 8s would pop verification repeatedly
     if (!keysUnlocked) { setLocked(true); return }
     setLocked(false)
     try {
-      // 真实杠杆上限要签名才拿得到（有缓存，只请求一次）；拿到后覆盖 loadMarkets 的估计值，用户才能拉到 100x / 200x
+      // The true leverage cap requires a signature to fetch (cached, requested once); once obtained it overrides loadMarkets' estimate so users can actually reach 100x / 200x
       const [a, o, f, br] = await Promise.all([
         loadAccount(evmAccount), loadOpenOrders(evmAccount), loadFills(evmAccount),
         loadLeverageBrackets(evmAccount).catch(() => ({} as Record<string, number>)),
       ])
       if (m) setMarkets(m.map((x) => br[x.coin] ? { ...x, maxLeverage: br[x.coin] } : x))
       setAccount(a); setOrders(o); setFills(f); setAccountErr(null); setNoAccount(false)
-      // 账户已开通：顺便授权只读代理，手动合约的成交才能计入 VIP 交易额（每次打开 App 最多一次，后台进行）
+      // Account already opened: also authorize a read-only agent so manual perp fills count toward VIP volume (at most once per app open, in background)
       void linkPerpReader(evmAccount)
     } catch (e) {
-      // 这两种都是「这个钱包还没在交易所开通合约账户」，是新用户的正常状态，不是故障：
-      //   NO_AGENT = 还没授权交易代理；
-      //   Aster 私有接口对没存过钱的钱包一律回 "This function can only be used after deposit"
-      //   （2026-09-24 真机新钱包实测，以前把这句英文原话当错误显示给了用户）
+      // Both of these mean "this wallet hasn't opened a perps account on the exchange yet" — normal for new users, not a failure:
+      //   NO_AGENT = trading agent not yet authorized;
+      //   Aster's private API returns "This function can only be used after deposit" for any wallet that never deposited
+      //   (verified 2026-09-24 with a fresh wallet on a real device; previously this raw English string was shown to users as the error)
       const msg = errorText(e, t('读取失败'))
       const fresh = msg === 'NO_AGENT' || /only be used after deposit/i.test(msg)
       setNoAccount(fresh)
@@ -148,13 +148,13 @@ export default function Perp() {
 
   useEffect(() => { refresh(); const t = window.setInterval(refresh, 8000); return () => window.clearInterval(t) }, [refresh])
 
-  // 切换市场时只在超过该市场上限时才压到上限。
-  // 原来是压到 min(上限, 20)，从 BTC(40x) 切到别的币时用户设的杠杆会莫名跳到 20。
+  // When switching markets, only clamp leverage down if it exceeds that market's cap.
+  // It used to clamp to min(cap, 20), so switching from BTC (40x) to another coin mysteriously dropped the user's leverage to 20.
   useEffect(() => { if (market && lev > market.maxLeverage) setLev(market.maxLeverage) }, [market]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 这个市场只支持逐仓的话，把开关拨回逐仓，别让界面显示的和实际下单的不一致
+  // If this market only supports isolated, flip the switch back to isolated so the UI doesn't disagree with the actual order
   useEffect(() => { if (market?.onlyIsolated && isCross) setIsCross(false) }, [market]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 杠杆和保证金模式是按币种记在合约账户上的，不是每单独立。
-  // 有持仓时就以持仓的实际设置为准，否则刷新后 UI 显示 5x、账户上其实是 10x，对不上。
+  // Leverage and margin mode are recorded per coin on the perps account, not per order.
+  // With an open position, follow the position's actual settings; otherwise the UI shows 5x after refresh while the account is really 10x — mismatched.
   useEffect(() => {
     const pos = account?.positions.find((x) => x.coin === market?.coin)
     if (!pos) return
@@ -163,30 +163,30 @@ export default function Perp() {
   }, [account, market?.coin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const price = type === 'limit' && Number(limitPx) > 0 ? Number(limitPx) : market?.markPx || 0
-  // 内部一律按「仓位价值（美元）」算，输入框只是换个单位给用户看：保证金 × 杠杆 = 仓位价值
+  // Internally everything is computed as "position value (USD)"; the input just shows a different unit: margin × leverage = position value
   const notional = unit === 'margin' ? (Number(amt) || 0) * lev : (Number(amt) || 0) * price
   const size = price > 0 ? notional / price : 0
   const margin = lev > 0 ? notional / lev : 0
   const free = account?.withdrawable || 0
   const maxNotional = free * lev
-  /** 强平价按方向分别估：双按钮布局下两边要同时显示 */
+  /** Estimate liquidation price per side: the two-button layout shows both at once */
   const liqFor = (s: 'long' | 'short') =>
     price > 0 ? (s === 'long' ? price * (1 - 1 / lev + 0.005) : price * (1 + 1 / lev - 0.005)) : 0
-  /** 仓位占「可开上限」的百分比，滑块和输入框双向绑定 */
+  /** Position size as a percentage of the "max openable", slider and input bound two-way */
   const sizePct = maxNotional > 0 ? Math.min(100, (notional / maxNotional) * 100) : 0
   const setPct = (p: number) => {
     if (maxNotional <= 0) return setAmt('')
     const usdVal = (maxNotional * p) / 100
     setAmt(unit === 'margin' ? String(Math.floor((free * p) / 100 * 100) / 100) : price > 0 ? (usdVal / price).toFixed(market?.szDecimals ?? 4) : '')
   }
-  /** 切计价单位时把已填的数换算过去，别让用户重新输 */
+  /** When switching denomination units, convert the entered number so the user doesn't have to retype */
   const switchUnit = () => {
     const next = unit === 'margin' ? 'coin' : 'margin'
     if (notional > 0 && price > 0 && lev > 0) setAmt(next === 'margin' ? String(Math.floor((notional / lev) * 100) / 100) : (notional / price).toFixed(market?.szDecimals ?? 4))
     setUnit(next)
   }
-  /** 杠杆快捷档按市场上限生成，永远带上上限本身。
-   *  写死 [2,5,10,20] 的话：BTC 能到 40x 却点不到，ATOM 上限 5x 又只剩两个按钮。 */
+  /** Leverage quick tiers are generated from the market cap, always including the cap itself.
+   *  With a hardcoded [2,5,10,20]: BTC's 40x would be unreachable, and ATOM (5x cap) would only get two buttons. */
   const levSteps = useMemo(() => {
     const max = market?.maxLeverage || 1
     const raw = max >= 100 ? [5, 20, 50, max] : max >= 40 ? [2, 10, 20, max] : max >= 20 ? [2, 5, 10, max] : max >= 10 ? [2, 5, max] : max >= 5 ? [1, 2, 3, max] : [1, max]
@@ -194,16 +194,16 @@ export default function Perp() {
   }, [market])
 
   /**
-   * 合约下单 / 平仓 / 撤单（含改杠杆）前过闸（2026-09-29 Codex 复审 cec2419 P1）：
-   * 合约用的是交易所的交易密钥，缓存下来以后签单不经过主钱包，带闸签名器不会自己弹验证。
-   * 手机 App：钱包锁着就弹面容 / 密码验证；网页版：没连 0x4 浏览器插件就弹插件面板。用户取消返回 false。
+   * Gate before perp order / close / cancel (incl. leverage change) (2026-09-29 Codex review cec2419 P1):
+   * Perps use the exchange's trading key; once cached, signing orders no longer goes through the main wallet, so the gated signer won't pop verification on its own.
+   * Mobile app: wallet locked → pop face / password verification; web: 0x4 browser extension not connected → pop the extension panel. User cancel returns false.
    */
   const perpGate = async (): Promise<boolean> => {
     if (WEB_SURFACE) return !needWallet()
     try { await ensureUnlocked(t('确认合约交易')); return true } catch (e) { if (isUserCancel(e)) return false; throw e }
   }
 
-  /** 方向由按下的按钮决定，不再有全局的多空开关 */
+  /** Side is decided by the pressed button; no more global long/short switch */
   const submit = async (side: 'long' | 'short') => {
     if (!market) return
     if (!(await perpGate())) return
@@ -213,16 +213,16 @@ export default function Perp() {
     if (type === 'limit' && !(Number(limitPx) > 0)) return toast.error(t('填一个限价'))
     setBusy(true)
     try {
-      // 杠杆和保证金模式随单子一起设（网页版和主单、止盈止损合在插件的一个确认窗口里；手机 App 照旧先设杠杆再下单）
+      // Leverage and margin mode are set along with the order (web: main order + TP/SL share one confirmation window in the extension; mobile app still sets leverage before ordering, as before)
       const r = await placeOrder(evmAccount, { market, leverage: lev, isCross, isBuy: side === 'long', size, limitPx: type === 'limit' ? Number(limitPx) : undefined, reduceOnly, slippageBps, takeProfit: Number(tp) > 0 ? Number(tp) : undefined, stopLoss: Number(sl) > 0 ? Number(sl) : undefined })
       if (r.resting) toast.success(t('已挂单，成交后会出现在持仓里'))
       else {
         const fv = { coin: market.coin, sz: fmtAmount(r.filledSz), px: fmtPx(r.avgPx) }
         toast.success(side === 'long' ? t('做多 {coin} 成交 {sz} @ {px}', fv) : t('做空 {coin} 成交 {sz} @ {px}', fv))
-        // 交易即社交：开仓记为买入，多空用不同的标识区分
+        // Trading is social: opening a position is recorded as a buy, long vs short distinguished by different markers
         reportTrade({ side: 'buy', chainId: -1, token: `${market.coin}:${side}`, symbol: `${market.coin} ${side === 'long' ? '多' : '空'} ${lev}x`, name: `${market.coin} 永续 · 开${side === 'long' ? '多' : '空'}`, realized: 0, qty: r.filledSz, usd: r.filledSz * r.avgPx, chainKey: 'hyperliquid' })
       }
-      // 止盈 / 止损没挂上：明确告诉用户，输入框不清空，方便马上补挂或平仓（审查 #10）
+      // TP / SL failed to attach: tell the user explicitly, keep the inputs so they can re-attach or close right away (review #10)
       const pf = r.protectionFailed || []
       if (pf.length) {
         toast.error(pf.length === 2 ? t('止盈和止损都没有挂上，这个仓位现在没有保护。请重新设置，或手动平仓') : pf[0] === 'sl' ? t('止损没有挂上，这个仓位现在没有止损保护。请重新设置，或手动平仓') : t('止盈没有挂上，请重新设置'))
@@ -263,16 +263,16 @@ export default function Perp() {
     return markets
   }, [markets, listTab, favs, q2])
   const filtered = markets.filter((m) => m.coin.toLowerCase().includes(pickQ.trim().toLowerCase()))
-  // 列表分页：先显示 PAGE 个，底部「加载更多」每次再加 PAGE 个；换分类 / 搜索时回到第一页
+  // List pagination: show PAGE items first, "load more" at the bottom adds PAGE more each time; category / search change resets to page one
   const [shown, setShown] = usePageState('perp.shown', PAGE, posInt())
   const [pickShown, setPickShown] = useState(PAGE)
-  // 换分类 / 搜索时回到第一页；挂载那一次不算（那是返回时恢复出来的条数）
+  // Category / search change resets to page one; the mount pass doesn't count (that count is restored from back-navigation state)
   const listSig = `${listTab}|${q2}`
   const lastListSig = useRef(listSig)
   useEffect(() => { if (lastListSig.current !== listSig) { lastListSig.current = listSig; setShown(PAGE) } }, [listSig, setShown])
   useEffect(() => { setPickShown(PAGE) }, [pickQ, picking])
 
-  // ---------------- 选币首页 ----------------
+  // ---------------- Coin-picker home ----------------
   if (!coinParam) return (
     <div className="pb-10" style={{ paddingTop: 'calc(env(safe-area-inset-top) + .75rem)' }}>
       <div className="flex items-center gap-1 px-3">
@@ -280,9 +280,9 @@ export default function Perp() {
         <h1 className="text-[28px] font-bold tracking-tight">{t('合约')}</h1>
       </div>
 
-      {/* 账户 */}
+      {/* Account */}
       <section className="mx-4 mt-3 rounded-[22px] p-[18px]" style={{ background: 'radial-gradient(120% 140% at 100% 0%, rgba(205,189,255,.10), transparent 55%), var(--color-card)' }} aria-label={t('合约账户')}>
-        {/* 2026-09-28 goat：去掉上面那行「合约账户权益 · USDT」小字，数字后面本来就带 USDT */}
+        {/* 2026-09-28 goat: removed the "Perps account equity · USDT" small print above — the number already carries USDT */}
         <div className="text-[34px] font-bold leading-tight tracking-tight tabular-nums">{account ? money(account.accountValue) : '--'}<span className="ml-1 text-base font-semibold text-muted">USDT</span></div>
         {account && (
           <div className="mt-3 flex gap-6 text-xs text-muted">
@@ -301,7 +301,7 @@ export default function Perp() {
         </div>
       </section>
 
-      {/* 我的仓位（有才显示），点进去就是那个币的交易页 */}
+      {/* My positions (shown only if any); tapping goes to that coin's trade page */}
       {!!account?.positions.length && <>
         <SectionTitle title={t('我的仓位')} note={t('{n} 个', { n: account.positions.length })} />
         <div className="mx-4 space-y-2">
@@ -326,7 +326,7 @@ export default function Perp() {
         <OrderList orders={orders} onCancel={cancel} pxOf={pxOf} />
       </>}
 
-      {/* 选币 */}
+      {/* Coin picker */}
       <SectionTitle title={t('选择币种')} note={loadErr ? t('行情暂不可用') : markets.length ? t('{n} 个合约', { n: markets.length }) : t('正在读取…')} />
       <div className="mx-4 flex h-10 items-center gap-2 rounded-[13px] bg-card px-3">
         <Search size={16} className="text-muted" />
@@ -369,7 +369,7 @@ export default function Perp() {
     </div>
   )
 
-  // ---------------- 交易页 ----------------
+  // ---------------- Trade page ----------------
   const myPos = account?.positions.find((p) => p.coin === market?.coin)
   const myOrders = orders.filter((o) => o.coin === market?.coin)
   const myFills = fills.filter((f) => f.coin === market?.coin)
@@ -391,7 +391,7 @@ export default function Perp() {
 
       {!market && <div className="mx-4 mt-3 rounded-2xl bg-card p-4 text-sm text-muted" role="status">{loadErr ? t('暂时无法读取合约行情') : t('正在读取合约行情…')}</div>}
 
-      {/* 网页版：左边价格 + K 线 + 仓位 / 挂单 / 成交，右边下单面板（粘在顶部）；手机 App 照旧上下排（display: contents 不影响布局） */}
+      {/* Web: price + chart + positions / orders / fills on the left, order panel on the right (stuck to top); mobile app keeps the top-bottom layout (display: contents doesn't affect layout) */}
       {market && <div className={WEB_SURFACE ? 'perp-desk' : 'contents'}>
         <div className="flex items-end justify-between px-5 pt-1">
           <div className={`text-[32px] font-bold leading-tight tracking-tight tabular-nums ${market.change24h >= 0 ? 'text-up' : 'text-down'}`}>{pxOf(market.markPx, market.coin)}</div>
@@ -403,10 +403,10 @@ export default function Perp() {
           <div>{t('最高杠杆')}<b className="mt-0.5 block text-xs font-semibold text-fg tabular-nums">{market.maxLeverage}x</b></div>
         </div>
 
-        {/* K 线。交易页的主体就该是图表 */}
+        {/* Candles. The chart should be the body of the trade page */}
         <PerpChart coin={market.coin} pxDecimals={market.pxDecimals} />
 
-        {/* 下单 */}
+        {/* Order form */}
         <section className="perp-order mx-3 mt-3 rounded-[22px] bg-card p-3.5" aria-label={t('下单')}>
           <div className="grid grid-cols-2 rounded-[13px] bg-black/30 p-[3px]" role="group" aria-label={t('方向')}>
             <button aria-pressed={long} onClick={() => setSide('long')} className={`h-[38px] rounded-[10px] text-[15px] font-bold transition-colors ${long ? 'bg-up text-[#062418]' : 'text-muted'}`}>{t('做多')}</button>
@@ -419,7 +419,7 @@ export default function Perp() {
           </div>
           {market.onlyIsolated && <p className="mt-1 text-[11px] text-muted">{t('{coin} 只支持逐仓。', { coin: market.coin })}</p>}
 
-          {/* 杠杆：滑条 + 快捷档（快捷档按这个币的最高杠杆生成） */}
+          {/* Leverage: slider + quick tiers (tiers generated from this coin's max leverage) */}
           <div className="relative mt-2.5 h-7">
             <div className="absolute inset-x-0 top-[12px] h-1 rounded-full bg-card2" />
             <div className="absolute left-0 top-[12px] h-1 rounded-full bg-accent" style={{ width: `${levPct}%` }} />
@@ -434,7 +434,7 @@ export default function Perp() {
             <span className="text-xs text-muted">{t('可用')} <b className="font-semibold text-fg tabular-nums">{account ? money(free) : '--'}</b> USDT</span>
           </div>
 
-          {/* 数字输入明确使用 16px，防止 iOS 聚焦时自动放大 */}
+          {/* Numeric inputs explicitly use 16px to prevent iOS auto-zoom on focus */}
           <label className="mt-3 flex h-12 items-center gap-2.5 rounded-[13px] bg-black/30 px-3.5">
             <span className="w-11 shrink-0 text-xs text-muted">{t('价格')}</span>
             {type === 'limit'
@@ -457,7 +457,7 @@ export default function Perp() {
             <p className="mt-2 text-[11px] text-down">{t('可用保证金只剩 {free}，{lev}x 下最多开 {max}，不够最低的 ${min}。先平掉已有仓位，或者存入更多 USDT。', { free: money(free), lev, max: fmtMoney(maxNotional), min: MIN_NOTIONAL })}</p>
           )}
 
-          {/* 高级：止盈止损、只减仓 */}
+          {/* Advanced: TP/SL, reduce-only */}
           <button type="button" onClick={() => setShowAdv((v) => !v)} aria-expanded={showAdv} className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-muted">
             <SlidersHorizontal size={13} />{t('止盈止损 · 只减仓')}{(tp || sl || reduceOnly) && <span className="size-1.5 rounded-full bg-accent" />}<ChevronDown size={13} className={`transition-transform ${showAdv ? 'rotate-180' : ''}`} />
           </button>
@@ -478,7 +478,7 @@ export default function Perp() {
             <Row k={t('仓位价值')} v={notional ? `${money(notional)} USDT` : '--'} />
             <Row k={t('数量')} v={size ? `${fmtAmount(size)} ${market.coin}` : '--'} />
             <Row k={t('预估强平价')} v={notional ? pxOf(liqFor(side), market.coin) : '--'} warn />
-            {/* 只显示合计费率（goat 2026-09-25：不拆交易所 / 平台）。市价 = 交易所吃单 0.04% + 平台 0.06% = 0.1%；限价挂单交易所 0%，合计 0.06% */}
+            {/* Show only the combined fee rate (goat 2026-09-25: don't split exchange / platform). Market = exchange taker 0.04% + platform 0.06% = 0.1%; limit maker exchange 0%, combined 0.06% */}
             <Row k={t('手续费（{rate}%）', { rate: feeRate(type) * 100 })} v={notional ? `${money(notional * feeRate(type))} USDT` : '--'} />
             <Row k={t('下单后剩余保证金')} v={margin ? `${money(Math.max(0, free - margin))} USDT` : '--'} />
           </dl>
@@ -493,7 +493,7 @@ export default function Perp() {
                 </Button>}
         </section>
 
-        {/* 这个币的仓位 */}
+        {/* This coin's position */}
         {myPos && <>
           <SectionTitle title={t('当前仓位')} note={market.coin} />
           <div className="mx-3 rounded-[18px] bg-card p-4">
@@ -531,7 +531,7 @@ export default function Perp() {
       </div>}
 
 
-      {/* 切换币种 */}
+      {/* Switch coin */}
       <Sheet open={picking} onClose={() => setPicking(false)} title={t('切换币种')}>
         <div className="flex items-center gap-2 rounded-2xl bg-card2 px-3 py-2"><Search size={16} className="text-muted" /><input aria-label={t('搜索合约')} value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder={t('搜索 BTC / SOL / WIF…')} className="w-full bg-transparent text-base outline-none" /></div>
         <div className="mt-2">
@@ -553,12 +553,12 @@ export default function Perp() {
     </div>
   )
 
-  /** 按这个币的价格精度显示（小币 0.0043540 不能显示成 0.00） */
+  /** Display per this coin's price precision (a small coin at 0.0043540 must not show as 0.00) */
   function pxOf(n: number, c: string) {
     const d = markets.find((x) => x.coin === c)?.pxDecimals
     if (!(n > 0)) return '--'
     if (n >= 1000 || d === undefined) return fmtPx(n)
-    // 大于 100 的价格留两位就够（SOL 114.74 不用写成 114.7400），小币按交易所精度完整显示
+    // Prices above 100 only need 2 decimals (SOL 114.74, not 114.7400); small coins show full exchange precision
     const digits = Math.min(d, 8, n >= 100 ? 2 : n >= 1 ? 4 : 8)
     return n.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
   }
@@ -579,12 +579,12 @@ function SideTag({ long, lev, cross }: { long: boolean; lev: number; cross: bool
   return <span className={`rounded-[7px] px-1.5 py-0.5 text-[11px] font-bold ${long ? 'bg-up/14 text-up' : 'bg-down/14 text-down'}`}>{long ? t('多') : t('空')} {lev}x{cross ? '' : ` ${t('逐仓')}`}</span>
 }
 
-/** 币种圆标：没有可靠的图标源，用首字母 + 固定配色，同一个币永远同一个颜色 */
+/** Coin round badge: no reliable icon source, so use initial + fixed color — same coin always the same color */
 const BRAND: Record<string, string> = { BTC: '#f7931a', ETH: '#627eea', BNB: '#f3ba2f', SOL: '#14f195', XRP: '#9aa4ad', DOGE: '#c2a633', ASTER: '#8cff4d' }
-/** 合约币种图标（2026-09-25 goat：原来只有字母占位，没有图标）。
- *  依次试：币安图标库 → OKX → Hyperliquid → CoinCap → 字母占位。2026-09-26 实测 Aster 567 个永续：
- *  币安 285、OKX 160、Hyperliquid 4、CoinCap 15，共 82% 有图；剩下的多是美股、中文名 meme 和很冷门的币，显示字母占位。
- *  Aster 的「1000PEPE」这类放大合约先去掉倍数前缀再找；找不到时各家返回 403/404 或网页，img 加载失败就自动落到下一个 */
+/** Perp coin icons (2026-09-25 goat: previously only letter placeholders, no icons).
+ *  Try in order: Binance icon repo → OKX → Hyperliquid → CoinCap → letter placeholder. Tested 2026-09-26 against Aster's 567 perps:
+ *  Binance 285, OKX 160, Hyperliquid 4, CoinCap 15 — 82% have images; the rest are mostly stocks, Chinese-name memes and very obscure coins, showing letter placeholders.
+ *  Aster's leveraged "1000PEPE"-style contracts strip the multiplier prefix before lookup; when a source returns 403/404 or an HTML page, the failed img automatically falls through to the next */
 function coinIconUrls(coin: string): string[] {
   const base = coin.replace(/^(1000000|10000|1000|1M|K)(?=[A-Z])/, '')
   const names = [...new Set([coin, base])]
@@ -635,32 +635,32 @@ function OrderList({ orders, onCancel, pxOf }: { orders: PerpOrder[]; onCancel: 
   )
 }
 
-/** 文案里的 {chain} 换成加粗的 BNB Chain（整句一起翻译，加粗保留） */
+/** Replace {chain} in copy with bolded BNB Chain (translate the whole sentence together, keep the bold) */
 function boldChain(s: string) {
   const [a, b = ''] = s.split('{chain}')
   return <>{a}<b>BNB Chain</b>{b}</>
 }
 
-/** 合约列表每页条数 */
+/** Perps list page size */
 const PAGE = 20
 
-/** 合计手续费率：交易所吃单 0.04%（挂单 0）+ 平台 builder 费。toFixed 去掉浮点尾巴 */
-// 用户总共付：Aster 吃单 0.04%（挂单 0）+ 我们的 builder 费（普通 0.06% / VIP 0.04%，服务器下发）
+/** Combined fee rate: exchange taker 0.04% (maker 0) + platform builder fee. toFixed trims float dust */
+// What the user pays in total: Aster taker 0.04% (maker 0) + our builder fee (regular 0.06% / VIP 0.04%, pushed by server)
 const feeRate = (type: string) => Number(((type === 'market' ? 0.0004 : 0) + perpFeeRate()).toFixed(6))
 
-/** 存入 / 提出：都走 BNB Chain 的 USDT，gas 用 BNB */
+/** Deposit / withdraw: both via USDT on BNB Chain, gas in BNB */
 function FundSheet({ mode, onClose, account }: { mode: 'deposit' | 'withdraw' | null; onClose: () => void; account: PerpAccount | null }) {
   const { evmAddress, evmAccount } = useWallet()
   const nav = useNavigate()
   const holdings = usePortfolio((s) => s.holdings)
-  // 别的链上的美元稳定币（USDT / USDC，以及 Robinhood 链上的 USDG / USDe）、或 BSC 上的 USDC：一键跳闪兑换成 BSC USDT
-  // （LI.FI 实测 Robinhood USDG → BSC USDT 走 Symbiosis 约 40 秒到账，2026-09-25）
+  // Dollar stables on other chains (USDT / USDC, plus USDG / USDe on the Robinhood chain) or USDC on BSC: one-tap flash-swap into BSC USDT
+  // (LI.FI tested Robinhood USDG → BSC USDT via Symbiosis, ~40s to arrive, 2026-09-25)
   const others = holdings.filter((h) => ['USDT', 'USDC', 'USDG', 'USDE'].includes(h.symbol.toUpperCase()) && !(h.chainId === BSC_CHAIN_ID && h.symbol.toUpperCase() === 'USDT') && h.amount >= 1)
   const [fee, setFee] = useState<number | null>(null)
   const [phase, setPhase] = useState('')
   const [amount, setAmount] = useState('')
   const [bal, setBal] = useState<number | null>(null)
-  /** 存入用哪种币：USDT 直接存；BNB 先自动换成 USDT 再存 */
+  /** Which coin to deposit with: USDT deposits directly; BNB auto-swaps to USDT first */
   const [asset, setAsset] = useState<'USDT' | 'BNB'>('USDT')
   const [bnbBal, setBnbBal] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)

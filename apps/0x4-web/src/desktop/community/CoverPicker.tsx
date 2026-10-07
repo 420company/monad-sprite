@@ -1,5 +1,5 @@
-// 开播检查页「直播封面」（2026-10-02 goat：主播自己选）：自动 + 8 张直播间氛围图，点一下就存到服务器（只有主播能改）。
-// 只在网页版开播检查页用（Room.tsx 按需加载），手机 App 不带这些图。
+// Pre-live check page's "Stream cover" (2026-10-02 goat: the streamer picks it): auto + 8 room-atmosphere images; one tap saves to the server (only the streamer can change it).
+// Only used on the web pre-live check page (lazy-loaded by Room.tsx); the phone app doesn't bundle these images.
 import { useState } from 'react'
 import { api } from '@/lib/social'
 import { toast } from '@/components/Toast'

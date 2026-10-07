@@ -1,4 +1,4 @@
-// 直播特效设置（2026-10-02）：本机存的设置读回来要校验（被改坏、旧版本留下的都按「关」处理），判断「有没有开特效」
+// Livestream effect settings (2026-10-02): locally stored settings are validated on read (corrupted or left by old versions all count as "off"); decide whether any effect is on
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FX_OFF, fxActive, loadFx, saveFx } from './settings'
 

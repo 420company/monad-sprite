@@ -1,7 +1,7 @@
-// 电脑端下拉面板（docs/WEB_DESIGN.md 第 2 节：下拉 / 选择器用贴着触发按钮的弹出面板，电脑端不用手机底部弹层）。
-// · 贴着触发按钮：默认在按钮下方，下方放不下而上方更宽敞时翻到上方；左右不出屏幕，高度不超过可用空间（面板里自己滚）
-// · 点面板外、按 Esc 关闭；Esc 关闭后焦点回到触发按钮；窗口缩放 / 页面滚动时跟着按钮重新定位
-// · 挂在 body 上（portal），不受交易终端各面板 overflow: hidden 的裁剪
+// Desktop dropdown panel (docs/WEB_DESIGN.md §2: dropdowns / pickers use popovers hugging the trigger button; desktop never uses phone bottom sheets).
+// - Hugs the trigger: below by default, flips above when there's no room below but more above; never leaves the screen horizontally, never taller than available space (scrolls internally)
+// - Closes on outside-tap or Esc; focus returns to the trigger after Esc; repositions with the button on window resize / page scroll
+// - Mounted on body (portal), immune to the trade terminal panels' overflow: hidden clipping
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -12,7 +12,7 @@ export default function Popover({ open, anchor, onClose, width = 360, align = 's
   anchor: RefObject<HTMLElement | null>
   onClose: () => void
   width?: number
-  /** start：左边和按钮左边对齐；end：右边和按钮右边对齐 */
+  /** start: left edge aligns with the button's left; end: right edge aligns with the button's right */
   align?: 'start' | 'end'
   maxHeight?: number
   label: string

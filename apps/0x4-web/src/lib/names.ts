@@ -1,7 +1,7 @@
-// 小精灵名字、用户昵称的规则（2026-09-28 goat 定）：只允许汉字、英文字母、数字，不能有空格和符号（含表情）；
-// 长度按显示宽度算：一个汉字算 2，一个字母或数字算 1，合计不超过 16（最多 8 个汉字，或 16 个字母数字，也可以混用）。
-// 服务器也按同一套规则校验（server/src/names.ts），这里只是提前在输入框里提示，不合规不让提交。
-// 只在新建和修改时校验：以前起的名字、服务器自动生成的默认昵称（带「…」）不受影响。
+// Sprite and user nickname rules (set by goat on 2026-09-28): only Chinese characters, Latin letters, and digits — no spaces or symbols (including emoji);
+// length measured in display width: a Chinese character counts 2, a letter or digit counts 1, up to 16 total (max 8 Chinese characters, or 16 alphanumerics, or a mix).
+// The server enforces the same rules (server/src/names.ts); this only pre-hints in the input box and blocks submission when non-compliant.
+// Validated only on create and edit: older names and server-generated default nicknames (with "…") are unaffected.
 import { t } from './i18n'
 
 export const NAME_MAX_WIDTH = 16
@@ -14,7 +14,7 @@ export function nameWidth(s: string): number {
   return w
 }
 
-/** 不合规返回一句给用户看的话；合规返回 null。nickname = 用在昵称上（提示里说「昵称」） */
+/** Returns a user-facing message when non-compliant, null when compliant. nickname = used on nicknames (the hint says "nickname") */
 export function nameError(s: string, nickname = false): string | null {
   if (!s) return nickname ? t('昵称不能为空') : t('名字不能为空')
   if (!NAME_RE.test(s)) return nickname ? t('昵称只能用汉字、英文字母和数字，不能有空格和符号') : t('名字只能用汉字、英文字母和数字，不能有空格和符号')

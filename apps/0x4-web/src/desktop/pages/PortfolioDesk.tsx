@@ -1,9 +1,9 @@
-// 网页版「我的资产」（/portfolio，钱包胶囊菜单进来；网页版的 / 也落到这里。2026-09-29 goat：「我点个人中心，又是给的手机预览版本的界面」）。
-// 版式参考专业交易所的资产页（docs/WEB_DESIGN.md）：
-//   上面一块：总资产大数字 + 今日盈亏 + 更新状态，右上操作（收款 · 发送 · 闪兑 · 合约），下面各链地址（点一下复制），再下面三格小统计；
-//   下面页签表：资产（代币、网络、数量、价格、价值、24h）· 合约仓位 · 活动记录。
-// 余额、今日盈亏、活动记录、合约账户全部复用手机首页 / 活动页 / 合约页的 store 和函数（usePortfolio、useDayPnl、useActivityTimeline、loadAccount），
-// 不另写一套；收款 / 发送用手机的业务组件，外壳在网页版宽屏下是居中模态框（components/Sheet）。
+// Web "My assets" (/portfolio, entered from the wallet capsule menu; web's / lands here too. 2026-09-29 goat: "I tapped personal center and got the phone-preview UI again").
+// Layout references pro exchanges' asset pages (docs/WEB_DESIGN.md):
+//   Top block: big total-assets number + today's PnL + refresh state, actions top-right (Receive · Send · Swap · Perps), per-chain addresses below (tap to copy), then three small stat cells;
+// Tabs below: assets (token, network, amount, price, value, 24h) · perp positions · activity.
+// Balances, today's PnL, activity, and the perps account all reuse the phone home / activity / perps pages' stores and functions (usePortfolio, useDayPnl, useActivityTimeline, loadAccount),
+// No separate implementation; receive / send reuse the phone's business components, with the shell as a centered modal on wide web screens (components/Sheet).
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowDownLeft, ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, ArrowUpRight, ChevronRight, Clock, Copy, Crown, Eye, EyeOff, RefreshCw, Repeat, TrendingUp, Wallet, WifiOff, XCircle } from 'lucide-react'
@@ -37,8 +37,8 @@ import { getOx4Wallet, unlockOx4 } from '../walletGate'
 type Tab = 'assets' | 'perp' | 'activity'
 const tone = (v: number) => (pnlSign(v) > 0 ? 'wc-up' : pnlSign(v) < 0 ? 'wc-down' : 'wc-mute')
 const money = (v: number) => (v >= 1e6 ? fmtUsd(v, { compact: true }) : fmtMoney(v))
-/** 持仓点进去：比特币没有行情页；EVM 链原生币去现货（闪兑）；其余去币详情 */
-// 比特币闪兑（2026-09-30）：BTC 这一行点进兑换，预选卖出 BTC
+/** Tapping a position: Bitcoin has no market page; EVM native coins go to spot (swap); everything else goes to the coin detail */
+// Bitcoin swap (2026-09-30): tapping the BTC row opens the swap, pre-selecting sell-BTC
 const holdingPath = (h: Holding) => h.chainId === BTC_CHAIN_ID ? `/swap?from=${BTC_CHAIN_ID}:bitcoin` : h.chainId !== SOLANA_CHAIN_ID && isNative(h.mint) ? '/spot' : `/token/${chainById(h.chainId)?.dexKey || 'solana'}/${h.mint}`
 
 export default function PortfolioDesk() {
@@ -49,11 +49,11 @@ export default function PortfolioDesk() {
   const { holdings, btc, totalUsd, loading, error, refresh, lastUpdated } = usePortfolio()
   const [modal, setModal] = useState<'receive' | 'send' | 'swap' | 'pnl' | 'tier' | null>(null)
   const [tab, setTab] = usePageState<Tab>('desk.portfolio.tab', 'assets', oneOf('assets', 'perp', 'activity'))
-  // 从别处跳过来指定页签（/activity → /portfolio?tab=activity）
+  // Deep-linking to a specific tab from elsewhere (/activity → /portfolio?tab=activity)
   const [params] = useSearchParams()
   useEffect(() => { const q = params.get('tab'); if (q === 'assets' || q === 'perp' || q === 'activity') setTab(q) }, [params]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 和手机首页同一套刷新：进来超过 15 秒没更新就刷，之后每 30 秒悄悄刷；手动刷新才转圈
+  // Same refresh as the mobile home: refresh if stale for over 15s on entry, then silently every 30s; only manual refreshes show a spinner
   const [manual, setManual] = useState(false)
   const refreshNow = () => { setManual(true); Promise.resolve(refresh()).finally(() => setManual(false)) }
   useEffect(() => {
@@ -62,7 +62,7 @@ export default function PortfolioDesk() {
     return () => clearInterval(timer)
   }, [refresh, address, evmAddress])
 
-  // 今日盈亏（现货 + 合约，和首页同一个口径）与账户种类
+  // Today's PnL (spot + perps, same scope as home) and account types
   const socialReady = useSocial((s) => s.status === 'ready')
   const { ledger, perp } = useDayPnl()
   useEffect(() => { void useDayPnl.getState().update() }, [lastUpdated, address, socialReady])
@@ -73,12 +73,12 @@ export default function PortfolioDesk() {
   const feesFor = useFees((s) => (s.loadedAt > 0 ? s.account : null))
   const meAddr = useSocial((s) => s.me?.address)
 
-  // 比特币持仓单独存（store/portfolio），在这里并进列表按价值排序
+  // Bitcoin positions are stored separately (store/portfolio) — merged into the list here, sorted by value
   const positions = useMemo(() => (btc ? [...holdings, btc].sort((a, b) => b.valueUsd - a.valueUsd) : holdings).filter((h) => h.amount > 0), [holdings, btc])
   const hasSnapshot = lastUpdated > 0
   const unpriced = positions.filter((h) => !(h.priceUsd > 0)).length
   const balanceKnown = hasSnapshot && (positions.length === 0 || unpriced < positions.length)
-  // 合约账户读得到时，总资产含合约账户权益（和今日盈亏同一个口径：现货 + 合约）
+  // When the perps account is readable, total assets include perps account equity (same scope as today's PnL: spot + perps)
   const perpEquity = pnl?.perp?.equity ?? null
   const grandTotal = totalUsd + (perpEquity || 0)
   const mask = (s: string) => (hideBalance ? '****' : s)
@@ -99,7 +99,7 @@ export default function PortfolioDesk() {
         </div>
       </header>
 
-      {/* 概览 */}
+      {/* Overview */}
       <section className="wc-panel" aria-label={t('资产概览')} aria-busy={loading}>
         <div className="wc-pf-sum">
           <div className="min-w-0">
@@ -128,7 +128,7 @@ export default function PortfolioDesk() {
           <div className="wc-pf-acts" role="group" aria-label={t('钱包操作')}>
             <button type="button" className="wc-btn is-primary" onClick={() => setModal('receive')}><ArrowDownToLine size={15} />{t('收款')}</button>
             <button type="button" className="wc-btn" onClick={() => setModal('send')}><ArrowUpFromLine size={15} />{t('发送')}</button>
-            {/* 闪兑在本页弹窗里做（2026-10-02 goat：以前跳去现货页，点了不像闪兑）：任意币换任意币，同链 / 跨链都行 */}
+            {/* Swaps happen in a modal on this page (2026-10-02 goat: it used to jump to the spot page, which didn't feel like a swap): any coin to any coin, same-chain or cross-chain */}
             <button type="button" className="wc-btn" onClick={() => setModal('swap')}><Repeat size={15} />{t('闪兑')}</button>
             <button type="button" className="wc-btn" onClick={() => nav('/perp')}><TrendingUp size={15} />{t('合约')}</button>
           </div>
@@ -136,19 +136,19 @@ export default function PortfolioDesk() {
         {addrs.length > 0 && (
           <div className="wc-pf-addrs">
             {addrs.map((a) => <button key={a.k} type="button" className="wc-addr" onClick={() => copyAddr(a.v)} title={a.v} aria-label={t('复制 {chain} 地址', { chain: a.k })}><em>{a.k}</em><code>{midShort(a.v)}</code><Copy size={12} aria-hidden="true" /></button>)}
-            {/* 外部钱包没有比特币：比特币是 0x4 Wallet 专属，点了去获取（2026-09-30） */}
+            {/* External wallets don't do Bitcoin: Bitcoin is a 0x4 Wallet exclusive — tapping goes to get it (2026-09-30) */}
             {external && <button type="button" className="wc-addr is-ox4" onClick={getOx4Wallet}><em>Bitcoin</em><span>{t('0x4 Wallet 专属')}</span></button>}
           </div>
         )}
         <dl className="wc-pf-stats" style={{ borderTop: '1px solid var(--w-line)' }}>
           <div><dt>{t('钱包资产')}</dt><dd>{balanceKnown ? mask(money(totalUsd)) : '--'}<small>{t('{n} 项资产', { n: hasSnapshot ? positions.length : '--' })}</small></dd></div>
           <div><dt>{t('合约账户')}</dt><dd>{perpEquity !== null ? mask(money(perpEquity)) : '--'}<small>{perpEquity !== null ? t('保证金用 BNB Chain 上的 USDT') : t('未开通或暂时读不到')}</small></dd></div>
-          {/* 第三格：累计交易额和升 VIP 的门槛（服务器核对过的交易额，/api/fees/me）；今日盈亏已经在大数字下面，不重复 */}
+          {/* Third cell: cumulative volume and the VIP threshold (server-verified volume, /api/fees/me); today's PnL is already under the big number, not repeated */}
           <div><dt>{t('累计交易额')}</dt><dd>{feesFor === meAddr && meAddr ? mask(money(fees.volume.spot + fees.volume.perp)) : '--'}<small>{vip ? t('已是 VIP，手续费更低') : t('现货满 {a} 或合约满 {b} 自动升级 VIP', { a: fmtUsd(fees.target.spot, { compact: true }), b: fmtUsd(fees.target.perp, { compact: true }) })}</small></dd></div>
         </dl>
       </section>
 
-      {/* 页签表 */}
+      {/* Tab bar */}
       <section className="wc-panel is-clip">
         <div className="wc-tabs" role="tablist" aria-label={t('资产明细')}>
           <button type="button" role="tab" aria-selected={tab === 'assets'} onClick={() => setTab('assets')}>{t('资产')}{hasSnapshot && positions.length > 0 && <span className="wc-mute num">{positions.length}</span>}</button>
@@ -171,7 +171,7 @@ export default function PortfolioDesk() {
   )
 }
 
-/** 资产表：代币、网络、数量、价格、价值、24h；点一行去行情 / 现货 */
+/** Assets table: token, network, amount, price, value, 24h; tapping a row goes to markets / spot */
 function AssetsTable({ positions, firstLoad, error, mask, onRetry, onReceive }: { positions: Holding[]; firstLoad: boolean; error: boolean; mask: (s: string) => string; onRetry: () => void; onReceive: () => void }) {
   if (error) return <Empty tall icon={WifiOff} text={t('持仓暂不可用')} action={<button type="button" className="wc-btn is-sm" onClick={onRetry}><RefreshCw size={13} />{t('重试')}</button>} />
   return (
@@ -203,13 +203,13 @@ function AssetsTable({ positions, firstLoad, error, mask, onRetry, onReceive }: 
   )
 }
 
-/** 合约仓位：打开这个页签才去读（要合约代理签名），和合约页同一个接口与「还没开通」判断 */
+/** Perp positions: only fetched when this tab opens (needs the perp agent signature); same endpoint and "not yet enabled" check as the perp page */
 function PerpPositions({ mask }: { mask: (s: string) => string }) {
   const nav = useNavigate()
   const { evmAccount, keysUnlocked } = useWallet()
   const [acc, setAcc] = useState<PerpAccount | null>(null)
   const [noAccount, setNoAccount] = useState(false)
-  // 交易密钥还没授权（网页版插件）：账户可能已经有钱、有小精灵开的仓，只是读不到。原来和「还没开通」混在一起，说成「合约账户未开启」（2026-10-05 goat 存了 20 USDT 后看到这句）
+  // Trading key not authorized yet (web extension): the account may already hold funds or the sprite's positions — just unreadable. It used to be lumped with "not enabled", saying "perps account not opened" (2026-10-05 goat saw this after depositing 20 USDT)
   const [noAgent, setNoAgent] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -223,7 +223,7 @@ function PerpPositions({ mask }: { mask: (s: string) => string }) {
       .then((a) => { if (alive) { setAcc(a); setNoAccount(false); setNoAgent(false) } })
       .catch((e) => {
         if (!alive) return
-        // NO_AGENT / only be used after deposit：这个钱包还没在交易所开通合约账户，是新用户的正常状态，不是故障
+        // NO_AGENT / "only be used after deposit": this wallet hasn't opened a perps account on the exchange yet — a normal state for new users, not a malfunction
         const msg = errorText(e, t('读取失败'))
         const raw = e instanceof Error ? e.message : ''
         const agent = raw === 'NO_AGENT' || msg === 'NO_AGENT'
@@ -235,7 +235,7 @@ function PerpPositions({ mask }: { mask: (s: string) => string }) {
   }, [evmAccount, keysUnlocked, retry])
   const goPerp = <button type="button" className="wc-btn is-sm" onClick={() => nav('/perp')}><TrendingUp size={13} />{t('去合约')}</button>
   if (!evmAccount) return <Empty tall icon={TrendingUp} text={t('合约用 BNB Chain 地址交易，连接后在合约页开通。')} action={goPerp} />
-  // 0x4 插件锁着（2026-10-06 起插件锁了网页不登出）：读合约账户要插件签名，不自动弹解锁
+  // 0x4 extension locked (since 2026-10-06, extension locking no longer logs web out): reading the perps account needs the extension's signature — no auto unlock pop
   if (!keysUnlocked) return <Empty tall icon={TrendingUp} text={t('0x4 Wallet 已锁定，解锁后显示合约账户的余额和仓位。')} action={<button type="button" className="wc-btn is-sm" onClick={() => void unlockOx4()}>{t('解锁')}</button>} />
   if (loading && !acc) return <div className="flex flex-col gap-3 p-5">{Array.from({ length: 3 }, (_, i) => <span key={i} className="wc-sk" style={{ height: 40 }} />)}</div>
   if (noAgent) return <Empty tall icon={TrendingUp} text={t('授权交易密钥后显示合约账户的余额和仓位（包括小精灵开的）。')} action={<button type="button" className="wc-btn is-sm" disabled={authBusy} onClick={async () => {
@@ -274,7 +274,7 @@ function PerpPositions({ mask }: { mask: (s: string) => string }) {
   )
 }
 
-/** 活动记录：和手机活动页同一条时间线（useActivityTimeline），按链筛选，点一行去区块浏览器 */
+/** Activity: the same timeline as the phone activity page (useActivityTimeline), filterable by chain; tapping a row opens the block explorer */
 function ActivityTable() {
   const [filter, setFilter] = usePageState<ActivityFilter>('desk.portfolio.chain', 'all', oneOf(...ACTIVITY_FILTERS.map((f) => f.value)))
   const { list, rows, pending, notice, unavailableNames, refresh } = useActivityTimeline(filter)

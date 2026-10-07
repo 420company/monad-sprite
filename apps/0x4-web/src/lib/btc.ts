@@ -1,11 +1,11 @@
-// 比特币（原生 BTC，主网）：派生、地址、地址校验、选币、构造交易、签名。
+// Bitcoin (native BTC, mainnet): key derivation, addresses, address validation, coin selection, tx building, signing.
 //
-// 地址规则（2026-09-25 goat 拍板）：
-//   助记词钱包 → BIP84 m/84'/0'/0'/0/0，原生隔离见证 P2WPKH（bc1q…），和 MetaMask / Trust 同一个地址
-//   私钥导入的钱包（没有助记词）→ 直接用 EVM 那把 secp256k1 私钥（压缩公钥）生成 P2WPKH
+// Address rules (decided by goat, 2026-09-25):
+//   Mnemonic wallets → BIP84 m/84'/0'/0'/0/0, native segwit P2WPKH (bc1q…), same address as MetaMask / Trust
+//   Imported-private-key wallets (no mnemonic) → derive P2WPKH directly from the EVM secp256k1 key (compressed pubkey)
 //
-// 私钥在哪签：iOS 在原生 Ox4Vault（BtcSigner.swift），网页版 / Android 在网页层（本文件 localBtcSigner）。
-// 两边算出的地址、WIF、签名字节必须一致，测试见 btc.test.ts 与 native/Ox4Vault/Tests/.../BtcSignerTests.swift。
+// Where private keys sign: iOS in native Ox4Vault (BtcSigner.swift); web / Android in the web layer (localBtcSigner in this file).
+// Both sides must produce identical addresses, WIFs, and signature bytes; tests in btc.test.ts and native/Ox4Vault/Tests/.../BtcSignerTests.swift.
 import { HDKey } from '@scure/bip32'
 import { mnemonicToSeedSync } from '@scure/bip39'
 import { Address, NETWORK, OutScript, Script, TEST_NETWORK, Transaction, WIF, p2wpkh } from '@scure/btc-signer'
@@ -13,24 +13,25 @@ import { secp256k1 } from '@noble/curves/secp256k1'
 import { hexToBytes, bytesToHex } from '@noble/hashes/utils.js'
 import { t } from '@/lib/i18n'
 
-/** LI.FI 给比特币的链 id（定义在 chains.ts）。持仓、活动记录用它标识 BTC，第二步闪兑直接拿去问 LI.FI 报价 */
+/** LI.FI's chain id for Bitcoin (defined in chains.ts). Holdings and activity records use it to identify BTC; the second swap step quotes LI.FI with it directly */
 export { BTC_CHAIN_ID } from './chains'
-/** 持仓里 BTC 的「mint」。LI.FI 的比特币原生币地址就是这个字符串 */
+/** BTC's "mint" in holdings. This string is LI.FI's native-Bitcoin address */
 export const BTC_MINT = 'bitcoin'
 export const BTC_PATH = "m/84'/0'/0'/0/0"
-/** 尘埃阈值：低于它的输出节点不转发（找零低于它就并进手续费） */
+/** Dust threshold: outputs below it aren't relayed (change below it is folded into the fee) */
 export const BTC_DUST = 546n
-/** RBF：序号小于 0xfffffffe 即可被加价替换（BIP125） */
+/** RBF: sequence numbers below 0xfffffffe are replaceable-by-fee (BIP125) */
 export const RBF_SEQUENCE = 0xfffffffd
-/** OP_RETURN 数据上限（节点默认的标准交易规则） */
+/** OP_RETURN data cap (nodes' default standard-tx policy) */
 export const OP_RETURN_MAX = 80
 export const SATS = 100_000_000
 
-// ---------- 派生与地址 ----------
+// ---------- Derivation & addresses ----------
 
 /**
- * BIP39 种子 → BIP84 收款地址的私钥。accountIndex 是同一组助记词下的第几个钱包（插件多钱包，2026-10-01）：
- * 第 n 个走 m/84'/0'/n'/0/0（和 Phantom 的多账户一致）；第 0 个就是原来的 BTC_PATH，已有地址不变。
+ * BIP39 seed → private key for the BIP84 receive address. accountIndex is the wallet index under one
+ * mnemonic (extension multi-wallet, 2026-10-01): wallet n uses m/84'/0'/n'/0/0 (same as Phantom's
+ * multi-account); wallet 0 is the original BTC_PATH, existing addresses unchanged.
  */
 export function btcKeyFromSeed(seed: Uint8Array, accountIndex = 0): Uint8Array {
   const path = accountIndex === 0 ? BTC_PATH : `m/84'/0'/${accountIndex}'/0/0`
@@ -43,7 +44,7 @@ export function btcKeyFromMnemonic(mnemonic: string): Uint8Array {
   return btcKeyFromSeed(mnemonicToSeedSync(mnemonic.trim().toLowerCase().split(/\s+/).join(' ')))
 }
 
-/** 没有助记词的钱包：BTC 私钥就是 EVM 私钥本身 */
+/** Wallets without a mnemonic: the BTC private key IS the EVM private key */
 export function btcKeyFromEvmKey(hex: string): Uint8Array {
   const h = hex.trim().toLowerCase().replace(/^0x/, '')
   if (!/^[0-9a-f]{64}$/.test(h)) throw new Error(t('EVM 私钥格式不对'))
@@ -54,44 +55,44 @@ export function btcPublicKey(priv: Uint8Array): Uint8Array {
   return secp256k1.getPublicKey(priv, true)
 }
 
-/** 收款地址：P2WPKH bc1q… */
+/** Receive address: P2WPKH bc1q… */
 export function btcAddressFromKey(priv: Uint8Array): string {
   return p2wpkh(btcPublicKey(priv), NETWORK).address!
 }
 
-/** WIF（主网、压缩公钥，K / L 开头），导出给别的比特币钱包用 */
+/** WIF (mainnet, compressed pubkey, K / L prefix), for exporting to other Bitcoin wallets */
 export function btcWif(priv: Uint8Array): string {
   return WIF(NETWORK).encode(priv)
 }
 
-/** bc1 地址展示：前 6 后 4（shortId 的前 5 后 3 对 bc1q 太短，看不出区别） */
+/** bc1 address display: first 6 + last 4 (shortId's first-5/last-3 is too short for bc1q to tell apart) */
 export function shortBtc(addr: string): string {
   return addr.length <= 12 ? addr : `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-// ---------- 地址校验 ----------
+// ---------- Address validation ----------
 
 export type BtcAddressCheck =
   | { ok: true; address: string; script: Uint8Array; type: string }
   | { ok: false; reason: 'empty' | 'testnet' | 'invalid' }
 
-/** 收款方地址：只认主网（1… / 3… / bc1q… / bc1p…），测试网 / regtest 地址明确拒绝 */
+/** Recipient address: mainnet only (1… / 3… / bc1q… / bc1p…); testnet / regtest addresses explicitly rejected */
 export function checkBtcAddress(input: string): BtcAddressCheck {
   let a = input.trim()
   if (!a) return { ok: false, reason: 'empty' }
-  // 二维码里的 bech32 常是全大写（BIP173 允许），统一成小写
+  // bech32 in QR codes is often all-uppercase (BIP173 allows it); normalize to lowercase
   if (/^(BC1|TB1|BCRT1)[0-9A-Z]+$/.test(a)) a = a.toLowerCase()
   if (/^(tb1|bcrt1)/i.test(a)) return { ok: false, reason: 'testnet' }
   try {
     const decoded = Address(NETWORK).decode(a)
     return { ok: true, address: a, script: OutScript.encode(decoded), type: decoded.type }
   } catch {
-    try { Address(TEST_NETWORK).decode(a); return { ok: false, reason: 'testnet' } } catch { /* 两个网络都不认 */ }
+    try { Address(TEST_NETWORK).decode(a); return { ok: false, reason: 'testnet' } } catch { /* Recognized by neither network */ }
     return { ok: false, reason: 'invalid' }
   }
 }
 
-/** 解析 bitcoin: 链接（扫码得到的），返回地址和可选金额 */
+/** Parse a bitcoin: link (from QR scans); returns the address and optional amount */
 export function parseBitcoinUri(input: string): { address: string; amount?: string } {
   const s = input.trim()
   if (!/^bitcoin:/i.test(s)) return { address: s }
@@ -100,9 +101,9 @@ export function parseBitcoinUri(input: string): { address: string; amount?: stri
   return { address: addr, amount }
 }
 
-// ---------- 金额 ----------
+// ---------- Amounts ----------
 
-/** "0.001" → 100000n（sat）。最多 8 位小数，多了报错，不四舍五入 */
+/** "0.001" → 100000n (sat). Max 8 decimals; more is an error, never rounded */
 export function parseBtc(amount: string): bigint {
   const s = amount.trim()
   if (!/^\d+(\.\d{0,8})?$/.test(s)) throw new Error(t('金额格式不对（最多 8 位小数）'))
@@ -118,7 +119,7 @@ export function formatBtc(sats: bigint | number): string {
   return `${neg ? '-' : ''}${abs / 100_000_000n}${f ? `.${f}` : ''}`
 }
 
-// ---------- 选币与手续费 ----------
+// ---------- Coin selection & fees ----------
 
 export interface Utxo {
   txid: string
@@ -137,11 +138,11 @@ export interface BtcOutput {
 export interface BtcSendPlan {
   inputs: Utxo[]
   outputs: BtcOutput[]
-  /** 发给对方的 sat（「全部发送」时是扣完手续费后的数） */
+  /** sats sent to the recipient ("send all" = amount after fees) */
   amount: bigint
   change: bigint
   fee: bigint
-  /** 预估虚拟字节（按签名最长 72 字节算，实际只会更小） */
+  /** Estimated virtual bytes (assumes worst-case 72-byte signatures; actual is only smaller) */
   vsize: number
   feeRate: number
 }
@@ -152,28 +153,28 @@ export class BtcPlanError extends Error {
 
 const varIntLen = (n: number) => (n < 0xfd ? 1 : n <= 0xffff ? 3 : 5)
 const outputBytes = (script: Uint8Array) => 8 + varIntLen(script.length) + script.length
-/** 一个 P2WPKH 输入的重量：非见证 41 字节×4 + 见证（项数 1 + 签名 1+72 + 公钥 1+33）= 272 WU = 68 vB */
+/** Weight of one P2WPKH input: non-witness 41 bytes × 4 + witness (item count 1 + sig 1+72 + pubkey 1+33) = 272 WU = 68 vB */
 const P2WPKH_INPUT_WU = 41 * 4 + 1 + 73 + 34
 
-/** 按输入个数与输出脚本估算 vsize（全部输入都是本钱包的 P2WPKH） */
+/** Estimate vsize from input count and output scripts (all inputs are this wallet's P2WPKH) */
 export function estimateVsize(inputCount: number, outputScripts: Uint8Array[]): number {
   const base = 4 + varIntLen(inputCount) + varIntLen(outputScripts.length) + outputScripts.reduce((s, o) => s + outputBytes(o), 0) + 4
-  const weight = base * 4 + 2 /* 隔离见证 marker + flag */ + inputCount * P2WPKH_INPUT_WU
+  const weight = base * 4 + 2 /* Segwit marker + flag */ + inputCount * P2WPKH_INPUT_WU
   return Math.ceil(weight / 4)
 }
 
 const feeFor = (vsize: number, feeRate: number) => BigInt(Math.ceil(vsize * feeRate))
 
-/** OP_RETURN 输出脚本（跨链兑换备注用；界面暂不开放） */
+/** OP_RETURN output script (for cross-chain swap memos; not exposed in UI yet) */
 export function opReturnScript(data: Uint8Array): Uint8Array {
   if (data.length === 0 || data.length > OP_RETURN_MAX) throw new BtcPlanError('op_return', t('备注数据长度要在 1~80 字节'))
   return Script.encode(['RETURN', data])
 }
 
 /**
- * 选币：确认过的在前，同类按金额从大到小，凑够为止（最大优先，输入少手续费就低）。
- * amount = 'max' 是「全部发送」：花掉所有 UTXO，没有找零，对方收到 = 总额 − 手续费。
- * 找零低于 546 sat 不单独出，并进手续费。
+ * Coin selection: confirmed first, then largest-first within the same class, until covered (fewer inputs =
+ * lower fees). amount = 'max' is "send all": spend every UTXO, no change; the recipient gets total − fee.
+ * Change below 546 sat isn't emitted separately — folded into the fee.
  */
 export function planBtcSend(p: {
   utxos: Utxo[]
@@ -205,7 +206,7 @@ export function planBtcSend(p: {
   for (const u of sorted) {
     picked.push(u)
     total += BigInt(u.value)
-    // 先按「带找零」算；找零不够尘埃线就去掉找零再算一次
+    // First estimate with change; if change is below dust, drop the change output and re-estimate
     const withChange = estimateVsize(picked.length, [p.toScript, p.changeScript, ...extra.map((o) => o.script)])
     const feeWith = feeFor(withChange, feeRate)
     const change = total - amount - feeWith
@@ -219,18 +220,18 @@ export function planBtcSend(p: {
     const noChange = estimateVsize(picked.length, [p.toScript, ...extra.map((o) => o.script)])
     const feeNo = feeFor(noChange, feeRate)
     if (total >= amount + feeNo) {
-      // 多出来的零头（不到尘埃线）全部给矿工
+      // Leftover dust (below the dust line) all goes to miners
       return { inputs: picked, outputs: [{ script: p.toScript, amount, kind: 'to' }, ...extra], amount, change: 0n, fee: total - amount, vsize: noChange, feeRate }
     }
   }
   throw new BtcPlanError('insufficient', t('比特币余额不足（含手续费）'))
 }
 
-// ---------- 构造与签名 ----------
+// ---------- Building & signing ----------
 
-/** 交给签名器的请求：未签名交易 + 每个输入花的那笔输出（金额与脚本，BIP143 签名要用） */
+/** Signer request: unsigned tx + the prevout each input spends (amount and script, needed for BIP143 signing) */
 export interface BtcSignRequest {
-  /** 未签名交易（不含见证），十六进制 */
+  /** Unsigned transaction (no witness), hex */
   tx: string
   prevouts: { amount: string; script: string }[]
 }
@@ -250,20 +251,20 @@ export function buildBtcTx(plan: BtcSendPlan, fromScript: Uint8Array): { tx: Tra
   }
 }
 
-/** 签名器接口：网页层实现（localBtcSigner）和原生实现（signers.ts 的 nativeBtcSigner）同一套 */
+/** Signer interface: the web implementation (localBtcSigner) and the native one (signers.ts's nativeBtcSigner) share it */
 export interface BtcSigner {
   address: string
-  /** 返回签好的完整交易（含见证），十六进制 */
+  /** Returns the fully signed transaction (with witness), hex */
   signTransaction(req: BtcSignRequest): Promise<string>
 }
 
-/** 未签名交易 + prevouts 还原成 btc-signer 的交易对象，顺带检查每个输入花的都是自己的钱 */
+/** Rebuild the unsigned tx + prevouts into a btc-signer transaction, verifying each input spends our own coins */
 function restore(req: BtcSignRequest, ownScript: Uint8Array): Transaction {
   const tx = Transaction.fromRaw(hexToBytes(req.tx), { allowUnknownOutputs: true })
   if (tx.inputsLength !== req.prevouts.length || tx.inputsLength === 0) throw new Error(t('交易输入与金额数量不一致'))
   const own = bytesToHex(ownScript)
   req.prevouts.forEach((p, i) => {
-    // 只签本钱包地址上的币：别的脚本一律拒绝，防止被骗去签别人构造的输入
+    // Only sign coins on this wallet's addresses: any other script is rejected, so nobody tricks us into signing their crafted inputs
     if (p.script.toLowerCase() !== own) throw new Error(t('交易里有不属于本钱包的输入'))
     tx.updateInput(i, { witnessUtxo: { script: ownScript, amount: BigInt(p.amount) } }, true)
   })
@@ -284,8 +285,8 @@ export function localBtcSigner(priv: Uint8Array): BtcSigner {
 }
 
 /**
- * 签名结果把关：原生（或任何签名器）交回来的交易必须和我们要签的是同一笔
- * （隔离见证的 txid 不含见证，所以 txid 相同 = 输入输出一个字节没变），且每个输入都签上了。
+ * Signing-result gate: whatever the native (or any) signer hands back must be the exact tx we asked to sign
+ * (segwit txids exclude witness, so matching txid = inputs/outputs byte-identical), with every input signed.
  */
 export function checkSignedBtcTx(unsigned: Transaction, signedHex: string): { txid: string; vsize: number; hex: string } {
   const signed = Transaction.fromRaw(hexToBytes(signedHex), { allowUnknownOutputs: true })

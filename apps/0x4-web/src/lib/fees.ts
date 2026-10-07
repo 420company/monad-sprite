@@ -1,7 +1,7 @@
-// 交易手续费（2026-09-27 goat 定，按用户总共付多少定价）：费率由服务器按是否 VIP 下发（GET /api/fees/me），改费率不用发版。
-//   Solana 现货（Jupiter）我们收 1% / VIP 0.8%；EVM 现货（LI.FI）我们收 0.75% / VIP 0.55%（LI.FI 另收 0.25%）
-//   合约（Aster builder）我们收 0.06% / VIP 0.04%（Aster 吃单另收 0.04%）
-// 没登录或拉取失败时按普通费率收。成交后把交易哈希报给服务器核对，累计交易额够了自动升 VIP。
+// Trading fees (set by goat 2026-09-27, priced by what the user pays in total): rates are pushed by the server per VIP status (GET /api/fees/me) — rate changes need no new build.
+//   Solana spot (Jupiter): we take 1% / VIP 0.8%; EVM spot (LI.FI): we take 0.75% / VIP 0.55% (LI.FI separately takes 0.25%)
+//   Perps (Aster builder): we take 0.06% / VIP 0.04% (Aster separately takes 0.04% taker)
+// Regular rates apply when not logged in or the pull fails. After a fill, report the tx hash to the server for verification; VIP upgrades automatically once cumulative volume is enough.
 import { create } from 'zustand'
 import { api } from './social'
 import { useSocial } from '@/store/social'
@@ -9,7 +9,7 @@ import { useSocial } from '@/store/social'
 import { DEFAULT_FEES, type FeeState } from './feeRules'
 export { DEFAULT_FEES, jupiterFee, LIFI_FEE_BPS, spotFeeLabel, type FeeState } from './feeRules'
 
-/** account = 这份费率是哪个账户的（切换钱包后首页勋章不显示上一个账户的等级） */
+/** account = which account these rates belong to (the home badge won't show the previous account's tier after switching wallets) */
 interface Store { fees: FeeState; loadedAt: number; account: string; load: (force?: boolean) => Promise<FeeState> }
 export const useFees = create<Store>((set, get) => ({
   fees: DEFAULT_FEES,
@@ -23,18 +23,18 @@ export const useFees = create<Store>((set, get) => ({
     try {
       const f = await api<FeeState>('/api/fees/me')
       set({ fees: { ...DEFAULT_FEES, ...f }, loadedAt: Date.now(), account })
-      // 合约下单的 builder 费跟着更新（按需加载合约模块，不把它打进首屏）
+      // The perp order's builder fee follows along (the perp module loads on demand — kept out of the first screen)
       import('./aster').then((m) => m.setPerpFeeRate(f.perpRate)).catch(() => {})
-    } catch { /* 用上次的 / 默认费率 */ }
+    } catch { /* Use the last / default rates */ }
     return get().fees
   },
 }))
-/** 下单前用：最多等 3 秒，拿不到就按手上的（默认普通费率） */
+/** Used before ordering: wait at most 3s; if nothing arrives, use what's on hand (default regular rates) */
 export async function currentFees(): Promise<FeeState> {
   return Promise.race([useFees.getState().load(), new Promise<FeeState>((r) => setTimeout(() => r(useFees.getState().fees), 3000))])
 }
 
-/** 现货成交后报给服务器核对（计入 VIP 累计额）；失败不影响交易 */
+/** Report spot fills to the server for verification (counts toward VIP volume); failure doesn't affect the trade */
 export function reportFeeReceipt(via: 'jupiter' | 'lifi', tx: string) {
   if (!tx || useSocial.getState().status !== 'ready') return
   api<{ counted: number }>('/api/fees/receipt', { method: 'POST', body: JSON.stringify({ via, tx }) })

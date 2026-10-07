@@ -1,4 +1,4 @@
-// 跨链 / 闪兑订单：持久化保存，并轮询 LI.FI 状态直到完成
+// Cross-chain / flash-swap orders: persisted, and LI.FI status polled until done
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { getLifiStatus } from '@/lib/lifi'
@@ -58,9 +58,9 @@ export const useBridge = create<BridgeState>()(
           })
           if (status !== 'PENDING') return
         } catch {
-          /* 网络错误：稍后重试 */
+          /* Network error: retry later */
         }
-        // 超过 2 小时仍未完成就停止轮询，避免无限请求
+        // Stop polling after 2 hours unfinished — avoid infinite requests
         if (Date.now() - t.createdAt > 2 * 3600_000) return
         clearTimeout(pollers.get(txHash))
         pollers.set(txHash, setTimeout(() => get().poll(txHash), 10_000))

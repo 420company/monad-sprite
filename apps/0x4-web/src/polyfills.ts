@@ -1,3 +1,3 @@
-// 浏览器环境垫片：必须作为入口文件的第一个 import，保证在 @solana/* 等库加载前生效
+// Browser environment polyfills: must be the entry file's first import, so they take effect before @solana/* and other libraries load
 import { Buffer } from 'buffer'
 ;(globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer

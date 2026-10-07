@@ -1,16 +1,16 @@
-// 直播特效的处理管：摄像头原始画面 → 识别 + 合成 → 新的视频轨道交给 LiveKit 发出去（2026-10-02）。
-// · 用 LiveKit 的 TrackProcessor 接口：开摄像头时就把它带上（VideoCaptureOptions.processor），画面在发出去之前就已经处理好；
-//   直播中途打开 / 关闭用 setProcessor / stopProcessor。主播自己的预览看到的就是观众看到的。
-// · 猫头模式（2026-10-02 goat：背景和身体照旧，只用猫头挡住脸，不要猫身子）：
-//   底下一层 = 摄像头画面（换背景 / 虚化照常）；
-//   上面一层 = 猫头，按这一帧脸的位置和大小贴上去（你靠近摄像头猫头就变大，往旁边挪跟着挪）。
-//   不露脸的保证：还没认到脸、或脸丢了超过 0.6 秒，整幅画面大幅虚化，认到了再恢复；出错时输出深色底和一句话，绝不退回真人画面。
-// · 换背景要等人像分割模型加载好（第一次大约 1~2 秒），这之前先只做美颜。
-// · 切到别的标签页 / 窗口时观众那边卡住（2026-10-03 goat）：原来每一帧靠 <video> 的画面回调驱动、输出靠 canvas.captureStream，
-//   Chrome 会把后台标签页的画面刷新停掉，回调不来就不出帧。现在 Chrome / Edge 走新路：MediaStreamTrackProcessor 直接从摄像头轨道读帧，
-//   算完用 MediaStreamTrackGenerator 直接写进发出去的轨道，整个过程不依赖页面刷新，切到后台照样出帧。没有这两样的浏览器（Safari 等）走老路。
-// · 手机（2026-10-02 goat：手机 App 主播也要有）走省电模式：识别用更小的画面、隔一帧识别一次（中间帧沿用上一帧的结果，
-//   猫头本来就有平滑，看不出来），输出最高 720p。连续直播不至于烫手；电脑照旧每帧都算。
+// Livestream effects pipeline: raw camera frames → detection + compositing → new video track handed to LiveKit for publishing (2026-10-02).
+// · Uses LiveKit's TrackProcessor interface: attached when the camera opens (VideoCaptureOptions.processor), so frames are processed before publishing;
+//   toggling mid-stream uses setProcessor / stopProcessor. The host's own preview is exactly what viewers see.
+// · Cat-head mode (2026-10-02 goat: background and body stay as-is, only the cat head covers the face — no cat body):
+//   bottom layer = camera frame (background swap / blur as usual);
+//   top layer = the cat head, pasted per this frame's face position and size (move closer and it grows, move aside and it follows).
+//   no-face guarantee: if no face detected yet, or the face lost for over 0.6s, the whole frame gets heavily blurred until a face is found again; on error output a dark background with a message — never fall back to the real face.
+// · Background swap waits for the person-segmentation model to load (about 1–2s the first time); beauty filters only until then.
+// · Viewers froze when switching to another tab/window (2026-10-03 goat): previously each frame was driven by the <video> frame callback and output via canvas.captureStream,
+//   and Chrome pauses frame rendering for background tabs — no callback, no frames. Now Chrome/Edge take the new path: MediaStreamTrackProcessor reads frames straight from the camera track,
+//   and processed frames go straight into the published track via MediaStreamTrackGenerator — the whole path no longer depends on page rendering, so frames keep flowing in the background. Browsers without these two APIs (Safari etc.) take the old path.
+// · Mobile (2026-10-02 goat: mobile-app hosts need it too) uses power-saving mode: detection runs on a smaller frame, every other frame (frames in between reuse the previous result,
+//   the cat head already has smoothing so it's invisible), output capped at 720p. Long streams won't overheat the phone; desktop still processes every frame.
 import type { Track, TrackProcessor, VideoProcessorOptions } from 'livekit-client'
 import type { FaceLandmarker, ImageSegmenter } from '@mediapipe/tasks-vision'
 import { Compositor, type Warp } from './compositor'
@@ -20,7 +20,7 @@ import { beautyOn, bgImage, type FxSettings } from './settings'
 import { t } from '@/lib/i18n'
 import { WEB_SURFACE } from '@/lib/surface'
 
-/** 手机（App、手机网页版）：网页版构建以外的都算；网页版在手机浏览器里打开（触屏为主）也算 */
+/** Mobile (app, mobile web): everything except the web build counts; web opened in a phone browser (touch-first) counts too */
 function isPhone() {
   if (!WEB_SURFACE) return true
   try { return matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches } catch { return false }
@@ -28,10 +28,10 @@ function isPhone() {
 
 export type FxStatus = 'loading' | 'ready' | 'noFace' | 'error'
 
-// Chrome / Edge 才有的两个接口（TypeScript 自带的类型里没有）
+// Two Chrome/Edge-only interfaces (missing from TypeScript's built-in types)
 type TrackReaderCtor = new (init: { track: MediaStreamTrack; maxBufferSize?: number }) => { readable: ReadableStream<VideoFrame> }
 type TrackWriterCtor = new (init: { kind: 'video' }) => MediaStreamTrack & { writable: WritableStream<VideoFrame> }
-/** 能不能走「不依赖页面刷新」的新路（测试时设 window.__fxLegacy = true 强制走老路） */
+/** Whether the "no page-render dependency" new path can be used (set window.__fxLegacy = true in tests to force the old path) */
 function directPipe(): { Reader: TrackReaderCtor; Writer: TrackWriterCtor } | null {
   const w = window as unknown as { MediaStreamTrackProcessor?: TrackReaderCtor; MediaStreamTrackGenerator?: TrackWriterCtor; __fxLegacy?: boolean }
   if (w.__fxLegacy) return null
@@ -45,11 +45,11 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
   onStatus?: (s: FxStatus) => void
 
   private video: HTMLVideoElement | null = null
-  // 新路：从摄像头读帧 / 往输出轨道写帧
+  // New path: read frames from the camera / write frames into the output track
   private reader: ReadableStreamDefaultReader<VideoFrame> | null = null
   private writer: WritableStreamDefaultWriter<VideoFrame> | null = null
   private lastOutTs = -1
-  /** 处理过的帧数（走查测试用来确认切到后台还在出帧） */
+  /** Processed frame count (walkthrough tests use it to confirm frames keep flowing in the background) */
   frames = 0
   private out = document.createElement('canvas')
   private ctx = this.out.getContext('2d', { alpha: false })!
@@ -62,20 +62,20 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
   private faceDown = new Downscaler(this.lite ? 320 : 480)
   private tick = 0
   private mask: { data: Uint8Array; w: number; h: number; person?: number } = { data: new Uint8Array(0), w: 0, h: 0 }
-  private faceMiss = 0           // 连续认不出脸的次数
-  private missSince = 0          // 画面里有人、却认不出脸，从什么时候开始
-  private faceErr = 0            // 认脸报错次数
-  private faceReadyAt = 0        // 认脸模型加载好的时间
-  private everFound = false      // 这次开播认到过脸没有
+  private faceMiss = 0           // Consecutive frames without a detected face
+  private missSince = 0          // When the "person visible but no face detected" state started
+  private faceErr = 0            // Face-detection error count
+  private faceReadyAt = 0        // When the face model finished loading
+  private everFound = false      // Whether a face has been detected at all this stream
   private warpPrev: Warp | null = null
-  private faceCpu = false        // 已经换成 CPU 认脸
-  private segCpu = false         // 已经换成 CPU 分割
-  private segErr = 0             // 分割连续报错次数
+  private faceCpu = false        // Face detection already switched to CPU
+  private segCpu = false         // Segmentation already switched to CPU
+  private segErr = 0             // Consecutive segmentation errors
   private lastErr = ''
   private pose: FacePose = NO_FACE
-  // 猫贴在哪（输出画面的像素）：跟着脸平滑移动；还没见过脸时放在画面中间偏上
+  // Where the cat head sits (output-frame pixels): follows the face smoothly; placed slightly above center before any face is seen
   private place = { x: 0, y: 0, fw: 0, seen: false }
-  private faceAt = 0     // 最近一次认到脸的时间
+  private faceAt = 0     // Last time a face was detected
   private noFaceSince = 0
   private running = false
   private lastTs = 0
@@ -100,27 +100,27 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
       this.processedTrack = outTrack
       this.running = true
       this.update(this.s)
-      void this.emit(0)                        // 第一帧先发深色底，等真正的画面
+      void this.emit(0)                        // Send a dark background first, wait for the real frames
       void this.pump(gen)
       return
     }
     const v = document.createElement('video')
     v.muted = true; v.playsInline = true; v.autoplay = true
-    // 放进页面但看不见：苹果手机上不在页面里的视频元素可能不出新画面
+    // In the page but invisible: on iPhones a video element outside the page may stop producing frames
     v.setAttribute('aria-hidden', 'true')
     Object.assign(v.style, { position: 'fixed', left: '0', top: '0', width: '2px', height: '2px', opacity: '0', pointerEvents: 'none' })
     document.body.appendChild(v)
     v.srcObject = new MediaStream([opts.track])
-    await v.play().catch(() => { /* 有的浏览器要等第一帧，下面 loop 会等 */ })
+    await v.play().catch(() => { /* Some browsers need the first frame; the loop below waits */ })
     if (gen !== this.gen) return
     this.video = v
     const st = opts.track.getSettings()
     let ow = st.width || v.videoWidth || 1280, oh = st.height || v.videoHeight || 720
-    // 手机输出最高 720p（短边 720），省显卡和上传带宽
+    // Mobile output capped at 720p (short side 720), saving GPU and upload bandwidth
     const cap = this.lite ? Math.min(1, 720 / Math.min(ow, oh)) : 1
     ow = Math.round(ow * cap); oh = Math.round(oh * cap)
     this.out.width = ow; this.out.height = oh
-    this.paintCover('')                      // 第一帧先铺深色，等真正的画面
+    this.paintCover('')                      // Lay a dark background for the first frame, wait for the real frames
     this.processedTrack = this.out.captureStream(30).getVideoTracks()[0]
     this.running = true
     this.update(this.s)
@@ -142,12 +142,12 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
     this.cat?.destroy(); this.cat = null
   }
 
-  /** 改设置（不用重开摄像头）：需要的模型现加载，背景图现换 */
+  /** Change settings (no camera restart needed): needed models load on demand, background image swaps on demand */
   update(s: FxSettings) {
     this.s = s
     if (!this.comp) { try { this.comp = new Compositor(); if (this.lite) this.comp.refineRadius = 1 } catch { this.setStatus('error') } }
-    const needSeg = s.bg !== 'none' || (beautyOn(s) && (s.beauty > 0 || s.white > 0))   // 换背景要分割；磨皮美白也用分割限定在人身上
-    const needFace = s.avatar === 'cat' || (beautyOn(s) && (s.slim > 0 || s.eyes > 0))   // 猫头、瘦脸、大眼要认脸
+    const needSeg = s.bg !== 'none' || (beautyOn(s) && (s.beauty > 0 || s.white > 0))   // Background swap needs segmentation; skin smoothing/whitening also uses segmentation to stay on the person
+    const needFace = s.avatar === 'cat' || (beautyOn(s) && (s.slim > 0 || s.eyes > 0))   // Cat head, face slimming, eye enlarging need face detection
     if (needFace && !this.face) { this.everFound = false; this.faceReadyAt = 0 }
     if (s.avatar === 'cat' && !this.cat) { try { this.cat = new CatAvatar(this.lite ? 420 : 600) } catch { this.setStatus('error') } }
     const waits: Promise<unknown>[] = []
@@ -169,7 +169,7 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
 
   private setStatus(s: FxStatus) { if (s !== this.status) { this.status = s; this.onStatus?.(s) } }
 
-  /** 新路：摄像头每来一帧就算一帧、写一帧。不看页面在不在前台 */
+  /** New path: process and write one frame per camera frame. Doesn't care whether the page is in the foreground */
   private async pump(gen: number) {
     const r = this.reader
     if (!r) return
@@ -180,12 +180,12 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
       const f = res.value
       const ts = f.timestamp
       if (gen !== this.gen || !this.running) { f.close(); break }
-      try { this.frame(f) } catch { /* 单帧出错不中断，下一帧再来 */ } finally { f.close() }
+      try { this.frame(f) } catch { /* A single bad frame doesn't break the loop; the next frame comes */ } finally { f.close() }
       await this.emit(ts)
     }
   }
 
-  /** 把输出画布当前的样子写进发出去的轨道（时间戳只增不减） */
+  /** Write the output canvas' current state into the published track (timestamps only ever increase) */
   private async emit(ts: number) {
     const w = this.writer
     if (!w) return
@@ -198,7 +198,7 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
     const v = this.video
     if (!v || gen !== this.gen || !this.running) return
     const next = () => this.loop(gen)
-    try { this.frame(v); this.frames++ } catch { /* 单帧出错不中断，下一帧再来 */ }
+    try { this.frame(v); this.frames++ } catch { /* A single bad frame doesn't break the loop; the next frame comes */ }
     if ('requestVideoFrameCallback' in v) v.requestVideoFrameCallback(next)
     else setTimeout(next, 33)
   }
@@ -208,18 +208,18 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
     const w = this.out.width, h = this.out.height
     const ts = Math.max(this.lastTs + 1, performance.now()); this.lastTs = ts
     const tick = this.tick++
-    const detect = !this.lite || (tick & 1) === 0   // 手机隔一帧识别一次
+    const detect = !this.lite || (tick & 1) === 0   // Mobile detects every other frame
     const bg = this.s.bg === 'none' ? 'none' : this.s.bg === 'blur' ? 'blur' : 'image'
     if (this.s.avatar === 'cat') {
-      if (!this.cat || !this.comp) { this.paintCover(t('虚拟形象暂时不可用')); return }   // 绝不退回真人画面
-      // 手机上人脸和分割错开帧算（一帧只算一样）；电脑每帧都算
+      if (!this.cat || !this.comp) { this.paintCover(t('虚拟形象暂时不可用')); return }   // Never fall back to the real face
+      // On mobile, face and segmentation run on alternating frames (one per frame); desktop computes both every frame
       const doFace = this.lite ? (tick & 1) === 0 : true, doSeg = this.lite ? (tick & 1) === 1 : true
       if (this.face && doFace) this.detectFace(v, ts)
       if (this.seg && doSeg) this.runSeg(v, ts)
       else if (!this.seg) this.comp.setMask(null)
       this.placeCat(w, h)
       const a = this.cat.anchor, p = this.place
-      const R = p.fw * 0.9                                 // 猫头半径 ≈ 0.9 个「脸宽」
+      const R = p.fw * 0.9                                 // Cat-head radius ≈ 0.9 "face widths"
       const veil = !p.seen || ts - this.faceAt > 600
       this.comp.render(v, { smooth: 0, white: 0, bg, veil })
       this.ctx.drawImage(this.comp.canvas, 0, 0, w, h)
@@ -233,7 +233,7 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
     const s = this.s, on = beautyOn(s)
     const wantFace = on && (s.slim > 0 || s.eyes > 0) && !!this.face
     const wantMask = (s.bg !== 'none' || (on && (s.beauty > 0 || s.white > 0))) && this.seg
-    // 手机：要认脸时人脸和分割错开帧算，不要认脸就隔一帧分割；不识别的那一帧沿用上一帧的结果
+    // Mobile: face and segmentation alternate when face detection is on; segmentation every other frame when it's off; the skipped frame reuses the previous result
     if (wantFace && (!this.lite || (tick & 1) === 0)) this.detectFace(v, ts)
     if (!wantMask) this.comp.setMask(null)
     else if (wantFace ? (!this.lite || (tick & 1) === 1) : detect) this.runSeg(v, ts)
@@ -241,17 +241,17 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
     this.ctx.drawImage(this.comp.canvas, 0, 0, w, h)
   }
 
-  /** 磨皮半径（像素）：按脸的大小走，脸大（离摄像头近）磨得开一点 */
+  /** Skin-smoothing radius (px): scales with face size — bigger face (closer to camera) smooths more */
   private skinR(w: number, h: number) {
     const f = this.pose
     return f.found && f.fw > 0 ? Math.min(16, Math.max(3, f.fw * w * 0.02)) : Math.max(3, h / 110)
   }
 
   /**
-   * 瘦脸 / 大眼的变形点（人脸关键点编号是 MediaPipe 478 点那一套）：
-   *   瘦脸 = 左右脸颊（234 / 454）、左右下颌（172 / 397）四个点往鼻尖（1）方向收，主要是横向；
-   *   大眼 = 两只瞳孔（468 / 473）为中心放大，半径约一只眼的宽度（33-133 / 362-263）。
-   * 前后两次结果平滑一下（不抖）；脸丢了超过 0.4 秒就不变形。
+   * Warp points for face slimming / eye enlarging (landmark indices follow MediaPipe's 478-point set):
+   *   slimming = left/right cheeks (234 / 454) and left/right jaw (172 / 397) pulled toward the nose tip (1), mostly horizontally;
+   *   enlarging = eyes scaled around each pupil (468 / 473), radius ≈ one eye width (33-133 / 362-263).
+   * Smooth consecutive results (no jitter); stop warping once the face has been lost for over 0.4s.
    */
   private warpFor(w: number, h: number, ts: number): Warp | null {
     const lm = this.pose.lm, s = this.s
@@ -283,33 +283,33 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
     return next
   }
 
-  /** 认一帧脸；显卡认脸不灵时自动换 CPU（见 useFaceCpu） */
+  /** Detect a face in one frame; auto-switch to CPU when GPU detection misbehaves (see useFaceCpu) */
   private detectFace(v: FrameSrc, ts: number) {
     const face = this.face
     if (!face) return
-    try { this.pose = readFace(face.detectForVideo(this.faceDown.draw(v), ts)) } catch (e) { this.pose = NO_FACE; this.lastErr = String(e).slice(0, 120); if (++this.faceErr > 3) this.useFaceCpu() }   // 显卡认脸一跑就报错：换 CPU
+    try { this.pose = readFace(face.detectForVideo(this.faceDown.draw(v), ts)) } catch (e) { this.pose = NO_FACE; this.lastErr = String(e).slice(0, 120); if (++this.faceErr > 3) this.useFaceCpu() }   // GPU face detection errors as soon as it runs: switch to CPU
     if (this.pose.found) { this.faceAt = ts; this.faceMiss = 0; this.missSince = 0; this.everFound = true }
     else {
       this.faceMiss++
-      // 显卡认脸在这台机器上不灵：画面里看得到人、却连续 4 秒认不出脸 → 换 CPU 再试，只换一次。
-      // 只看「有人」的时候：主播离开镜头不算（2026-10-02 线上实测：以前离开 1.5 秒就换，电脑上没必要）
+      // GPU face detection misbehaves on this machine: a person is visible but no face detected for 4s straight → switch to CPU and retry, only once.
+      // Only count "person visible" frames: host stepping out of frame doesn't count (2026-10-02 live test: previously it switched after 1.5s away — unnecessary on desktop)
       if ((this.mask.person ?? 0) > 0.04) { if (!this.missSince) this.missSince = ts; if (ts - this.missSince > 4000) this.useFaceCpu() }
       else this.missSince = 0
-      // 没开分割（原背景）时看不到「有没有人」：模型好了 6 秒一次脸都没认到，也换 CPU 试一次
+      // Without segmentation (original background) there's no "person visible" signal: if the model is ready and still sees no face after 6s, try CPU once
       if (!this.everFound && this.faceReadyAt && ts - this.faceReadyAt > 6000) this.useFaceCpu()
     }
     if (!this.pose.found) { if (!this.noFaceSince) this.noFaceSince = ts; if (ts - this.noFaceSince > 1500) this.setStatus('noFace') }
     else { this.noFaceSince = 0; if (this.status === 'noFace') this.setStatus('ready') }
   }
 
-  /** 认脸换成 CPU（只换一次）；换不了就保持虚化，不露脸 */
+  /** Switch face detection to CPU (only once); if it can't switch, stay blurred — never show the face */
   private useFaceCpu() {
     if (this.faceCpu) return
     this.faceCpu = true
-    loadFaceCpu().then((f) => { this.face = f; this.faceMiss = 0 }, () => { /* 保持虚化 */ })
+    loadFaceCpu().then((f) => { this.face = f; this.faceMiss = 0 }, () => { /* Stay blurred */ })
   }
 
-  /** 分割一帧；显卡那条路连续报错就换 CPU（只换一次），报错的这几帧不换背景 */
+  /** Segment one frame; if the GPU path errors consecutively, switch to CPU (only once) — keep the background unchanged for the bad frames */
   private runSeg(v: FrameSrc, ts: number) {
     try {
       this.comp!.setMask(segment(this.seg!, this.segDown.draw(v), ts, this.mask) ? this.mask : null)
@@ -322,30 +322,30 @@ export class FxProcessor implements TrackProcessor<Track.Kind.Video, VideoProces
         const old = this.seg
         this.seg = null
         loadSegmenterCpu().then((g) => { this.seg = g }, () => { this.seg = old })
-        this.useFaceCpu()   // 显卡这条路坏了，认脸多半也不灵，一起换
+        this.useFaceCpu()   // If the GPU path is broken, face detection is probably broken too — switch both
       }
     }
   }
 
-  /** 猫跟着脸走：位置和大小平滑过去（不抖）；脸丢了就停在最后的位置 */
+  /** Cat head follows the face: position and size ease over (no jitter); when the face is lost, stay at the last position */
   private placeCat(w: number, h: number) {
     const p = this.place, f = this.pose
     if (!p.seen) { p.x = w / 2; p.y = h * 0.42; p.fw = Math.min(w, h) * (w > h ? 0.26 : 0.36) }
     if (f.found && f.fw > 0) {
-      // 猫头要把整张脸连头发一起盖住（2026-10-02 goat：不要头发那块虚影，猫头往上放）：
-      // 大小按脸宽、脸高取大的；中心从脸框中心往上挪 0.2 个脸高（goat：0.12 时还露头发），上沿盖到头发；
-      // 猫头相应放大一点，下沿仍盖住下巴
+      // The cat head must cover the whole face including hair (2026-10-02 goat: no ghosting on the hair — move the cat head up):
+      // size takes the larger of face width/height; center shifted up 0.2 face-heights from the face-box center (goat: 0.12 still showed hair), top edge covering the hair;
+      // cat head enlarged accordingly, bottom edge still covering the chin
       const tx = f.cx * w, ty = f.cy * h - f.fh * h * 0.2, tf = Math.max(f.fw * w, f.fh * h * 0.9)
-      const k = p.seen ? 0.6 : 1   // 跟得快一点：慢了脸会从猫头边上露出来
+      const k = p.seen ? 0.6 : 1   // Follow a bit faster: too slow and the face peeks out from the cat head's edge
       p.x += (tx - p.x) * k; p.y += (ty - p.y) * k; p.fw += (tf - p.fw) * k
       p.seen = true
     }
   }
 
-  /** 运行状况（给测试用）：认脸换没换 CPU、连续认不到几次、画面里人占多少 */
+  /** Health (for tests): whether face detection switched to CPU, consecutive miss count, person coverage ratio */
   get diag() { return { faceCpu: this.faceCpu, segCpu: this.segCpu, faceMiss: this.faceMiss, person: this.mask.person ?? -1, hasFace: !!this.face, hasSeg: !!this.seg, lastErr: this.lastErr } }
 
-  /** 是不是手机省电模式（给测试用） */
+  /** Whether in mobile power-saving mode (for tests) */
   get liteMode() { return this.lite }
 
   private paintCover(text: string) {

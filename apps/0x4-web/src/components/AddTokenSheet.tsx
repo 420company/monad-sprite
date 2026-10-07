@@ -1,4 +1,4 @@
-// 添加自定义代币：粘贴合约地址 → 自动识别所在链 → 加入收藏
+// Add a custom token: paste the contract address → auto-detect its chain → add to favorites
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ClipboardPaste, Star } from 'lucide-react'
@@ -34,7 +34,7 @@ export default function AddTokenSheet({ open, onClose }: { open: boolean; onClos
 
   const type = detectAddressType(addr)
 
-  // 地址合法后自动查询
+  // Auto-query once the address is valid
   useEffect(() => {
     setResults(null); setErr(null)
     if (!type) return
@@ -64,7 +64,7 @@ export default function AddTokenSheet({ open, onClose }: { open: boolean; onClos
     toast.success(t('已收藏 {symbol}', { symbol: tk.symbol }))
     onClose()
     nav(tokenPath(tk))
-    // 精度决定买卖时的数量换算：后台读取，不阻塞界面；读不到就在交易前再补
+    // Precision drives the amount math when buying/selling: read in the background without blocking the UI; if unread, fetch again before trading
     if (tk.decimals === undefined) {
       const p = tk.chainId === SOLANA_CHAIN_ID ? getMintDecimals(rpcUrl, tk.address) : getErc20Decimals(tk.chainId, tk.address)
       p.then((d) => setDecimals(tk.chain, tk.address, d)).catch(() => {})

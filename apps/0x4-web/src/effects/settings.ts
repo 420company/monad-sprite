@@ -1,5 +1,5 @@
-// 直播特效的设置（存本机，下次开播自动沿用）和背景图清单。这个文件很小、不引用识别引擎：
-// 直播间页面靠它判断要不要带特效开摄像头，真正的处理代码（processor.ts）只在需要时才加载。
+// Live-effect settings (stored locally, auto-reused next stream) and the background-image list. This file is tiny and never imports the recognition engine:
+// the live-room page uses it to decide whether to open the camera with effects; the real processing code (processor.ts) loads only when needed.
 import { t } from '@/lib/i18n'
 import cozy from './bg/cozy.webp'
 import city from './bg/city.webp'
@@ -12,15 +12,15 @@ import desk from './bg/desk.webp'
 
 export type FxBg = 'none' | 'blur' | `img:${string}`
 export interface FxSettings {
-  /** 虚拟形象：none = 真人；cat = 0x4 猫头 */
+  /** Virtual persona: none = real person; cat = 0x4 cat head */
   avatar: 'none' | 'cat'
-  /** 美颜四项（2026-10-02 goat：要像抖音那样分开调），都是 0~1，0 = 关。beauty = 磨皮（字段名沿用以前的「美颜强度」，老设置直接接上） */
+  /** The four beauty controls (2026-10-02 goat: TikTok-style separate sliders), all 0–1, 0 = off. beauty = smoothing (field name keeps the old "beauty intensity" so old settings carry over) */
   beauty: number
-  /** 美白 */
+  /** Whitening */
   white: number
-  /** 瘦脸 */
+  /** Face slimming */
   slim: number
-  /** 大眼 */
+  /** Eye enlarging */
   eyes: number
   bg: FxBg
 }
@@ -33,8 +33,8 @@ export const BEAUTY_ITEMS: { key: BeautyKey; label: () => string }[] = [
   { key: 'eyes', label: () => t('大眼') },
 ]
 
-// 直播专用背景图（2026-10-02 goat：官网的配图放这里不合适，重新专门生成）：BytePlus 生成，没有人、没有文字和品牌，
-// 中间留空给主播，手机竖屏裁中间一截也能用。原图 2560×1440，压成 1600 宽 webp。
+// Stream-only background images (2026-10-02 goat: the website's illustrations don't fit here — regenerated): BytePlus-generated, no people, no text, no branding,
+// center kept clear for the host, usable cropped to the middle on portrait phones. Source 2560×1440, compressed to 1600px-wide webp.
 export const BACKGROUNDS: { id: string; url: string; label: () => string }[] = [
   { id: 'cozy', url: cozy, label: () => t('温馨房间') },
   { id: 'city', url: city, label: () => t('城市夜景') },
@@ -56,13 +56,13 @@ export function loadFx(): FxSettings {
     return { avatar: v.avatar === 'cat' ? 'cat' : 'none', beauty: n(v.beauty), white: n(v.white), slim: n(v.slim), eyes: n(v.eyes), bg }
   } catch { return FX_OFF }
 }
-export function saveFx(s: FxSettings) { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* 存不了：只是下次要重新选 */ } }
-/** 真人模式下开了任何一项美颜（猫头模式不做美颜） */
+export function saveFx(s: FxSettings) { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* Can't persist: just means re-picking next time */ } }
+/** Any beauty control on in person mode (cat-head mode skips beauty) */
 export const beautyOn = (s: FxSettings) => s.avatar !== 'cat' && (s.beauty > 0 || s.white > 0 || s.slim > 0 || s.eyes > 0)
 export const fxActive = (s: FxSettings) => s.avatar !== 'none' || beautyOn(s) || s.bg !== 'none'
 
 const imgs = new Map<string, Promise<HTMLImageElement>>()
-/** 背景图（解码好的），同一张只加载一次 */
+/** Background image (decoded); each loaded once */
 export function bgImage(id: string): Promise<HTMLImageElement> {
   let p = imgs.get(id)
   if (!p) {

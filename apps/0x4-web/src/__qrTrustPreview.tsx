@@ -1,6 +1,6 @@
-// 扫码登录「信任此设备 / 仅本次登录」本地预览页（开发用，不打包）：/dev/qrtrust-preview.html?v=phone | desk
-// phone = 手机扫码后的确认弹层（真组件 MeetScanNative，接口用本地替身）；desk = 电脑上长时间没活动的弹窗（真组件 QrIdleGuard，时钟拨快 30 分钟）
-// ?lang=en 看英文，默认中文；截图时关掉动画（不然拍到淡入的半透明那一帧）
+// Local preview page for QR login's "trust this device / this session only" (dev only, not bundled): /dev/qrtrust-preview.html?v=phone | desk
+// phone = the confirmation sheet after a phone QR scan (real component MeetScanNative, with a local stand-in for the API); desk = the idle-too-long popup on desktop (real component QrIdleGuard, clock fast-forwarded 30 minutes)
+// ?lang=en for English, Chinese by default; turn animations off when screenshotting (or you'll catch a half-transparent fade-in frame)
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { MeetScanNative } from '@/components/MeetScan'
@@ -24,20 +24,20 @@ window.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
 }) as typeof fetch
 setToken('preview')
 
-// 语言商店建好后（注水是微任务）再切语言、再挂组件，不然会被「跟随系统」盖回英文
+// Switch language and mount the component only after the language store is built (hydration is a microtask) — otherwise "follow system" reverts it to English
 setTimeout(() => {
   useLang.getState().setLang(LANG)
   if (v === 'desk') {
     document.documentElement.dataset.surface = 'web'
     void import('./desktop/desktop.css'); void import('./desktop/desk-content.css')
-    // 时钟拨快：挂上以后过 30 分钟（每 15 秒检查一次，所以截图前等一次检查）
+    // Fast-forward the clock: 30 minutes after mounting (checked every 15 seconds, so wait for one check before screenshotting)
     const real = Date.now.bind(Date)
     let offset = 0
     Date.now = () => real() + offset
     useSocial.setState({ status: 'ready', qrMode: true, qrTrusted: false })
     createRoot(document.getElementById('root')!).render(<div style={{ minHeight: '100vh', background: 'var(--w-bg, #07080b)' }}><QrIdleGuard /></div>)
     setTimeout(() => { offset = 30 * 60_000 + 5_000 }, 300)
-    // 预览页没有真的社交连接，别的模块会把状态改回未登录：这里一直按「扫码登录着」显示
+    // The preview page has no real social connection, and other modules would flip the state back to logged-out: always display as "QR-logged-in" here
     useSocial.subscribe((st) => { if (st.status !== 'ready' || !st.qrMode) useSocial.setState({ status: 'ready', qrMode: true, qrTrusted: false }) })
   } else {
     useSocial.setState({ status: 'ready' })

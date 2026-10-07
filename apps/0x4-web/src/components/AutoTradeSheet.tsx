@@ -1,6 +1,6 @@
-// 现货全自动（B 方案，2026-09-27）：开启后小精灵在 BNB Chain 上的买卖不再逐笔确认，由它自动执行。
-// 开启只需要签名（2 个限额委托 + 钱包授权），服务器代付燃料费；平时资金在用户自己的钱包里，每笔交易按额度动用（lib/autoTrade.ts）。
-// 入口有两个：小精灵详情的交易设置、「我 → 账号与安全」（后者不依赖任何小精灵，保证随时能暂停 / 撤销，第六轮 #15）
+// Spot autopilot (plan B, 2026-09-27): once enabled, the sprite's buys/sells on BNB Chain no longer ask per-order confirmation — it executes on its own.
+// Enabling only needs signatures (2 quota delegations + wallet authorization), with the server covering gas; funds stay in the user's own wallet day-to-day, each trade drawing within its quota (lib/autoTrade.ts).
+// Two entries: the sprite detail's trading settings, and "Me → Account & Security" (the latter depends on no sprite, guaranteeing pause / revoke is always available — round 6 #15)
 import { useEffect, useRef, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -14,7 +14,7 @@ import { Ox4OnlyCard, useExternalWallet } from '@/desktop/Ox4Only'
 
 
 export default function AutoTradeSheet(props: { open: boolean; onClose: () => void; onChanged?: (s: AutoStatus) => void }) {
-  // 网页版连外部钱包：小精灵全自动是 0x4 Wallet 专属（2026-09-30 goat），弹层里只放专属卡
+  // Web with an external wallet connected: sprite autopilot is a 0x4 Wallet exclusive (2026-09-30 goat) — the sheet only shows the exclusivity card
   const external = useExternalWallet()
   if (external) return <Sheet open={props.open} onClose={props.onClose} title={t('自动交易')}><Ox4OnlyCard feature="auto" compact /></Sheet>
   return <AutoTradeBody {...props} />
@@ -23,20 +23,20 @@ export default function AutoTradeSheet(props: { open: boolean; onClose: () => vo
 function AutoTradeBody({ open, onClose, onChanged }: { open: boolean; onClose: () => void; onChanged?: (s: AutoStatus) => void }) {
   const evmAccount = useWallet((s) => s.evmAccount)
   const [cfg, setCfg] = useState<AutoConfig | null | 'error'>(null)
-  // 链上还挂着授权：不管服务器开没开、接口通不通，都给撤销入口（第二轮审查）
+  // An authorization is still on-chain: give the revoke entry regardless of whether the server is on or the API works (round 2 review)
   const [onchain, setOnchain] = useState(false)
   const [st, setSt] = useState<AutoStatus | null>(null)
   const [perDay, setPerDay] = useState('100')
   const [days, setDays] = useState(30)
   const [step, setStep] = useState<string | null>(null)
-  // 已被别家钱包升级为智能账户：先让用户看清楚再决定要不要覆盖（第六轮 #17）
+  // Already upgraded to a smart account by another wallet: let the user see clearly before deciding whether to overwrite (round 6 #17)
   const [foreign, setForeign] = useState<string | null>(null)
-  // 同步锁：在任何 await 之前就置忙，连点两下不会跑两遍（第六轮 #18）
+  // Sync lock: mark busy before any await — double-tapping won't run it twice (round 6 #18)
   const busy = useRef(false)
   useEffect(() => {
     if (!open) return
     setForeign(null)
-    // 服务器接口和读链各管各的：服务器不通不影响撤销入口（第六轮 #15）
+    // The server API and chain reads are independent: a dead server doesn't affect the revoke entry (round 6 #15)
     autoConfig().then(setCfg).catch(() => setCfg('error'))
     autoStatus().then(setSt).catch(() => setSt(null))
     if (evmAccount) hasOnchainAuthorization(evmAccount.address).then(setOnchain)
@@ -57,7 +57,7 @@ function AutoTradeBody({ open, onClose, onChanged }: { open: boolean; onClose: (
     } catch (e) {
       if (e instanceof ForeignWalletError) setForeign(e.impl)
       else toast.error(errorText(e, t('开启失败')))
-      // 服务器可能其实已经开好了（响应丢了）：刷新一下状态，别让界面停在「未开启」（第九轮复核）
+      // The server may have actually enabled it (response lost): refresh the status instead of leaving the UI stuck on "not enabled" (9th review round)
       autoStatus().then((x) => { setSt(x); onChanged?.(x) }).catch(() => {})
     } finally { busy.current = false; setStep(null) }
   }
@@ -68,7 +68,7 @@ function AutoTradeBody({ open, onClose, onChanged }: { open: boolean; onClose: (
       toast.success(s.inflight ? t('已暂停。有 {n} 笔已经发出的交易可能仍会完成', { n: s.inflight }) : t('已暂停全自动交易'))
     } catch (e) { toast.error(errorText(e, t('操作失败'))) }
   }
-  // 撤销链上权限：作废所有授权（自己发交易，要一点 BNB 燃料费），和「暂停」分开（审查 #4）
+  // Revoke on-chain approvals: voids all allowances (sends its own tx, costs a little BNB gas), kept separate from "pause" (review #4)
   const revoke = async () => {
     if (busy.current) return
     if (!evmAccount) return toast.error(t('请先解锁钱包'))
@@ -87,7 +87,7 @@ function AutoTradeBody({ open, onClose, onChanged }: { open: boolean; onClose: (
       <p className="text-sm leading-relaxed text-muted">{t('开启后小精灵将全自动执行设定任务。')}</p>
       <div className="mt-3 space-y-2 rounded-2xl bg-card2 p-4 text-[13px] leading-relaxed">
         <div className="flex items-center gap-2 font-semibold"><ShieldCheck size={16} className="text-up" aria-hidden="true" />{t('安全规则')}</div>
-        {/* 2026-09-29 goat：原来五段太长、像写给开发者看的，精简成四条规则 + 一句风险提示（风险要说，但说清楚就够） */}
+        {/* 2026-09-29 goat: the original five paragraphs were too long and read like developer docs — trimmed to four rules + one risk note (risks must be stated, but stating them clearly is enough) */}
         <p>{t('只通过 0x4 交易合约买卖，所得资金只会回到你的钱包。')}</p>
         <p>{t('买入只用 USDT，每天不超过你设定的额度。')}</p>
         <p>{t('只卖出小精灵买入的数量。')}</p>
@@ -95,10 +95,10 @@ function AutoTradeBody({ open, onClose, onChanged }: { open: boolean; onClose: (
         <p className="text-muted">{t('自动交易不保证成交价格。行情波动或服务异常都可能造成亏损，累计亏损可能超过单日额度。')}</p>
       </div>
 
-      {/* 封禁期间 / 授权被别家钱包换掉：如实告诉用户（第七轮复核） */}
+      {/* During a ban / when the authorization was replaced by another wallet: tell the user truthfully (round 7 review) */}
       {st?.banned ? <p className="mt-4 rounded-2xl bg-card p-4 text-sm text-muted">{t('账号受限期间，全自动交易不会执行。你仍然可以暂停，或者撤销链上权限。')}</p> : null}
       {st?.replaced ? <p className="mt-4 rounded-2xl bg-card p-4 text-sm text-down">{t('该钱包在 BNB Chain 上的授权已被其他钱包替换，全自动交易已停止。')}</p> : null}
-      {/* 服务器发现条件不成立后停用（第十一轮审查 #4 #5） */}
+      {/* The server disables it once conditions no longer hold (round 11 review #4 #5) */}
       {st?.revoked && !st.active ? <p className="mt-4 rounded-2xl bg-card p-4 text-sm text-muted">{t('该钱包在 BNB Chain 上的授权已失效，全自动交易已停止，可重新开启。')}</p> : null}
       {st?.evmChanged && !st.active ? <p className="mt-4 rounded-2xl bg-card p-4 text-sm text-muted">{t('账号绑定的钱包已更换，原全自动交易已停止，请用当前钱包重新开启。')}</p> : null}
       {st?.outdated && !st.active ? <p className="mt-4 rounded-2xl bg-card p-4 text-sm text-muted">{t('全自动交易授权需要更新，请重新开启。')}</p> : null}
@@ -106,7 +106,7 @@ function AutoTradeBody({ open, onClose, onChanged }: { open: boolean; onClose: (
       {!cfg ? (
         <div className="mt-4 space-y-3">
           <div className="skeleton h-24" />
-          {/* 服务器还没回话也不挡撤销：链上挂着授权就给按钮（第七轮复核 #15） */}
+          {/* The server hasn't responded yet doesn't block revoking: show the button while an authorization is still on-chain (round 7 review #15) */}
           {onchain ? <Button variant="danger" className="w-full" loading={!!step} disabled={!!step} onClick={revoke}>{t('撤销链上权限')}</Button> : null}
         </div>
       ) : cfg === 'error' || !cfg.enabled ? (
@@ -137,7 +137,7 @@ function AutoTradeBody({ open, onClose, onChanged }: { open: boolean; onClose: (
           </div>
           <p className="text-xs leading-relaxed text-muted">{t('开启需要授权，仅使用 BNB Chain 上的 USDT。再次开启需少量 BNB 作为燃料费。')}</p>
           {onchain || (st && !st.active && st.until) ? <Button variant="ghost" className="w-full text-muted" loading={!!step} disabled={!!step} onClick={revoke}>{t('撤销链上权限')}</Button> : null}
-          {/* 没有资格（没有确认模式的小精灵、协议没更新等）：直接说原因，不给开启按钮 */}
+          {/* Not eligible (no confirm-mode sprite, agreement not updated, etc.): state the reason directly, no enable button */}
           {st && st.eligible === false ? <p className="rounded-2xl bg-card p-4 text-sm text-muted">{st.whyNot ? t(st.whyNot) : t('暂时不能开启全自动')}</p> : foreign ? (
             <div className="space-y-3 rounded-2xl border border-down/40 bg-card p-4 text-[13px] leading-relaxed">
               <p>{t('这个地址在 BNB Chain 上已被别的钱包升级为智能账户（{impl}）。开启全自动会把它换成全自动需要的实现，那个钱包在 BNB Chain 上的智能账户功能会失效；它以后改回去，全自动也会停止。', { impl: `${foreign.slice(0, 6)}…${foreign.slice(-4)}` })}</p>

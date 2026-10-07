@@ -1,6 +1,6 @@
-// 联系客服（「我 → 帮助 → 联系客服」）：我的工单列表、新建工单、工单对话页。
-// 客服在管理后台 lord.420.meme 回复；回复会走通知中心 + 系统推送，点开直接到这里的对话页（ref = ticket:<id>）。
-// 图片走现有的 /api/upload（本机先压缩），每条最多 3 张。
+// Contact support ("Me → Help → Contact support"): my ticket list, new ticket, ticket thread page.
+// Support replies from the lord.420.meme admin; replies go through the notification center + system push, opening straight into this thread page (ref = ticket:<id>).
+// Images via the existing /api/upload (compressed locally first), max 3 per message.
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Headset, Image as ImageIcon, LoaderCircle, Plus, RefreshCw, Send, X } from 'lucide-react'
@@ -23,7 +23,7 @@ export interface Ticket { id: string; category: string; title: string; status: T
 interface TicketMessage { id: number; fromStaff: boolean; text: string; images: PostImage[]; createdAt: number }
 
 export const CATEGORIES: [string, string][] = [['account', '账户'], ['funds', '充值提现'], ['trade', '交易'], ['report', '举报'], ['other', '其他']]
-/** 新建工单能选的分类（2026-09-29 goat：只留账户、举报、其他）。CATEGORIES 保留全部，旧工单的分类照样显示 */
+/** New-ticket categories (2026-09-29 goat: keep only account, report, other). CATEGORIES keeps all; old tickets' categories still display */
 const NEW_TICKET_CATEGORIES = CATEGORIES.filter(([k]) => k === 'account' || k === 'report' || k === 'other')
 export const categoryLabel = (c: string) => t(CATEGORIES.find(([k]) => k === c)?.[1] ?? '其他')
 const STATUS_LABEL: Record<TicketStatus, string> = { open: '待客服处理', pending: '客服已回复', resolved: '已解决', closed: '已关闭' }
@@ -37,7 +37,7 @@ function Header({ title, onBack, action }: { title: string; onBack: () => void; 
   </header>
 }
 
-/** 选图 + 上传（最多 3 张），发帖同一套压缩 */
+/** Pick + upload images (max 3), same compression as posting */
 function useImagePicker() {
   const [images, setImages] = useState<PostImage[]>([])
   const [uploading, setUploading] = useState(false)
@@ -65,7 +65,7 @@ function useImagePicker() {
 
 export default function Support() {
   const nav = useNavigate()
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /settings
+  // Back: return to the previous page when there is one (its state/scroll restored); push / deep-link opens go to /settings
   const back = useBack('/settings')
   const status = useSocial((s) => s.status)
   const [list, setList] = useState<Ticket[] | null>(null)

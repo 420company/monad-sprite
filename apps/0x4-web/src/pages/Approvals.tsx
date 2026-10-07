@@ -1,4 +1,4 @@
-// 授权检查：列出钱包对外的授权并一键撤销，防止被恶意合约转走资产
+// Approval check: list the wallet's outbound approvals and revoke them in one tap, so malicious contracts can't drain assets
 import { useEffect, useState } from 'react'
 import { ArrowLeft, RefreshCw, ShieldCheck, ShieldAlert } from 'lucide-react'
 import Button from '@/components/Button'
@@ -15,7 +15,7 @@ import { useBack } from '@/lib/useBack'
 import { errorText } from '@/lib/errors'
 
 export default function Approvals() {
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /settings
+  // Back: go back if there is a previous page (its state / scroll get restored); push / deep-link opens go to /settings
   const back = useBack('/settings')
   const { address, evmAddress, wallet, evmAccount } = useWallet()
   const rpcUrl = useSettings((s) => s.rpcUrl)

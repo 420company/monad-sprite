@@ -1,4 +1,4 @@
-// 会议画笔标注的纯逻辑（2026-09-30）：坐标归一化（contain 黑边）、谁能画、消息校验、状态更新、补发分段
+// Pure logic for meeting pen annotations (2026-09-30): coordinate normalization (contain letterboxing), who can draw, message validation, state updates, resend segmentation
 import { describe, expect, it } from 'vitest'
 import {
   applyAnn, canAnnotate, chunkSync, contentRect, fromNorm, laserAlpha, LASER_FADE_MS, MAX_STROKE_NUMS, pruneLaser, sanitizeAnn,
@@ -24,14 +24,14 @@ describe('contentRect / 坐标归一化', () => {
     expect(contentRect(500, 300, 0, 0)).toEqual({ x: 0, y: 0, w: 500, h: 300 })
   })
   it('不同窗口大小：同一个画面位置换算出同一个归一化坐标（标注落点一致）', () => {
-    const a = contentRect(1600, 900, 1920, 1080)   // 主持人大窗口
-    const b = contentRect(700, 600, 1920, 1080)    // 听课人小窗口（上下黑边）
-    // 画面正中偏右上的一点
+    const a = contentRect(1600, 900, 1920, 1080)   // Host's large window
+    const b = contentRect(700, 600, 1920, 1080)    // Attendee's small window (letterboxed top and bottom)
+    // A point slightly up-right of the picture's center
     const [nx, ny] = toNorm(a.x + a.w * 0.7, a.y + a.h * 0.25, a)
     expect([nx, ny]).toEqual([0.7, 0.25])
     const [bx, by] = fromNorm(nx, ny, b)
     expect(toNorm(bx, by, b)).toEqual([0.7, 0.25])
-    expect(by).toBeGreaterThan(b.y)   // 落在内容区里，不在黑边上
+    expect(by).toBeGreaterThan(b.y)   // Lands in the content area, not on the letterbox
   })
   it('点在黑边上：夹到内容边缘，保留 4 位小数', () => {
     const r = contentRect(1600, 900, 1024, 768)
@@ -146,7 +146,7 @@ describe('chunkSync / 打包', () => {
       expect(m.k).toBe('sync')
       if (m.k === 'sync') expect(m.reset).toBe(i === 0)
       expect(packData(m).length).toBeLessThanOrEqual(SYNC_CHUNK_BYTES)
-      // 发出去的每一段收端都能通过校验
+      // Every sent segment passes validation at the receiving end
       expect(sanitizeAnn(unpackData(packData(m)))).not.toBeNull()
     })
     const total = msgs.reduce((n, m) => n + (m.k === 'sync' ? m.strokes.length : 0), 0)

@@ -1,4 +1,4 @@
-// 用 NFT 做头像：列出我的 NFT（Solana 走 DAS、EVM 走 Alchemy，拿不到就手动填），验证持有后设为头像并标记所在链
+// Use an NFT as avatar: lists my NFTs (Solana via DAS, EVM via Alchemy; manual entry when unavailable); after verifying ownership it becomes the avatar, marked with its chain
 import { useEffect, useState } from 'react'
 import Sheet from './Sheet'
 import Button from './Button'
@@ -14,19 +14,19 @@ import { errorText } from '@/lib/errors'
 import { WEB_SURFACE } from '@/lib/surface'
 
 interface Owned { chainId: number; contract: string; tokenId: string | null; image: string; thumb?: string; name: string; owner?: string }
-/** 一页显示多少个：三列两行，多了翻页（2026-09-27 goat） */
+/** Items per page: three columns × two rows, paginate beyond that (2026-09-27 goat) */
 const PAGE_SIZE = 6
 interface NftsResponse { list: Owned[]; indexedChains: number[] }
 
 export default function NftPickerSheet({ open, onClose, onPicked }: { open: boolean; onClose: () => void; onPicked: (nft: AvatarNft, image: string) => void }) {
   const [list, setList] = useState<Owned[] | null>(null)
-  /** 服务端现在真能自动列出 NFT 的链。界面只显示这些，不让用户填合约地址 */
+  /** The server can genuinely list NFT chains automatically now. The UI only shows these — no manual contract-address entry */
   const [chains, setChains] = useState<number[]>([])
-  /** 当前看的网络；null = 全部 */
+  /** The network being viewed; null = all */
   const [chainId, setChainId] = useState<number | null>(null)
   const [page, setPage] = useState(0)
   const [busy, setBusy] = useState(false)
-  // 先选中、再点「确定」才提交（2026-09-27 goat：原来点一下就提交，验证期间整片变灰，看不出发生了什么）
+  // Select first, then tap "Confirm" to submit (2026-09-27 goat: it used to submit on a single tap, graying the whole sheet during verification with no visible progress)
   const [sel, setSel] = useState<Owned | null>(null)
 
   const load = () => {
@@ -36,7 +36,7 @@ export default function NftPickerSheet({ open, onClose, onPicked }: { open: bool
       .catch(() => { setList([]); setChains([]) })
   }
   useEffect(() => { if (open) { setChainId(null); setPage(0); setSel(null); void load() } }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 换网络回到第一页，否则会停在一个不存在的页码上
+  // Switching networks returns to page one, otherwise it could land on a nonexistent page
   useEffect(() => { setPage(0) }, [chainId])
 
   const use = async (n: Owned) => {
@@ -52,7 +52,7 @@ export default function NftPickerSheet({ open, onClose, onPicked }: { open: bool
 
   const counts = new Map<number, number>()
   for (const n of list || []) counts.set(n.chainId, (counts.get(n.chainId) || 0) + 1)
-  // 有货的链排前面，方便一眼看到
+  // Chains with items sort first, visible at a glance
   const tabs = [...chains].sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0))
   const filtered = (list || []).filter((n) => chainId === null || n.chainId === chainId)
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -70,7 +70,7 @@ export default function NftPickerSheet({ open, onClose, onPicked }: { open: bool
             className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${chainId === null ? 'bg-accent text-bg' : 'bg-card2 text-muted'}`}>
             {t('全部')}{list?.length ? ` ${list.length}` : ''}
           </button>
-          {/* 不用横向滚动条（2026-09-25 goat：拉杆很丑）：默认只显示前 3 条链，其余收进「更多」，点开换行全部显示 */}
+          {/* No horizontal scrollbar (2026-09-25 goat: the drag bar is ugly): show only the first 3 chains by default, the rest fold into "more" — tapping unwraps and shows all */}
           {(showAllChains ? tabs : tabs.filter((id, i) => i < 3 || id === chainId)).map((id) => {
             const c = CHAINS.find((x) => x.id === id)
             if (!c) return null
@@ -137,8 +137,8 @@ export default function NftPickerSheet({ open, onClose, onPicked }: { open: bool
 }
 
 /**
- * 关联其他钱包：NFT 在冷钱包或别的常用钱包里时用。
- * 那个钱包只用来签一条证明消息，我们不碰它的私钥，也不会用它发交易。
+ * Link another wallet: for NFTs sitting in a cold wallet or another everyday wallet.
+ * That wallet is only used to sign a proof message; we never touch its private keys and never send transactions from it.
  */
 function LinkedWallets({ open, onChanged }: { open: boolean; onChanged: () => void }) {
   const [wallets, setWallets] = useState<LinkedWallet[] | null>(null)
@@ -172,7 +172,7 @@ function LinkedWallets({ open, onChanged }: { open: boolean; onChanged: () => vo
         </div>
       )}
 
-      {/* 关联其他钱包走第三方钱包扫码连接：网页版只连 0x4 浏览器插件（2026-09-29 goat），这里不放；已关联的照常显示和解除 */}
+      {/* Linking other wallets goes through third-party wallet QR connections: the web version only connects the 0x4 browser extension (2026-09-29 goat), so it's not offered here; already-linked wallets still show and can be unlinked */}
       {!WEB_SURFACE && <>
       <Button
         size="md"

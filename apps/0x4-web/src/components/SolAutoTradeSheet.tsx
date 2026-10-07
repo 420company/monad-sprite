@@ -1,6 +1,6 @@
-// 现货全自动 · Solana（2026-10-04）：和 BNB Chain 版（AutoTradeSheet）同一个样子。区别：
-//   · 开启只要用 Solana 钱包签一次（同一笔里授权 USDC、写上 0x4 账号标记），服务器读链核对后生效
-//   · 买到的币放在只属于这位用户的链上保险箱，下面列出来，随时可以「提回钱包」（关闭了也能提）
+// Spot full-auto · Solana (2026-10-04): same look as the BNB Chain edition (AutoTradeSheet). Differences:
+//   · enabling needs just one Solana wallet signature (approve USDC and write the 0x4 account tag in the same tx); takes effect after the server verifies on-chain
+//   · bought coins sit in an on-chain vault belonging only to this user, listed below, withdrawable to the wallet anytime ("Withdraw to wallet" — even after disabling)
 import { useEffect, useRef, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -17,7 +17,7 @@ import { Ox4OnlyCard, useExternalWallet } from '@/desktop/Ox4Only'
 const DAY_CHOICES = [7, 30, 90] as const
 
 export default function SolAutoTradeSheet(props: { open: boolean; onClose: () => void; onChanged?: (s: SolAutoStatus) => void }) {
-  // 网页版连的是外部钱包：没有 Solana 钱包，全自动是 0x4 Wallet 专属（和 BNB Chain 版一样）
+  // Web with an external wallet connected: no Solana wallet — full-auto is 0x4 Wallet exclusive (same as the BNB Chain edition)
   const external = useExternalWallet()
   if (external) return <Sheet open={props.open} onClose={props.onClose} title={t('全自动交易')}><Ox4OnlyCard feature="auto" compact /></Sheet>
   return <Body {...props} />
@@ -51,7 +51,7 @@ function Body({ open, onClose, onChanged }: { open: boolean; onClose: () => void
     setStep(label)
     try { await fn(); toast.success(ok) } catch (e) { toast.error(errorText(e, t('操作失败'))) } finally {
       busy.current = false; setStep(null)
-      void reload()   // 不管成败都刷新：链上可能已经成了、只是响应丢了
+      void reload()   // Refresh regardless of success or failure: it may have succeeded on-chain with just the response lost
     }
   }
   const enable = () => {
@@ -106,7 +106,7 @@ function Body({ open, onClose, onChanged }: { open: boolean; onClose: () => void
           </div>
         )}
 
-      {/* 保险箱：开没开都显示，关闭以后也能提 */}
+      {/* Vault: shown whether enabled or not; withdrawable even after disabling */}
       {vaults.length > 0 && (
         <div className="mt-4 rounded-2xl bg-card p-4" data-testid="sol-vaults">
           <div className="text-sm font-semibold">{t('保险箱')}</div>

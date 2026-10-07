@@ -1,6 +1,6 @@
-// 交易记录里的「链」有两种：链上代币的 DexScreener 链名，和永续合约的交易所标识。
-// 两者点进去该去的地方完全不同，之前一律当成代币，点自己的合约交易会进一个
-// 「没有找到该代币的行情」的死页。
+// The "chain" in trade history comes in two flavors: DexScreener chain names for on-chain tokens, and exchange identifiers for perps.
+// The two lead to completely different places when tapped; they used to both be treated as tokens, and tapping your own perps trade would open a
+// Dead page for "no market data found for this token".
 import { describe, expect, it } from 'vitest'
 import { chainByDexKey, isPerpMarket, marketLinkOf, perpCoinOf } from './chains'
 

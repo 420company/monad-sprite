@@ -1,5 +1,5 @@
-// 深链解析：X 授权完成后从系统浏览器跳回 App 靠这条路径，
-// 端到端要在真机上点系统的确认弹窗，所以这里把解析部分单独测掉。
+// Deep-link parsing: jumping back to the app from the system browser after X authorization relies on this path,
+// End-to-end requires tapping the OS confirmation popup on a real device, so only the parsing part is tested here.
 import { describe, it, expect } from 'vitest'
 import { parseDeepLink } from './native'
 

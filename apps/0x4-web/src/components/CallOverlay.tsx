@@ -1,7 +1,7 @@
-// 全局通话层：挂在 App 根部，任何页面收到来电都弹全屏；呼出、通话中、结束提示也都在这里。
-// 信令状态在 store/call.ts；音视频用 LiveKit（和直播房一样按需加载 livekit-client）。
+// Global call layer: mounted at the app root; incoming calls pop full-screen from any page; outgoing, in-call and ended states all live here.
+// Signaling state in store/call.ts; audio/video via LiveKit (livekit-client lazy-loaded like the live room).
 //
-// 没做扬声器 / 听筒切换：WebView 里拿不到系统的音频路由，做出来也是个没用的按钮。
+// No speaker / earpiece switching: WebView can't reach the system's audio routing, so such a button would be dead weight.
 import { useEffect, useRef, useState } from 'react'
 import type { Room as LKRoom, Track, LocalVideoTrack } from 'livekit-client'
 import { LoaderCircle, Mic, MicOff, Phone, PhoneOff, SwitchCamera, Video, VideoOff, Volume2 } from 'lucide-react'
@@ -25,18 +25,18 @@ export default function CallOverlay() {
   const hasToken = useCall((s) => !!s.token && !!s.url)
   const { socket, wsStatus, status } = useSocial()
 
-  // 接 ws 事件
+  // Wire up ws events
   useEffect(() => {
     if (!socket) return
     const off = socket.on((d) => useCall.getState().onEvent(d as { type: string } & Record<string, unknown>))
     return () => { off() }
   }, [socket])
-  // 连上 / 重连后补拿正在响铃的来电（点推送进来、断线期间来的电话）
+  // On connect / reconnect, catch up on ringing incoming calls (entered from a push, or arrived while disconnected)
   useEffect(() => { if (status === 'ready' && wsStatus === 'open') void useCall.getState().syncIncoming() }, [status, wsStatus])
-  // 退出登录：直接收掉
+  // On logout: dismiss directly
   useEffect(() => { if (status === 'idle') useCall.getState().reset() }, [status])
 
-  // 响铃与震动
+  // Ringing and vibration
   useEffect(() => {
     if (phase === 'incoming') {
       playRingtone('ring')
@@ -51,7 +51,7 @@ export default function CallOverlay() {
   if (phase === 'idle') return null
   const inSession = (phase === 'connecting' || phase === 'active') && hasToken
   return (
-    // 外层负责定位：.sheet-glass 写在样式层外、自带 position: relative，会盖掉同一元素上的 fixed
+    // The outer layer owns positioning: .sheet-glass is written outside the style layers and carries position: relative, which overrides fixed on the same element
     <div className="fixed inset-0 z-[90]" role="dialog" aria-modal="true" aria-label={t('通话')}>
       <div className="sheet-glass flex h-full flex-col text-fg">
         <LiquidLayer />
@@ -61,7 +61,7 @@ export default function CallOverlay() {
   )
 }
 
-/** 来电 / 呼出 / 等接听后的连接中 / 结束提示：头像 + 名字 + 一句状态 + 按钮 */
+/** Incoming / outgoing / connecting-after-answer / ended states: avatar + name + one status line + buttons */
 function CallCard() {
   const { phase, peer, video, peerOnline, reason, accept, decline, hangup } = useCall()
   const kind = video ? t('视频通话') : t('语音通话')
@@ -107,7 +107,7 @@ const fmtDur = (ms: number) => {
   return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
-/** 连着 LiveKit 的那段：连接中 → 通话中 */
+/** The LiveKit-connected segment: connecting → in call */
 function CallSession() {
   const { phase, peer, video, token, url, callId, startedAt, connected, fail, hangup } = useCall()
   const roomRef = useRef<LKRoom | null>(null)
@@ -123,7 +123,7 @@ function CallSession() {
   const [warn, setWarn] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
 
-  // 建立连接（组件卸载 = 通话结束，断开并关掉摄像头麦克风）
+  // Establish the connection (component unmount = call end: disconnect and shut off camera/mic)
   useEffect(() => {
     if (!token || !url) return
     let alive = true
@@ -133,7 +133,7 @@ function CallSession() {
       if (!alive) return
       if (!sdk) { fail(t('音视频组件加载失败')); return }
       const { Room, RoomEvent, Track: TrackNS } = sdk
-      // 回声消除写死开着：礼物音效（如哈基米）在主播这端播放时，不会被麦克风再收进去传给观众变成双声
+      // Echo cancellation hardcoded on: gift sound effects (like Hakimi) playing on the streamer's side won't be picked up by the mic again and doubled to viewers
       room = new Room({ adaptiveStream: true, dynacast: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
       roomRef.current = room
       const r = room
@@ -151,8 +151,8 @@ function CallSession() {
       }
       r.on(RoomEvent.TrackSubscribed, refresh).on(RoomEvent.TrackUnsubscribed, refresh).on(RoomEvent.ParticipantConnected, refresh)
         .on(RoomEvent.LocalTrackPublished, refresh).on(RoomEvent.LocalTrackUnpublished, refresh).on(RoomEvent.TrackMuted, refresh).on(RoomEvent.TrackUnmuted, refresh)
-      // 对方离开房间：正常挂断时服务端的 call_ended 通常先到；走到这里多半是对方断网或 App 被杀
-      // 等一下再判断，让 call_ended 先到，提示才会是「对方已挂断」而不是断网
+      // The other side left the room: on a normal hangup the server's call_ended usually arrives first; reaching here mostly means they dropped offline or the app was killed
+      // Hold the verdict a moment to let call_ended arrive first, so the hint reads "the other side hung up" rather than a disconnect
       r.on(RoomEvent.ParticipantDisconnected, () => { setTimeout(() => { if (alive) fail(t('对方网络已断开')) }, 1500) })
       r.on(RoomEvent.Reconnecting, () => { if (alive) setWarn(t('网络不稳定，正在重连')) })
       r.on(RoomEvent.Reconnected, () => { if (alive) setWarn(null) })
@@ -161,12 +161,12 @@ function CallSession() {
       try {
         await r.connect(url, token)
         if (!alive) return
-        // 系统的权限弹框会让 App 短暂失去前台，别被自动锁定打断
+        // The system permission dialog briefly takes the app out of the foreground; don't let auto-lock interrupt that
         const { suspendAutoLock, resumeAutoLock } = await import('@/lib/autolock')
         suspendAutoLock()
         try {
           await r.localParticipant.setMicrophoneEnabled(true).catch(() => { if (alive) setWarn(t('麦克风未开启，请在系统设置里允许')) })
-          // 语音通话不开摄像头
+          // Voice calls don't open the camera
           if (video && alive) await r.localParticipant.setCameraEnabled(true, { facingMode: 'user' }).catch(() => { if (alive) setWarn(t('摄像头未开启，请在系统设置里允许')) })
         } finally { resumeAutoLock() }
         if (!alive) return
@@ -180,14 +180,14 @@ function CallSession() {
     return () => { alive = false; roomRef.current = null; void room?.disconnect() }
   }, [token, url]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 对方迟迟没进房间（对方那边连不上）
+  // The other side hasn't entered the room for a while (their side can't connect)
   useEffect(() => {
     if (phase !== 'connecting') return
     const tm = setTimeout(() => fail(t('连接超时，通话结束')), 30_000)
     return () => clearTimeout(tm)
   }, [phase, fail])
 
-  // 报平安 + 计时
+  // Keep-alive + timer
   useEffect(() => {
     if (!callId) return
     const hb = setInterval(() => { void api(`/api/calls/${callId}/alive`, { method: 'POST' }).catch(() => {}) }, 20_000)
@@ -214,7 +214,7 @@ function CallSession() {
   }
 
   const status = phase === 'active' && startedAt ? fmtDur(now - startedAt) : t('正在连接…')
-  // 视频通话：大画面默认对方，小窗默认自己，点小窗交换
+  // Video calls: the big view defaults to the other side, the small window to self; tapping the small window swaps them
   const big = video ? (swapped ? localVideo : remoteVideo) : null
   const small = video ? (swapped ? remoteVideo : localVideo) : null
   const bigIsLocal = swapped

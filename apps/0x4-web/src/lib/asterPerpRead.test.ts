@@ -1,4 +1,4 @@
-// 插件代办的合约只读查询：只放过四个固定 GET 接口和白名单参数（每条带阳性对照）
+// Extension-proxied contract read-only queries: only four fixed GET endpoints and whitelisted parameters pass (each with a positive control)
 import { describe, expect, it } from 'vitest'
 import { PERP_READ_PATHS, perpReadEndpointOf, perpReadQuery } from './asterPerpRead'
 

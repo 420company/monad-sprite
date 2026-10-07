@@ -1,4 +1,4 @@
-// 多图发送：宫格排版、最多 9 张、并发上传上限
+// Multi-image sending: grid layout, max 9 images, concurrent upload cap
 import { describe, expect, it } from 'vitest'
 import { gridLayout, mapLimit, MAX_PICK, pickMediaFiles } from './multiMedia'
 

@@ -1,7 +1,7 @@
-// 合约选币列表里每个币的 24 小时迷你走势线（1 小时 K 线 × 24 根的收盘价）。
+// 24h mini sparkline per coin in the perp coin list (close prices of 24 × 1h candles).
 //
-// 七百多个合约不能一进页面全拉：只在这一行滚进屏幕时才请求，同时最多 4 个，
-// 结果缓存 5 分钟，来回滚动不重复请求。拉不到就留空，不显示假线。
+// Seven hundred+ contracts can't all be pulled on entry: request only when the row scrolls into view, max 4 concurrent,
+// results cached 5 minutes — scrolling back and forth doesn't re-request. Leave blank when unavailable; never show a fake line.
 import { useEffect, useRef, useState } from 'react'
 import { loadCandles } from '@/lib/aster'
 
@@ -35,7 +35,7 @@ function closesOf(coin: string): Promise<number[]> {
 
 const W = 64, H = 26
 
-/** up：涨跌颜色跟着列表里的 24h 涨跌幅走，不按这 24 根线的首尾算——两者起点不同，会出现「线是绿的、涨跌是红的」 */
+/** up: the up/down color follows the list's 24h change, not the first-to-last of these 24 candles — the two start at different points, or you'd get "green line, red change" */
 export default function MiniTrend({ coin, up }: { coin: string; up: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const [closes, setCloses] = useState<number[] | null>(() => cache.get(coin)?.closes ?? null)

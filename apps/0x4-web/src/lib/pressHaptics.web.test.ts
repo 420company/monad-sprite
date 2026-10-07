@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 按键轻震：网页版（app.420.meme）不挂监听、不震
+// Key-press ticks: web (app.420.meme) attaches no listener, no buzz
 import { describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ impact: 0 }))

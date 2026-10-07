@@ -1,6 +1,6 @@
-// 首页滚动公告（2026-09-29）：首页顶部 0x4 logo 右边滚动显示官方公告标题，点开看全文。
-// 服务端 server/src/homeNotices.ts：公开接口，只返回现在生效的，置顶在前。
-// 进首页拉一次，5 分钟内再进首页用缓存；拉失败什么都不显示（顶栏照常显示 0x4），不影响首页其它内容。
+// Home scrolling announcements (2026-09-29): official announcement titles scroll right of the 0x4 logo atop home; tap for full text.
+// Server server/src/homeNotices.ts: public endpoint, returns only currently active ones, pinned first.
+// Fetched once per home visit, cached for revisits within 5 minutes; on failure show nothing (top bar still shows 0x4), never affecting other home content.
 import { useEffect, useState } from 'react'
 import { api } from './social'
 
@@ -11,7 +11,7 @@ export const CACHE_MS = 5 * 60_000
 let cache: { at: number; list: HomeNotice[] } | null = null
 let inflight: Promise<HomeNotice[]> | null = null
 
-/** 拿首页公告：缓存没过期直接用，同时进来的请求合并成一个；失败返回上次的结果（没有就是空） */
+/** Fetch home announcements: use the cache when fresh, coalesce concurrent requests into one; on failure return the last result (empty when none) */
 export function loadHomeNotices(now = Date.now()): Promise<HomeNotice[]> {
   if (cache && now - cache.at < CACHE_MS) return Promise.resolve(cache.list)
   inflight ??= api<{ list?: HomeNotice[] }>('/api/home-notices')
@@ -25,7 +25,7 @@ export function loadHomeNotices(now = Date.now()): Promise<HomeNotice[]> {
   return inflight
 }
 
-/** 测试用：清掉缓存 */
+/** Test only: clear the cache */
 export function resetHomeNotices() { cache = null; inflight = null }
 
 export function useHomeNotices(): HomeNotice[] {

@@ -1,5 +1,5 @@
-// 极简 IndexedDB 封装：本机聊天记录（localChat）和媒体缓存（mediaCache）共用一个库 0x4-chat。
-// Capacitor 的 WKWebView / Android WebView 和浏览器都能用。
+// Minimal IndexedDB wrapper: local chat records (localChat) and media cache (mediaCache) share one database, 0x4-chat.
+// Works in Capacitor's WKWebView / Android WebView and in browsers.
 const DB_NAME = '0x4-chat'
 const VERSION = 1
 
@@ -13,13 +13,13 @@ export function openDb(): Promise<IDBDatabase> {
     const r = indexedDB.open(DB_NAME, VERSION)
     r.onupgradeneeded = () => {
       const db = r.result
-      // 聊天记录：k = 会话|消息id，conv 索引按会话取
+      // Chat records: k = conversation|message-id, the conv index fetches per conversation
       if (!db.objectStoreNames.contains('msgs')) db.createObjectStore('msgs', { keyPath: 'k' }).createIndex('conv', 'conv')
-      // 加密后的会话附加信息（对方资料、未读数）
+      // Encrypted per-conversation extras (the other party's profile, unread counts)
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'k' })
-      // 网页版的本地加密密钥（不可导出的 CryptoKey）
+      // The web version's local encryption key (a non-exportable CryptoKey)
       if (!db.objectStoreNames.contains('keys')) db.createObjectStore('keys')
-      // 媒体缓存：url → blob
+      // Media cache: url → blob
       if (!db.objectStoreNames.contains('media')) db.createObjectStore('media', { keyPath: 'url' }).createIndex('at', 'at')
     }
     r.onsuccess = () => {
@@ -33,7 +33,7 @@ export function openDb(): Promise<IDBDatabase> {
 
 export const req = <T>(r: IDBRequest<T>) => new Promise<T>((resolve, reject) => { r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error) })
 
-/** 在一个事务里跑 fn，事务完成后返回 fn 的结果 */
+/** Run fn inside one transaction; return fn's result once the transaction completes */
 export async function tx<T>(stores: string | string[], mode: IDBTransactionMode, fn: (t: IDBTransaction) => T | Promise<T>): Promise<T> {
   const db = await openDb()
   const t = db.transaction(stores, mode)
@@ -43,7 +43,7 @@ export async function tx<T>(stores: string | string[], mode: IDBTransactionMode,
   return out
 }
 
-/** 整个库删掉（重置钱包时） */
+/** Delete the whole database (when resetting the wallet) */
 export async function dropDb(): Promise<void> {
   if (!idbAvailable()) return
   if (opening) { try { (await opening).close() } catch { /* ignore */ } opening = null }

@@ -1,5 +1,4 @@
-/* 网页版「社区」（2026-10-01 社区合并，照设计稿「社区合并预览-美化版」）。
-   颜色只用网页版自己的 --w-* 和设计稿的几个强调色；面板是实色 + 细描边，不用大面积毛玻璃（照顾显卡）。 */
+/* Web "Community" (2026-10-01 community merge, per the "community merge preview - beautified" design). Colors only use the web's own --w-* plus the design's accent colors; panels are solid + hairline outlines, no large frosted-glass areas (kind to the GPU). */
 .cm-page {
   --cm-lilac: var(--w-accent, #cdbdff);
   --cm-signal: #ff3b5c;
@@ -13,10 +12,10 @@
   font-family: var(--w-font); color: var(--w-fg); padding-top: 6px;
 }
 .cm-page .num { font-variant-numeric: tabular-nums; }
-/* 香芋白（2026-10-02）：社区的次要文字换成白底上看得清的灰紫 */
+/* Taro white (2026-10-02): community secondary text becomes a gray-purple legible on white */
 html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 
-/* ---------- 左：社区菜单 ---------- */
+/* ---------- Left: community menu ---------- */
 .cm-side { position: sticky; top: calc(var(--w-bar-h) + 16px); display: flex; flex-direction: column; gap: 2px; min-height: calc(100dvh - var(--w-bar-h) - var(--w-status-h) - 48px); }
 .cm-side-t { font-size: 30px; font-weight: 700; letter-spacing: -.025em; padding: 4px 12px 18px; }
 .cm-menu { display: flex; flex-direction: column; gap: 2px; }
@@ -44,7 +43,7 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 .cm-sub { margin-top: 4px; color: var(--w-mute); font-size: 14px; }
 .cm-head-r { display: flex; gap: 10px; flex-wrap: wrap; }
 
-/* 按钮 */
+/* Buttons */
 .cm-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 42px; padding: 0 18px; border-radius: 12px; font-weight: 600; font-size: 14px; white-space: nowrap; color: #14121c; background: linear-gradient(180deg, #f4f0ff, #d9ceff); transition: filter .15s, transform .15s, opacity .15s; }
 .cm-btn:hover:not(:disabled) { filter: brightness(1.05); }
 .cm-btn:active:not(:disabled) { transform: scale(.98); }
@@ -55,10 +54,10 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 .cm-link { font-size: 13px; color: var(--w-mute); }
 .cm-link:hover { color: var(--w-fg); }
 
-/* 面板 */
+/* Panels */
 .cm-panel { border-radius: 22px; background: var(--cm-surface); box-shadow: inset 0 0 0 1px var(--w-line); }
 
-/* ---------- 动态 ---------- */
+/* ---------- Feed ---------- */
 .cm-feedgrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 0 32px; align-items: start; }
 .cm-feed { overflow: hidden; border-radius: 26px; background: linear-gradient(180deg, var(--w-tint-1), var(--w-tint-1)); box-shadow: inset 0 1px 0 var(--w-tint-2), inset 0 0 0 1px var(--w-tint-2); }
 .cm-tabs { display: flex; gap: 28px; padding: 6px 24px 0; border-bottom: 1px solid var(--w-line); font-size: 15px; }
@@ -71,7 +70,7 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 .cm-guest { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--w-line); color: var(--w-mute); font-size: 14px; }
 .cm-guest > span { flex: 1; }
 
-/* 右栏 */
+/* Right column */
 .cm-rail { display: flex; flex-direction: column; gap: 14px; position: sticky; top: calc(var(--w-bar-h) + 16px); }
 .cm-mod { border-radius: 22px; padding: 14px 16px 8px; background: linear-gradient(180deg, var(--w-tint-2), var(--w-tint-1)); box-shadow: inset 0 1px 0 var(--w-tint-2), inset 0 0 0 1px var(--w-tint-2); }
 .cm-mod-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -104,7 +103,7 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 .cm-dn { color: var(--cm-rose); }
 .cm-flat { color: var(--w-mute); }
 
-/* ---------- 直播 ---------- */
+/* ---------- Live ---------- */
 .cm-livetag { display: inline-flex; align-items: center; gap: 5px; background: var(--cm-signal); color: #fff; font: 700 11px/1 var(--w-font); padding: 5px 8px; border-radius: 7px; letter-spacing: .04em; }
 .cm-livetag::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #fff; }
 .cm-glass { display: inline-flex; align-items: center; gap: 5px; background: rgb(7 8 11 / .66); color: var(--w-fg); font-size: 12px; padding: 4px 9px; border-radius: 7px; }
@@ -147,7 +146,7 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 .cm-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 56px 20px; color: var(--w-mute); font-size: 14px; text-align: center; }
 .cm-empty svg { color: var(--w-faint); }
 
-/* ---------- 会议 ---------- */
+/* ---------- Meetings ---------- */
 .cm-meetbar { display: flex; gap: 12px; align-items: center; padding: 18px; border-radius: 20px; background: var(--cm-surface); box-shadow: inset 0 0 0 1px var(--w-line); margin-bottom: 28px; }
 .cm-meetbar label { flex: 1; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border-radius: 12px; background: var(--w-bg); box-shadow: inset 0 0 0 1px var(--w-line-2); color: var(--w-mute); }
 .cm-meetbar input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--w-fg); font-size: 14.5px; }
@@ -166,7 +165,7 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 .cm-faces > *:first-child { margin-left: 0; }
 .cm-hist { margin-top: 28px; }
 
-/* ---------- 排行 ---------- */
+/* ---------- Rankings ---------- */
 .cm-utabs { display: flex; gap: 30px; border-bottom: 1px solid var(--w-line); margin-bottom: 16px; font-size: 16px; }
 .cm-utabs button { position: relative; padding: 4px 0 12px; color: var(--w-mute); }
 .cm-utabs button[aria-selected="true"] { color: var(--w-fg); font-weight: 600; }
@@ -197,7 +196,7 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 @keyframes cm-sk { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .cm-sk { animation: none; } .cm-tile-th > img.cm-cover { transition: none; } }
 
-/* 窄一点的电脑屏：右栏收窄，菜单变窄 */
+/* Narrower desktop screens: right column narrows, menu narrows */
 @media (max-width: 1280px) {
   .cm-page { grid-template-columns: 200px minmax(0, 1fr); gap: 0 24px; }
   .cm-feedgrid { grid-template-columns: minmax(0, 1fr) 300px; gap: 0 20px; }
@@ -205,10 +204,10 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
   .cm-book { grid-template-columns: 130px minmax(0, 1fr) 64px minmax(0, 1fr) 130px; gap: 10px; }
   .cm-rrow { grid-template-columns: 40px minmax(0, 1fr) 130px 80px 80px 84px; }
 }
-/* 名字后面的官方 / X 标记不被长名字挤掉 */
+/* The official / X marks after names aren't squeezed out by long names */
 .cm-pc-who b > *, .cm-rrow-who b > * { flex-shrink: 0; }
 
-/* ---------- 直播卡片（2026-10-02 重做，见 LiveView.tsx RoomTile） ---------- */
+/* ---------- Live cards (redone 2026-10-02, see LiveView.tsx RoomTile) ---------- */
 .lv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 26px 20px; margin-top: 22px; }
 .lv-sk { aspect-ratio: 16 / 10; border-radius: 18px; }
 .lv-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 0; text-align: left; color: inherit; background: none; border: 0; cursor: pointer; }
@@ -218,9 +217,9 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 .lv-card:hover .lv-thumb, .lv-card:focus-visible .lv-thumb { transform: translateY(-3px); box-shadow: 0 22px 44px -22px rgb(205 189 255 / .55), inset 0 0 0 1px rgb(205 189 255 / .4); }
 .lv-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: brightness(.66) saturate(1.08); transform: scale(1.03); transition: transform .6s ease; z-index: -2; }
 .lv-card:hover .lv-bg { transform: scale(1.08); }
-/* 上下压暗：上面放标签、下面放标题，都要看得清 */
+/* Darkened top and bottom: tags on top, title below — both must stay legible */
 .lv-thumb::after { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgb(4 5 9 / .5) 0%, transparent 28%, transparent 52%, rgb(4 5 9 / .85) 100%); }
-/* 主播头像：渐变光环慢慢转 + 两圈波纹往外扩 */
+/* Streamer avatar: slowly rotating gradient halo + two ripples expanding outward */
 .lv-av { position: absolute; left: 50%; top: 43%; transform: translate(-50%, -50%); width: 72px; height: 72px; display: grid; place-items: center; border-radius: 50%; }
 .lv-av::before { content: ''; position: absolute; inset: 0; border-radius: 50%; padding: 3px; background: conic-gradient(from var(--lv-a, 0deg), #ff4d6d, #cdbdff, #8fe0ff, #ff4d6d);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: lv-spin 5s linear infinite; }
@@ -243,7 +242,7 @@ html[data-surface="web"][data-theme="light"] .cm-page { --cm-sub: #5d5779; }
 .lv-ago { margin-left: auto; flex: none; color: var(--w-mute); font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .lv-av::before, .lv-av i, .lv-live i { animation: none; } .lv-av i { display: none; } .lv-thumb, .lv-bg { transition: none; } }
 
-/* 创建流媒体：直播 / 会议二选一（2026-10-03；图标是生成的玻璃图，下面三个小标签说清各自有什么） */
+/* Create stream: live or meeting, pick one (2026-10-03; icons are generated glass images, with three small tags below spelling out what each offers) */
 .sm-pick { display: flex; flex-direction: column; gap: 12px; }
 .sm-opt { display: flex; align-items: center; gap: 16px; width: 100%; padding: 14px 16px 14px 14px; text-align: left; border-radius: 20px; background: var(--w-raised); box-shadow: inset 0 0 0 1px var(--w-line-2); transition: transform .16s cubic-bezier(.25, 1, .5, 1), box-shadow .2s, background-color .2s; }
 .sm-opt:hover:not(:disabled) { transform: translateY(-1px); box-shadow: inset 0 0 0 1px var(--w-accent), 0 14px 30px -18px rgb(118 86 239 / .55); }

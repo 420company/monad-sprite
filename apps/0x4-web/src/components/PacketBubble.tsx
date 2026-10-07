@@ -1,4 +1,4 @@
-// 群里的红包气泡：点开领取，展示领取记录
+// Group red-packet bubble: tap to claim, shows the claim history
 import { useState } from 'react'
 import Sheet from './Sheet'
 import PacketGlyph from './PacketGlyph'

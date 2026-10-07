@@ -1,3 +1,3 @@
-// 空页面。iOS 上架版打包时（VITE_NO_PERP=1）vite.config.ts 把合约页换成它，合约页的文件就不进安装包；
-// 路由本身在 App.tsx 里已经改成回首页，这个组件不会真的被显示。
+// Empty page. When building the iOS store version (VITE_NO_PERP=1), vite.config.ts swaps the perp page for it, so perp files stay out of the bundle;
+// the route itself already bounces to home in App.tsx — this component is never actually shown.
 export default function NoPage() { return null }

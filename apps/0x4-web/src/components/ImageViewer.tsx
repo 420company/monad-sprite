@@ -1,6 +1,6 @@
-// 全屏看图：左右滑切换、双指缩放、双击放大、单击关闭、显示第几张。
-// src 还没准备好（私信大图在解密）时先显示缩略图 placeholder 加转圈。
-// 聊天多图消息里可以混着视频（video = true，显示播放器）；save = true 时右上角有「保存」，只存当前这一张图片。
+// Full-screen image viewer: swipe left/right to switch, pinch to zoom, double-tap to zoom in, single tap to close, shows the current index.
+// While src isn't ready (a DM full-size image still decrypting), show the thumbnail placeholder with a spinner.
+// Multi-image chat messages can mix in videos (video = true shows the player); with save = true the top-right gets a "save" button that saves only the current image.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, LoaderCircle, X } from 'lucide-react'
@@ -10,7 +10,7 @@ import { toast } from './Toast'
 
 export interface ViewerImage { src?: string; placeholder?: string; video?: boolean }
 
-/** 把图片地址（http / blob:）读成 data URL 交给 saveImage：App 里进相册，网页里下载 */
+/** Read an image URL (http / blob:) into a data URL and hand it to saveImage: saves to the photo album in the app, downloads on web */
 async function saveCurrent(src: string) {
   const blob = await (await fetch(src)).blob()
   const dataUrl = await new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error); r.readAsDataURL(blob) })
@@ -54,7 +54,7 @@ export default function ImageViewer({ images, index: start, onClose, onIndex, sa
   const box = useRef<HTMLDivElement>(null)
 
   const go = useCallback((i: number) => { setIndex(clamp(i, 0, n - 1)); setScale(1); setPan({ x: 0, y: 0 }) }, [n])
-  // 翻到哪张告诉外面（私信要按需解密当前和相邻的大图）
+  // Tell the outside which image is shown (DMs decrypt the current and adjacent full-size images on demand)
   useEffect(() => { onIndex?.(index) }, [index]) // eslint-disable-line react-hooks/exhaustive-deps
   const [saving, setSaving] = useState(false)
   const cur = images[index]
@@ -118,7 +118,7 @@ export default function ImageViewer({ images, index: start, onClose, onIndex, sa
       return
     }
     if (g.moved || Date.now() - g.t > 350) return
-    // 双击放大 / 还原；单击稍等一下确认不是双击再关
+    // Double-tap zooms in / restores; single taps wait briefly to confirm it's not a double-tap before closing
     const now = Date.now()
     if (now - lastTap.current < 280) {
       clearTimeout(tapTimer.current); lastTap.current = 0
@@ -135,7 +135,7 @@ export default function ImageViewer({ images, index: start, onClose, onIndex, sa
     <div ref={box} role="dialog" aria-modal="true" aria-label={t('查看图片')} tabIndex={-1}
       className="fixed inset-0 z-[1000] touch-none select-none overflow-hidden bg-black outline-none"
       style={{ backgroundColor: `rgba(0,0,0,${fade})` }}
-      // 门户里的点击在 React 里仍会冒泡到外层（比如帖子正文「点击进详情」），在这里截住
+      // Clicks inside the portal still bubble to outer layers in React (e.g. post body's "tap for detail") — intercept them here
       onClick={(e) => e.stopPropagation()}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
       <div className="flex h-full" style={{ transform: `translate3d(calc(${-index * 100}% + ${offset}px), ${drag.active ? drag.y : 0}px, 0)`, transition: drag.active ? 'none' : 'transform .25s cubic-bezier(.2,.8,.2,1)' }}>

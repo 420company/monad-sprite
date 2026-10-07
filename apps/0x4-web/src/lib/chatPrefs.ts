@@ -1,7 +1,7 @@
-// 消息记录模式（「我」→ 消息记录）的前端部分：选项、本机记录、零点计算。服务端见 server/src/chatPrefs.ts。
-//   cloud  加密云端保存（默认）
-//   device 只存在这台手机：私信送到本机、加密存好后通知服务器删掉我那份
-//   daily  每天 00:00 自动清空：服务器按设备时区零点清，App 打开时过了零点也清一次本机
+// The frontend half of message-history mode ("Me" → message history): options, local records, midnight computation. Server side in server/src/chatPrefs.ts.
+//   cloud  encrypted cloud storage (default)
+//   device stored on this phone only: DMs are delivered to the device, encrypted and stored, then the server is told to delete my copy
+//   daily  auto-cleared daily at 00:00: the server clears at the device-timezone midnight; the app also clears locally once when opened past midnight
 export type ChatMode = 'cloud' | 'device' | 'daily'
 
 export const CHAT_MODE_OPTIONS: { value: ChatMode; label: string; note: string }[] = [
@@ -12,25 +12,25 @@ export const CHAT_MODE_OPTIONS: { value: ChatMode; label: string; note: string }
 
 export const isChatMode = (v: unknown): v is ChatMode => v === 'cloud' || v === 'device' || v === 'daily'
 
-/** 设备时区：IANA 名 + UTC 偏移分钟（东八区 480），服务器按它算零点 */
+/** Device timezone: IANA name + UTC offset minutes (UTC+8 is 480); the server computes midnight from it */
 export function deviceTz(): { tz: string | null; tzOffset: number } {
   let tz: string | null = null
-  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null } catch { /* 老环境 */ }
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null } catch { /* Legacy environments */ }
   return { tz, tzOffset: -new Date().getTimezoneOffset() }
 }
 
-/** now 所在这一天的本地 00:00（毫秒） */
+/** Local 00:00 (ms) of now's day */
 export function lastLocalMidnight(now = Date.now()): number {
   const d = new Date(now)
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
 }
-/** 下一个本地 00:00 */
+/** The next local 00:00 */
 export function nextLocalMidnight(now = Date.now()): number {
   const d = new Date(now)
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
 }
 
-/** 本机记下的模式、上次清理时间、清到了哪个零点，按钱包地址分开 */
+/** Locally recorded mode, last clear time and which midnight was cleared up to — separated per wallet address */
 export interface LocalChatPrefs { mode: ChatMode; lastClear: number; clearedBefore: number }
 const KEY = '0x4.chat-prefs'
 
@@ -45,13 +45,13 @@ export function saveLocalPrefs(owner: string, patch: Partial<LocalChatPrefs>): L
   const all = readAll()
   const next = { ...loadLocalPrefs(owner), ...patch }
   all[owner] = next
-  try { localStorage.setItem(KEY, JSON.stringify(all)) } catch { /* 存不上下次按服务器的 */ }
+  try { localStorage.setItem(KEY, JSON.stringify(all)) } catch { /* If it can't be stored, follow the server's next time */ }
   return next
 }
 
 /**
- * 每天清空模式：上次清理之后是不是又过了一个本地零点。返回该清到的零点（这个时间及以前的都清），不用清返回 0。
- * lastClear 为 0（刚切到这个模式、还没清过）时以切换时间为准，切换那一刻不清。
+ * Daily-clear mode: whether another local midnight has passed since the last clear. Returns the midnight to clear up to (everything at or before it is cleared); returns 0 when nothing needs clearing.
+ * When lastClear is 0 (just switched to this mode, never cleared), use the switch time as the reference — nothing is cleared at the switch moment.
  */
 export function dailyClearDue(mode: ChatMode, lastClear: number, now = Date.now()): number {
   if (mode !== 'daily' || !lastClear) return 0

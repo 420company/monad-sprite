@@ -1,5 +1,5 @@
-// 开播提醒横幅（2026-09-30 goat）：App / 网页开着时，关注的人开播，顶部弹一条带图的横幅，6 秒后收起，点了进直播间。
-// 通知中心那一条由服务器落库（liveNotify.ts），这里只负责顶部横幅。
+// Livestream-start reminder banner (2026-09-30 goat): while the app / web is open, when someone you follow goes live, an image banner pops at the top, collapses after 6s; tapping it enters the live room.
+// The notification-center entry is persisted by the server (liveNotify.ts); this only handles the top banner.
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { create } from 'zustand'
@@ -10,7 +10,7 @@ import { LIVE_IMG } from './img'
 
 interface Item { id: number; text: string; key?: unknown; params?: unknown; ref: string | null }
 const useBanner = create<{ item: Item | null }>(() => ({ item: null }))
-/** 实时连接收到 type='live' 的通知时调用（store/social.ts） */
+/** Called when the realtime connection receives a type='live' notification (store/social.ts) */
 export function pushLiveBanner(n: { id: number; text: string; key?: unknown; params?: unknown; ref: string | null }) { useBanner.setState({ item: n }) }
 
 export default function LiveBanner() {

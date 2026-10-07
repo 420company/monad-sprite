@@ -1,7 +1,7 @@
-// 直播间：LiveKit 音视频，付费房先买票，主播可结束。
-// 2026-09-30 goat 直播改造（docs/LIVE_PK_PLAN.md）：随机视频取消、换成主播 PK（左右分屏、比分、倒计时、结束画面、连胜）；
-// 等级徽章、点赞、进场特效；主播 / 房管踢人禁言；分享到 X；被踢出 / 被平台关闭时整页提示。
-// 直播间里只能送礼，没有任何直接转账 / 红包入口。
+// Live room: LiveKit audio/video; paid rooms need a ticket first; the streamer can end it.
+// 2026-09-30 goat live revamp (docs/LIVE_PK_PLAN.md): random video removed, replaced with streamer PK (split screen, score, countdown, end screen, win streaks);
+// Level badges, likes, entrance effects; hosts / mods can kick and mute; share to X; full-page notice when kicked or when the platform closes the room.
+// Live rooms only do gifts — no direct transfer / red-packet entries at all.
 import { Suspense, lazy, useEffect, useRef, useState, useMemo } from 'react'
 import { WEB_SURFACE } from '@/lib/surface'
 import { isNative } from '@/lib/native'
@@ -14,9 +14,9 @@ import GiftSheet from '@/components/GiftSheet'
 import { applyFx, processorForCamera } from '@/effects/fx'
 import { loadFx, type FxSettings } from '@/effects/settings'
 import type { LocalVideoTrack } from 'livekit-client'
-// 直播特效面板（网页版主播，2026-10-02）：按需加载
+// Live effects panel (web streamer, 2026-10-02): lazy-loaded
 const EffectsPanel = lazy(() => import('@/effects/EffectsPanel'))
-const CoverPicker = lazy(() => import('@/desktop/community/CoverPicker'))   // 开播检查页选直播封面（只有网页版有检查页）
+const CoverPicker = lazy(() => import('@/desktop/community/CoverPicker'))   // Pick the stream cover on the pre-live check page (only web has a check page)
 import GiftPanel, { type GiftTarget } from '@/components/energy/GiftPanel'
 import { GiftFxLayer, giftDisplayName, useRoomGifts, type GiftFxLayerHandle } from '@/components/energy/GiftFxLayer'
 import { ENERGY_GIFTS, energyEarnings, energyFile } from '@/lib/energy'
@@ -55,33 +55,33 @@ type Tile = { id: string; name: string; isLocal: boolean; mic: boolean; video?: 
 type ChatLine = { id: string; from: string; nickname: string | null; avatar?: string | null; text: string; ts: number; gift?: boolean; giftId?: string; giftIcon?: string | null; lv?: number; mod?: boolean; system?: boolean }
 type Gone = 'kicked' | 'dissolved' | 'blocked' | 'ended' | null
 
-// 门票款已付、服务端还没登记上的交易：记下来，再点只重交这笔，不会再付一次
+// Ticket paid but the server hasn't registered it yet: record it — tapping again only resubmits this tx, never pays twice
 const pendingKey = (room: string) => `0x4.ticketTx.${room}`
 const readPendingTx = (room: string) => { try { return localStorage.getItem(pendingKey(room)) } catch { return null } }
-const writePendingTx = (room: string, tx: string | null) => { try { if (tx) localStorage.setItem(pendingKey(room), tx); else localStorage.removeItem(pendingKey(room)) } catch { /* 存不了只是少了防重复付款 */ } }
+const writePendingTx = (room: string, tx: string | null) => { try { if (tx) localStorage.setItem(pendingKey(room), tx); else localStorage.removeItem(pendingKey(room)) } catch { /* Failing to save only loses duplicate-payment protection */ } }
 
-/** 电脑网页版主播开播前先检查设备（手机 App 直接开播，系统会弹权限） */
+/** Desktop web streamers check devices before going live (the phone app goes live directly — the OS pops permissions) */
 const HOST_PRECHECK = WEB_SURFACE && !isNative
 
 export default function Room() {
   const { id = '' } = useParams()
-  // 离开房间：退回上一页（一般是直播列表，列表的滚动位置会还原）；从推送 / 深链直接进来的去直播列表
+  // Leaving the room: back to the previous page (usually the live list, with its scroll position restored); those who came directly from a push / deep link go to the live list
   const back = useBack('/live')
   const { me, status, socket, wsStatus, login } = useSocial()
   const [gifting, setGifting] = useState(false)
-  // 能量礼物（2026-09-30）：服务器确认扣好能量后广播 roomgift，收到才播动画 + 飘屏（手机 App 也播，只是没有送礼按钮和价格）
+  // Energy gifts (2026-09-30): the server broadcasts roomgift after confirming the energy deduction — animations + floating banners play only on receipt (the phone app plays them too, just without the gift button and prices)
   const [energyOpen, setEnergyOpen] = useState(false)
   const [fxOpen, setFxOpen] = useState(false)
-  // 开着猫头时主播自己的预览不镜像（2026-10-02 goat：镜像后猫脸上的 0、x 是反的）；真人模式照旧镜像
+  // With the cat head on, the streamer's own preview is not mirrored (2026-10-02 goat: mirroring flips the 0 and x on the cat's face); real-person mode still mirrors
   const [fxCat, setFxCat] = useState(() => loadFx().avatar === 'cat')
   const fx = useRef<GiftFxLayerHandle>(null)
   const lang = useLang((s) => s.lang)
   const navigate = useNavigate()
-  // 主播自己：今天收到几个礼物（App 里只显示个数，网页版另外显示今日收益）
+  // The streamer themselves: how many gifts received today (the app shows only the count; web additionally shows today's earnings)
   const [hostToday, setHostToday] = useState<{ gifts: number; today: string } | null>(null)
-  // 弹幕：只保留最近 60 条，不落库；在线人数由服务端按地址去重后推送
+  // Danmaku: keep only the latest 60, never persisted; online count is pushed by the server deduped by address
   const [chat, setChat] = useState<ChatLine[]>([])
-  // 我拉黑的人：弹幕在我这边不显示
+  // People I blocked: their danmaku doesn't show on my side
   const blockedList = useBlocks((s) => s.list)
   const blockedSet = useMemo(() => new Set(blockedList.map((b) => b.address)), [blockedList])
   const [viewers, setViewers] = useState<number | null>(null)
@@ -113,7 +113,7 @@ export default function Room() {
   const [target, setTarget] = useState<{ address: string; nickname: string | null; avatar?: string | null; level?: number } | null>(null)
   const [enter, setEnter] = useState<{ key: string; nickname: string; level: number; tier: number } | null>(null)
   const [lkRoom, setLkRoom] = useState<LKRoom | null>(null)
-  // 扫码登录的公共电脑：主播 / 连麦的人自己在说话算「在用」
+  // QR-logged-in public computer: the streamer / co-host speaking counts as "in use"
   useEffect(() => watchSpeaking(lkRoom), [lkRoom])
   const roomRef = useRef<LKRoom | null>(null)
   const generation = useRef(0)
@@ -139,7 +139,7 @@ export default function Room() {
     setCam(room.localParticipant.isCameraEnabled)
   }
 
-  // 开播前检查（只在电脑网页版的主播）：拿到进房令牌后先停在这里，确认设备再推流
+  // Pre-live check (desktop web streamers only): after getting the room token, pause here and confirm devices before pushing the stream
   const [precheck, setPrecheck] = useState<{ url: string; token: string; kind: 'voice' | 'video' } | null>(null)
   const [going, setGoing] = useState(false)
   useEffect(() => { setPrecheck(null) }, [id])
@@ -148,18 +148,18 @@ export default function Room() {
     setGoing(true)
     try { await connect(precheck.url, precheck.token, precheck.kind, true, prefs) } finally { setGoing(false); setPrecheck(null) }
   }
-  // publish=false：直播间观众只订阅主播的画面和声音，不开自己的麦克风和摄像头
-  // prefs：开播前检查选的设备（不传 = 默认设备、麦克风和摄像头都开）
+  // publish=false: live room viewers only subscribe to the host's video and audio; their own mic and camera stay off
+  // prefs: devices chosen in the pre-live check (omitted = default devices, mic and camera both on)
   const connect = async (url: string, token: string, kind: 'voice' | 'video', publish = true, prefs?: JoinPrefs) => {
     if (!url) { setErr(t('音视频服务暂不可用')); return }
     const attempt = generation.current
-    // 音视频 SDK 仅在进房时加载，避免主包超过 PWA 的单文件缓存上限。
+    // The audio/video SDK loads only on room entry, keeping the main bundle under the PWA per-file cache limit.
     const sdk = await import('livekit-client').catch(() => null)
     if (generation.current !== attempt) return
     if (!sdk) { setErr(t('音视频组件加载失败，请重试')); return }
     const { Room: RoomClient, RoomEvent } = sdk
     void roomRef.current?.disconnect()
-    // 回声消除写死开着：礼物音效（如哈基米）在主播这端播放时，不会被麦克风再收进去传给观众变成双声
+    // Echo cancellation is hard-coded on: gift sound effects (e.g. Hakimi) playing on the host's side won't be re-captured by the mic and doubled for viewers
     const room = new RoomClient({ adaptiveStream: true, dynacast: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
     roomRef.current = room
     const current = () => generation.current === attempt && roomRef.current === room
@@ -172,7 +172,7 @@ export default function Room() {
     room.on(RoomEvent.Disconnected, () => { if (current()) { setConnected(false); setReconnecting(false); setErr(t('音视频连接已中断')); setTiles([]); setLkRoom(null) } })
     try {
       await room.connect(url, token)
-      // 离开房间后的迟到连接不能重新打开设备或回写页面。
+      // Late connections after leaving the room must not reopen devices or write back to the page.
       if (!current()) { void room.disconnect(); return }
       setConnected(true)
       setLkRoom(room)
@@ -187,11 +187,11 @@ export default function Room() {
     } catch { if (current()) { roomRef.current = null; setConnected(false); setReconnecting(false); setTiles([]); setLkRoom(null); setErr(t('暂时无法连接音视频')); void room.disconnect() } }
   }
 
-  /** 离开音视频（被踢出 / 被关闭时） */
+  /** Leave audio/video (when kicked / closed) */
   const dropMedia = () => { generation.current++; const r = roomRef.current; roomRef.current = null; void r?.disconnect(); setConnected(false); setTiles([]); setLkRoom(null) }
 
-  // 实时频道：弹幕、人数、礼物飘屏、点赞、进场特效、管理变化、被踢 / 被关闭
-  // 付费房要有门票才能订阅（服务端也会拒），买到票后 needTicket 变回 false 会重新订阅
+  // Realtime channel: danmaku, viewer count, gift banners, likes, entrance effects, moderation changes, kicked / closed
+  // Paid rooms need a ticket to subscribe (the server rejects too); once the ticket is bought, needTicket flips back to false and resubscribes
   useEffect(() => {
     if (!socket || wsStatus !== 'open' || needTicket || gone) return
     socket.send({ type: 'roomjoin', roomId: id })
@@ -200,7 +200,7 @@ export default function Room() {
       if (d.type === 'roommsg') setChat((c) => [...c.slice(-59), { id: String(d.id), from: String(d.from), nickname: (d.nickname as string | null) ?? null, avatar: (d.avatar as string | null) ?? null, text: String(d.text), ts: Number(d.ts), lv: Number(d.lv) || undefined, mod: d.mod === true }])
       if (d.type === 'roomcount') setViewers(Number(d.n))
       if (d.type === 'roomlikes') setLikes(Number(d.total))
-      if (d.type === 'gift' && BALANCE_FEATURES) {   // 手机 App 不显示礼物飘屏
+      if (d.type === 'gift' && BALANCE_FEATURES) {   // The phone app doesn't show gift banners
         const item = { id: Date.now() + Math.random() }
         setChat((c) => [...c.slice(-59), { id: 'g' + item.id, from: String(d.from || ''), nickname: null, text: renderServerText(String(d.text || ''), d.key, d.params, d.giftId), ts: Date.now(), gift: true, giftId: typeof d.giftId === 'string' ? d.giftId : undefined }])
       }
@@ -226,7 +226,7 @@ export default function Room() {
     setChat((c) => [...c.slice(-59), { id: 'eg' + g.id, from: g.from, nickname: g.nickname, avatar: g.avatar, text: t('送出 {gift}', { gift: giftDisplayName(g.gift, lang) }), ts: g.ts, gift: true, giftIcon: g.gift.icon }])
     if (isHost && g.to === me?.address) setHostToday((h) => ({ gifts: (h?.gifts ?? 0) + 1, today: h?.today ?? '0' }))
   })
-  // 主播：今天收到的礼物数（实时推送 energy_earnings 会顺带更新今日收益）
+  // Host: gifts received today (the energy_earnings realtime push also refreshes today's earnings)
   useEffect(() => {
     if (!isHost || status !== 'ready') return
     let alive = true
@@ -234,10 +234,10 @@ export default function Room() {
     const off = socket?.on((d) => { if (d.type === 'energy_earnings') setHostToday((h) => ({ gifts: h?.gifts ?? 0, today: String(d.today) })) })
     return () => { alive = false; off?.() }
   }, [isHost, status, socket])
-  // 换房间时清掉上一个房间的弹幕和人数
+  // When switching rooms, clear the previous room's danmaku and viewer count
   useEffect(() => { setChat([]); setViewers(null); setLikes(null); setGone(null) }, [id])
   useEffect(() => { chatBox.current?.scrollTo({ top: chatBox.current.scrollHeight }) }, [chat.length])
-  // 我在这个直播间的身份（房管名单、我是不是被禁言）
+  // My identity in this live room (mod list, whether I'm muted)
   useEffect(() => {
     if (status !== 'ready' || !connected) return
     let alive = true
@@ -245,7 +245,7 @@ export default function Room() {
     return () => { alive = false }
   }, [id, status, connected, modGen])
   useEffect(() => { if (!enter) return; const x = setTimeout(() => setEnter(null), 3300); return () => clearTimeout(x) }, [enter])
-  // PK：主播把自己的画面同时推进对面房间
+  // PK: the streamer pushes their own picture into the opponent's room simultaneously
   usePkPublish(isHost ? pk.link : null, isHost ? lkRoom : null, { mic, cam })
   useEffect(() => { if (pk.error && !pkOpen) toast.error(t(pk.error.text)) }, [pk.error]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -260,7 +260,7 @@ export default function Room() {
         if (!alive) return
         setInfo(r)
         const host = r.host === useSocial.getState().me?.address
-        // 电脑网页版的主播：先过开播前检查（选摄像头 / 麦克风 / 扬声器、看画面和音量），确认后才推流（2026-10-01，原 meet.420.meme 的流程）
+        // Desktop web streamers: pass the pre-live check first (pick camera / mic / speaker, check picture and volume), go live only after confirming (2026-10-01, the original meet.420.meme flow)
         if (host && HOST_PRECHECK) { setPrecheck({ url: r.url, token: r.token, kind: r.kind }); return }
         await connect(r.url, r.token, r.kind, host)
       } catch (e) {
@@ -299,7 +299,7 @@ export default function Room() {
     setBuying(true)
     const room = id
     try {
-      // EVM 门票：服务器只认签名证明过的付款地址，先证明再转钱（已付过、待提交的也要先证明才能提交）
+      // EVM tickets: the server only accepts payment addresses proven by signature — prove first, then pay (even already-paid, pending submissions must prove before submitting)
       if (info.priceChainId !== SOLANA_CHAIN_ID && !(await proveEvmIfNeeded({ interactive: true }).catch(() => false))) throw new Error(t('EVM 地址验证失败，请稍后再试'))
       let tx = readPendingTx(room)
       if (!tx) {
@@ -309,7 +309,7 @@ export default function Room() {
         tx = await transfer({ chainId: info.priceChainId, token, decimals: info.priceDecimals || 0, amount: info.price, to }, { solana: wallet, evm: evmAccount, solanaRpc: rpcUrl })
         writePendingTx(room, tx); setPendingTx(tx)
       }
-      // 服务端要到链上核对，交易还没确认时回 409：每 3 秒重试，最多约 30 秒
+      // The server verifies on-chain; while the tx is unconfirmed it returns 409: retry every 3 seconds, up to ~30 seconds
       for (let i = 0; ; i++) {
         try { await api(`/api/rooms/${room}/tickets`, { method: 'POST', body: JSON.stringify({ tx }) }); break }
         catch (e) {
@@ -322,13 +322,13 @@ export default function Room() {
       setNeedTicket(false)
       setRetry(n => n + 1)
     } catch (e) {
-      // 服务端明确判定这笔不合格（金额不够、收款人不对等）：作废，下次重新付款
+      // The server explicitly rules this tx ineligible (insufficient amount, wrong recipient, etc.): void it and pay again next time
       if ((e as { status?: number }).status === 400) { writePendingTx(room, null); setPendingTx(null) }
       toast.error(errorText(e, t('购票失败')))
     } finally { setBuying(false) }
   }
 
-  // 直播中改特效：挂到摄像头轨道上。虚拟形象开不起来时先把摄像头关掉——绝不退回露脸的画面
+  // Switching effects mid-stream: attaches to the camera track. If the avatar fails to start, kill the camera first — never fall back to a real-face feed
   const changeFx = async (s: FxSettings) => {
     setFxCat(s.avatar === 'cat')
     const room = roomRef.current
@@ -352,7 +352,7 @@ export default function Room() {
   }
   const leave = async (endRoom = false) => {
     if (buying || leaving) return
-    // 返回列表始终可以离开本机通话；结束房间仍需主播确认和服务端成功。
+    // Back-to-list can always leave the local call; ending the room still needs the streamer's confirmation and server success.
     if (endRoom && info && info.host === me?.address) {
       if (!confirm(pkState?.phase === 'running' ? t('正在 PK，现在下播这一局算你输。结束直播？') : t('结束直播？'))) return
       setLeaving(true)
@@ -365,7 +365,7 @@ export default function Room() {
   }
   const openUser = (line: ChatLine) => { if (line.from && line.from !== me?.address && !line.gift) setTarget({ address: line.from, nickname: line.nickname, avatar: line.avatar, level: line.lv }) }
   const hostName = info ? displayName({ address: info.host, nickname: info.hostNickname }) : ''
-  // 送礼对象：本房间主播；PK 时加上对面主播（服务器会核对对面主播此刻在不在 PK 里）
+  // Gift recipients: this room's host; during PK also the opposing host (the server verifies the opponent is actually in the PK)
   const giftTargets: GiftTarget[] = info ? [
     { address: info.host, nickname: info.hostNickname, avatar: info.hostAvatar, label: pkState ? t('本房主播') : undefined },
     ...(pkState && pkState.phase === 'running' ? [{ address: pkState.opp.host, nickname: pkState.opp.nickname, avatar: pkState.opp.avatar, label: t('对面主播') }] : []),
@@ -402,7 +402,7 @@ export default function Room() {
         </div>
         {connected && !reconnecting && <LiveTag className="mr-1" />}
         {info && !gone && <button onClick={() => setSharing(true)} className="icon-button" aria-label={t('分享')} data-tooltip={t('分享')} data-testid="room-share"><Share2 size={19} /></button>}
-        {/* 举报这场直播（观众；2026-10-02 上架要求） */}
+        {/* Report this stream (viewers; 2026-10-02 store requirement) */}
         {info && !gone && me && info.host !== me.address && <button onClick={() => openReport({ kind: 'room', id: info.id, target: info.host, name: info.title })} className="icon-button" aria-label={t('举报')} data-tooltip={t('举报')}><Flag size={18} /></button>}
       </header>
 
@@ -427,7 +427,7 @@ export default function Room() {
         </div>
       ) : (
         <div className={`relative flex min-h-0 flex-1 ${WEB_SURFACE ? '' : 'flex-col'}`}>
-          {/* 直播画面：平时主播是唯一主画面；PK 时左右各一半，左边本房间主播、右边对面主播 */}
+          {/* Live layout: normally the host is the sole main feed; during PK it's split half-half — this room's host left, the opponent right */}
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-black">
             {pkState ? <div className="absolute inset-0 grid grid-cols-2 gap-0.5" data-testid="pk-split">
               <div className="relative overflow-hidden">{hostTile ? <VideoTile tile={hostTile} stage unmirror={fxCat} /> : <AwayTile address={info!.host} avatar={info!.hostAvatar} name={info!.hostNickname} />}</div>
@@ -452,12 +452,12 @@ export default function Room() {
             )}
             {isHost && <PkInviteDialog pk={pk} />}
             <GiftFxLayer ref={fx} />
-            {/* 主播：今天收到的礼物（App 只显示个数；网页版加今日收益，点开收益页） */}
+            {/* Streamer: today's received gifts (the app shows only the count; web adds today's earnings, tapping opens the earnings page) */}
             {isHost && hostToday && (ENERGY_GIFTS
               ? <button type="button" onClick={() => navigate('/energy')} className="absolute right-3 top-3 z-20 rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur" data-testid="host-today">{t('今日收益 {n} USDT', { n: Number(hostToday.today).toLocaleString(undefined, { maximumFractionDigits: 2 }) })}</button>
               : hostToday.gifts > 0 && <span className="absolute right-3 top-3 z-20 rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur" data-testid="host-today">{t('今天收到 {n} 个礼物', { n: hostToday.gifts })}</span>)}
             <EnterBanner item={enter} />
-            {/* 弹幕层只覆盖视频区，不会压到下面的输入框和按钮 */}
+            {/* The danmaku layer only covers the video area — never the input box and buttons below */}
             {chat.length > 0 && (
               <div ref={chatBox} className="absolute inset-x-3 bottom-3 max-h-[42%] overflow-y-auto no-scrollbar space-y-1 [mask-image:linear-gradient(to_bottom,transparent,black_18%)]" aria-live="polite" aria-label={t('弹幕')}>
                 {chat.filter((m) => !blockedSet.has(m.from)).map((m) => <button key={m.id} type="button" onClick={() => openUser(m)} className={`block w-fit max-w-[85%] break-words rounded-lg px-2.5 py-1.5 text-left text-xs leading-relaxed ${m.gift ? 'bg-accent/25 text-accent' : 'bg-bg/80 text-fg'}`}>
@@ -469,9 +469,9 @@ export default function Room() {
               </div>
             )}
           </div>
-          {/* 网页版送礼侧栏（2026-10-02 goat：弹窗挡住了视频）：贴在视频右边，视频让出位置但整个画面都看得到 */}
+          {/* Web gift sidebar (2026-10-02 goat: the modal was covering the video): docked to the right of the video; the video yields space but stays fully visible */}
           {WEB_SURFACE && ENERGY_GIFTS && info && energyOpen && <GiftPanel open docked onClose={() => setEnergyOpen(false)} room={`live:${id}`} targets={giftTargets} />}
-          {/* 直播特效：电脑贴在视频右边；手机在视频下方（视频让出下面一截，边调边看自己的画面） */}
+          {/* Live effects: on desktop they dock to the right of the video; on mobile below it (the video yields its lower part so you can preview yourself while adjusting) */}
           {isHost && fxOpen && <Suspense fallback={null}><EffectsPanel layout={WEB_SURFACE ? 'dock' : 'strip'} onClose={() => setFxOpen(false)} onChange={(s) => void changeFx(s)} /></Suspense>}
         </div>
       )}
@@ -492,7 +492,7 @@ export default function Room() {
           {canPk && <button onClick={() => setPkOpen(true)} disabled={reconnecting || pkState?.phase === 'running'} className="icon-button h-12 w-12 bg-card2 text-[#ff7a45] disabled:opacity-40" aria-label={t('主播 PK')} title={t('主播 PK')} data-testid="pk-open"><Swords size={21} /></button>}
           {isHost && <button onClick={() => void toggleMedia('mic')} disabled={reconnecting || !!mediaBusy} className={`icon-button h-12 w-12 ${mic ? 'bg-card2 text-fg' : 'bg-down/15 text-down'}`} aria-pressed={mic} aria-label={mic ? t('关闭麦克风') : t('开启麦克风')} title={mic ? t('关闭麦克风') : t('开启麦克风')}>{mediaBusy === 'mic' ? <LoaderCircle size={21} className="animate-spin" /> : mic ? <Mic size={21} /> : <MicOff size={21} />}</button>}
           {isHost && info?.kind !== 'voice' && <button onClick={() => void toggleMedia('cam')} disabled={reconnecting || !!mediaBusy} className={`icon-button h-12 w-12 ${cam ? 'bg-card2 text-fg' : 'bg-down/15 text-down'}`} aria-pressed={cam} aria-label={cam ? t('关闭摄像头') : t('开启摄像头')} title={cam ? t('关闭摄像头') : t('开启摄像头')}>{mediaBusy === 'cam' ? <LoaderCircle size={21} className="animate-spin" /> : cam ? <Video size={21} /> : <VideoOff size={21} />}</button>}
-          {/* 直播特效（主播，2026-10-02）：换背景、美颜、虚拟形象 */}
+          {/* Live effects (streamer, 2026-10-02): background swap, beauty, virtual avatar */}
           {isHost && info?.kind !== 'voice' && <button onClick={() => setFxOpen((v) => !v)} aria-pressed={fxOpen} disabled={reconnecting} className={`icon-button h-12 w-12 ${fxOpen ? 'bg-accent/20 text-accent' : 'bg-card2 text-fg'}`} aria-label={t('直播特效')} title={t('直播特效')} data-testid="fx-toggle"><Sparkles size={20} /></button>}
           <button onClick={() => void leave(isHost)} disabled={leaving} className="icon-button h-12 w-12 bg-down text-bg" aria-label={isHost ? t('结束直播') : t('离开房间')} title={isHost ? t('结束直播') : t('离开房间')}>{leaving ? <LoaderCircle size={21} className="animate-spin" /> : <PhoneOff size={21} />}</button>
         </div>
@@ -506,7 +506,7 @@ export default function Room() {
   )
 }
 
-/** PK 时某一边还没有画面（对面刚连上 / 主播暂时离开） */
+/** One side has no picture yet during PK (the opponent just connected / the streamer stepped away) */
 function AwayTile({ address, avatar, name, connecting }: { address: string; avatar: string | null; name: string | null; connecting?: boolean }) {
   return <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
     <Avatar address={address} src={avatar} name={name} size={64} />

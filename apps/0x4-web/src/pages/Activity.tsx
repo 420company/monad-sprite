@@ -1,8 +1,8 @@
-// 活动页：所有链的收发记录合成一条时间线（2026-09-26 重做）
-// · 顶部按链筛选：全部 · BSC · ETH · Base 常驻，Solana / Bitcoin / Arbitrum / Polygon / Optimism 收在「更多」（一行放得下，参考发现页）
-// · EVM 记录来自服务端（BSC 在前），Solana、比特币、App 里发起的闪兑 / 跨链一起按时间倒序；进行中的闪兑 / 跨链置顶
-// · 滚到底加载更多；某条链读不到只提示那一部分，其它照常显示
-// 数据源与归并逻辑见 lib/activitySources.ts、lib/activityTimeline.ts
+// Activity page: send/receive records from all chains merged into one timeline (redone 2026-09-26)
+// · Top chain filter: All · BSC · ETH · Base resident, Solana / Bitcoin / Arbitrum / Polygon / Optimism tucked in "More" (fits one row, like Discover)
+// · EVM records come from the server (BSC first); Solana, Bitcoin, and in-app flash swaps / cross-chain merge in reverse-chronological order; in-progress flash swaps / cross-chain pinned on top
+// · Scroll to the bottom to load more; an unreadable chain only warns for its own part, the rest shows as usual
+// Sources and merge logic: see lib/activitySources.ts, lib/activityTimeline.ts
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowUpRight, Check, ChevronDown, Clock, Repeat, RefreshCw, XCircle } from 'lucide-react'
 import { useBridge } from '@/store/bridge'
@@ -34,17 +34,17 @@ const FILTERS: { value: Filter; label: string; chainId?: number }[] = [
   { value: 'polygon', label: 'Polygon', chainId: 137 },
   { value: 'optimism', label: 'Optimism', chainId: 10 },
 ]
-/** 常驻的胶囊（全部 + 3 条链 + 更多，和发现页一样一行放得下）；在「更多」里选了别的链就顶替最后一个位置 */
+/** Resident capsules (All + 3 chains + More — fits one row like Discover); picking another chain in "More" takes the last slot */
 const ALWAYS = FILTERS.slice(0, 4)
 const MORE = FILTERS.slice(4)
 const PAGE = 25
 
-/** 合并器按「筛选 + 地址」存在模块里：后退回来时 usePaged 复用已加载的几页，加载更多还能接着翻 */
+/** Mergers are keyed by "filter + address" in the module: coming back reuses already-loaded pages via usePaged, and "load more" keeps paging */
 const mergers = new Map<string, ReturnType<typeof createMerger>>()
 
 /**
- * 活动时间线的数据（2026-09-29 抽出来：手机活动页和网页版「我的资产 → 活动记录」共用同一套取数与归并，不各写一份）。
- * filter：按链筛选；返回分页列表、合成好的行、进行中的闪兑 / 跨链、读不到的链。
+ * Activity timeline data (extracted 2026-09-29: the mobile activity page and the web "My assets → Activity" share the same fetching and merging — no duplicate copies).
+ * filter: filter by chain; returns the paged list, merged rows, in-progress flash swaps / cross-chain, and unreadable chains.
  */
 export function useActivityTimeline(filter: Filter) {
   const { address, evmAddress, btcAddress } = useWallet()
@@ -56,10 +56,10 @@ export function useActivityTimeline(filter: Filter) {
 
   const chainId = FILTERS.find((f) => f.value === filter)?.chainId ?? null
   const isEvm = chainId !== null && chainId !== SOLANA_CHAIN_ID && chainId !== BTC_CHAIN_ID
-  // 闪兑 / 跨链只要起点或终点是这条链就算
+  // A flash swap / cross-chain counts if this chain is its source or destination
   const bridgeMatch = useCallback((b: { fromChain: number; toChain: number }) => chainId === null || b.fromChain === chainId || b.toChain === chainId, [chainId])
 
-  // 登录状态变了（社交会话刚就绪）要重拉：EVM 记录要带令牌
+  // Re-pull when login state changes (social session just became ready): EVM records need the token
   const key = address ? `${filter}|${address}|${evmAddress || ''}|${btcAddress || ''}|${socialReady ? 1 : 0}` : null
   const fetchPage = useCallback(async (cursor: string | null, signal: AbortSignal) => {
     if (!key) return { items: [] as TimelineEntry[], next: null }
@@ -69,7 +69,7 @@ export function useActivityTimeline(filter: Filter) {
       if (evmAddress && (filter === 'all' || isEvm)) sources.push(evmSource(isEvm ? chainId : null))
       if (address && (filter === 'all' || filter === 'solana')) sources.push(solSource(rpcUrl, address))
       if (btcAddress && (filter === 'all' || filter === 'bitcoin')) sources.push(btcSource(btcAddress))
-      // 已结束的闪兑 / 跨链并进时间线；链上那笔同一个哈希的 EVM / Solana 记录不再重复显示
+      // Finished flash swaps / cross-chain merge into the timeline; the on-chain EVM / Solana record with the same hash is no longer shown twice
       const done = useBridge.getState().transfers.filter((b) => b.status !== 'PENDING' && bridgeMatch(b))
       const own = new Set(useBridge.getState().transfers.map((b) => b.txHash.toLowerCase()))
       sources.unshift(bridgeSource(done))
@@ -89,7 +89,7 @@ export function useActivityTimeline(filter: Filter) {
   return { list, rows, pending, notice, unavailableNames, refresh }
 }
 
-/** 网页版活动记录的链筛选用同一份清单 */
+/** The web activity record's chain filter uses the same list */
 export const ACTIVITY_FILTERS = FILTERS
 export type ActivityFilter = Filter
 
@@ -169,7 +169,7 @@ export default function Activity() {
   )
 }
 
-/** 地址缩写：EVM 前 5 后 3，比特币前 6 后 4，Solana 前 4 后 4 */
+/** Address shortening: EVM first 5 + last 3, Bitcoin first 6 + last 4, Solana first 4 + last 4 */
 function shortOf(chainId: number, addr: string) {
   if (chainId === BTC_CHAIN_ID) return shortBtc(addr)
   if (chainId === SOLANA_CHAIN_ID) return shortAddr(addr)

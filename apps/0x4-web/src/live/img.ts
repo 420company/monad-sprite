@@ -1,5 +1,5 @@
-// 直播改造用图（2026-09-30）：BytePlus 生成、抠成透明 WebP（goat：要图的地方一律用真图，不用 emoji）。
-// 锁、LIVE 这种简单几何在组件里手写 SVG。
+// Live-rework images (2026-09-30): BytePlus-generated, cut out to transparent WebP (goat: real images everywhere an image is wanted, never emoji).
+// Simple geometry like locks and LIVE badges is hand-written SVG in components.
 import streak from './img/streak.webp'
 import v1 from './img/viewer-1.webp'
 import v2 from './img/viewer-2.webp'
@@ -26,13 +26,13 @@ import golive from './img/golive.webp'
 
 export const LIVE_IMG = {
   streak, golive, win, lose, draw,
-  viewer: [v1, v1, v2, v3, v4, v5, v6], // 下标 = 徽章档位 1~6（0 占位）
+  viewer: [v1, v1, v2, v3, v4, v5, v6], // Index = badge tier 1–6 (0 is a placeholder)
   streamer: [s1, s1, s2, s3, s4, s5, s6],
   enter: { 10: e10, 25: e25, 40: e40 } as Record<number, string>,
-  rank: [r1, r1, r2, r3], // 下标 = 名次 1~3
+  rank: [r1, r1, r2, r3], // Index = rank 1–3
 }
 
-/** 徽章档位 1~6：1–9 / 10–19 / 20–29 / 30–39 / 40–49 / 50（和服务器 liveXp.ts 一致） */
+/** Badge tiers 1–6: 1–9 / 10–19 / 20–29 / 30–39 / 40–49 / 50 (matches server liveXp.ts) */
 export const badgeTier = (level: number) => (level >= 50 ? 6 : Math.min(5, Math.floor(level / 10) + 1))
-/** 进场特效档：观众 10 / 25 / 40 级起 */
+/** Entry-effect tiers: viewers at level 10 / 25 / 40+ */
 export const enterTier = (level: number) => (level >= 40 ? 40 : level >= 25 ? 25 : level >= 10 ? 10 : 0)

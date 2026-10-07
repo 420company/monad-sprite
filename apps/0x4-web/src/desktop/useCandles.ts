@@ -1,4 +1,4 @@
-// 电脑端取 K 线：和手机币详情页（src/pages/Token.tsx）同一套——先画手上有的 / 快速线，完整历史到了整张换掉；换币换周期旧请求作废。
+// Desktop candle fetching: same as the mobile token detail page (src/pages/Token.tsx) — draw what's on hand / the fast line first, replace wholesale when full history arrives; switching tokens or intervals voids old requests.
 import { useEffect, useState } from 'react'
 import { loadDexCandles, loadFastCandles, peekDexCandles, type DexCandles, type DexInterval } from '@/lib/candles'
 
@@ -16,7 +16,7 @@ export function useCandles(tk: { chain: string; address: string; pairAddress?: s
     let full = false
     loadDexCandles(input, ctrl.signal)
       .then((data) => { full = true; if (!ctrl.signal.aborted) set({ status: 'ready', data }) })
-      // 完整历史失败时，手上已有这个交易对这个周期的快速线就留着显示，不报错
+      // When full history fails, keep showing the fast line already on hand for this pair+interval — no error
       .catch(() => { if (!ctrl.signal.aborted) set((c) => ({ status: c.data?.pairAddress === pairAddress && c.data.interval === interval ? 'ready' : 'error', data: c.data })) })
     if (!known) loadFastCandles(input).then((q) => { if (q && !full && !ctrl.signal.aborted) set({ status: 'ready', data: q }) })
     return () => ctrl.abort()

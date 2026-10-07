@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 盘口 / 逐笔 / 推送解析（lib/asterBook.ts）。样本是 2026-09-29 从交易所 REST 和 websocket 实际拿到的格式。
+// Order-book / trade-by-trade / push parsing (lib/asterBook.ts). Samples are the actual formats from the exchange's REST and websocket on 2026-09-29.
 import { describe, expect, it } from 'vitest'
 import { mergeTape, parseAggTrade, parseBook, parseStream, streamUrl } from './asterBook'
 

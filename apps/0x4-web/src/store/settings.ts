@@ -1,4 +1,4 @@
-// 用户设置（持久化到 localStorage）
+// User settings (persisted to localStorage)
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ENV } from '@/lib/env'
@@ -8,9 +8,9 @@ import { cleanFuelChains } from '@/lib/fuelChains'
 interface SettingsState {
   rpcUrl: string
   slippageBps: number
-  /** 快捷买入金额（SOL） */
+  /** Quick buy amount (SOL) */
   quickBuy: number[]
-  /** 快捷卖出比例（%） */
+  /** Quick sell ratio (%) */
   quickSell: number[]
   setRpcUrl: (url: string) => void
   setSlippageBps: (bps: number) => void
@@ -19,37 +19,37 @@ interface SettingsState {
   toggleHideBalance: () => void
   guideDone: boolean
   setGuideDone: (v: boolean) => void
-  /** 助记词是否已确认备份（可先跳过，首页持续提醒） */
+  /** Whether the mnemonic backup is confirmed (skippable; home keeps reminding) */
   backedUp: boolean
   setBackedUp: (v: boolean) => void
-  /** 注册后的推荐关注是否已展示 */
+  /** Whether the post-signup recommended follows have been shown */
   followSuggested: boolean
   setFollowSuggested: (v: boolean) => void
-  /** 自动锁定阈值（毫秒）。-1 = 从不，0 = 切后台立即锁 */
+  /** Auto-lock threshold (ms). -1 = never, 0 = lock immediately on backgrounding */
   autoLockMs: number
   setAutoLockMs: (ms: number) => void
-  /** 自动补充燃料费（2026-09-27）：开了就从 BSC 上的 BNB 预存里给缺燃料费的链补（见 lib/gas.ts） */
+  /** Auto gas top-up (2026-09-27): when on, chains short on gas are topped up from the BNB reserve on BSC (see lib/gas.ts) */
   autoRefuel: boolean
-  /** BNB 燃料费预存（美元），最少 10；买币时这部分 BNB 不动 */
+  /** BNB gas reserve (USD), minimum 10; this BNB stays untouched when buying coins */
   gasReserveUsd: number
   setAutoRefuel: (on: boolean, reserveUsd?: number) => void
-  /** 燃料费页用户添加的链（2026-09-29）：只存白名单里能补的，默认五条不在这里（lib/fuelChains.ts） */
+  /** Chains the user added on the gas page (2026-09-29): only whitelisted top-up-able ones are stored; the five defaults aren't here (lib/fuelChains.ts) */
   fuelChains: number[]
   addFuelChain: (chainId: number) => void
   removeFuelChain: (chainId: number) => void
   /**
-   * 按键震动（2026-09-29）：点按功能按键时轻微震一下，操作成功 / 失败时再震一下。只在原生 App 生效，见 lib/pressHaptics.ts、lib/native.ts hapticResult。
-   * 2026-09-29 goat：原来「按键震动」「操作结果」两个开关合成这一个（老设置任一开着就算开，见下面 migrate）
+   * Keypress haptics (2026-09-29): a light buzz when tapping function keys, another on success / failure. Only takes effect in the native app — see lib/pressHaptics.ts, lib/native.ts hapticResult.
+   * 2026-09-29 goat: the old "keypress haptics" and "operation result" toggles were merged into this one (if either old setting was on, this counts as on — see migrate below)
    */
   pressHaptics: boolean
   setPressHaptics: (on: boolean) => void
   /**
-   * 通知的「App 开着时震动」部分（2026-09-29）：各类通知在「我 → 通知」里一个开关，开 = 推送（声音和震动按系统）+ App 开着时震动。
-   * 这里存 App 开着时那一半；没存过的类别跟推送开关走，再没有就按 lib/notifyHaptics.ts 的默认值
+   * The "vibrate while the app is open" half of notifications (2026-09-29): each notification category has one toggle under "Me -> Notifications"; on = push (sound and vibration per system) + vibrate while the app is open.
+   * This stores the while-open half; categories never stored follow the push toggle, and failing that, lib/notifyHaptics.ts defaults
    */
   notifyHaptics: Partial<Record<VibeKind, boolean>>
   setNotifyHaptic: (kind: VibeKind, on: boolean) => void
-  /** 推送各类开关在本机的一份副本（正本在服务器 /api/me/push-prefs），前台收到提醒时按它决定要不要震 */
+  /** A local copy of each push toggle (the original lives on the server at /api/me/push-prefs); when a notification arrives in the foreground, this decides whether to buzz */
   pushPrefsCache: Partial<Record<string, boolean>>
   setPushPrefsCache: (p: Partial<Record<string, boolean>>) => void
 }
@@ -58,7 +58,7 @@ export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
       rpcUrl: ENV.rpcUrl,
-      slippageBps: 100, // 默认 1% 滑点，meme 币波动大
+      slippageBps: 100, // Default 1% slippage — meme coins are volatile
       quickBuy: [0.1, 0.5, 1, 2],
       quickSell: [25, 50, 100],
       setRpcUrl: (rpcUrl) => set({ rpcUrl: rpcUrl.trim() || ENV.rpcUrl }),
@@ -68,12 +68,12 @@ export const useSettings = create<SettingsState>()(
       toggleHideBalance: () => set((s) => ({ hideBalance: !s.hideBalance })),
       guideDone: false,
       setGuideDone: (guideDone) => set({ guideDone }),
-      backedUp: true, // 老用户默认视为已备份，新建钱包时会显式置 false
+      backedUp: true, // Existing users default to backed-up; new wallets explicitly set false at creation
       setBackedUp: (backedUp) => set({ backedUp }),
       followSuggested: false,
       setFollowSuggested: (followSuggested) => set({ followSuggested }),
-      // 默认 5 分钟。老用户升级上来也会拿到这个默认值（persist 合并时缺的字段用初始值），
-      // 也就是说所有人都会从「没有自动锁定」变成「5 分钟锁」，这是有意的。
+      // Default 5 minutes. Upgrading existing users also get this default (persist merge fills missing fields with initial values),
+      // In other words, everyone moves from "no auto-lock" to "5-minute lock" — that's intentional.
       autoLockMs: 300_000,
       setAutoLockMs: (autoLockMs) => set({ autoLockMs }),
       autoRefuel: false,
@@ -81,9 +81,9 @@ export const useSettings = create<SettingsState>()(
       setAutoRefuel: (autoRefuel, reserveUsd) => set((s) => ({ autoRefuel, gasReserveUsd: reserveUsd === undefined ? s.gasReserveUsd : Math.max(10, Math.min(100_000, Math.round(reserveUsd))) })),
       fuelChains: [],
       addFuelChain: (chainId) => set((s) => ({ fuelChains: cleanFuelChains([...s.fuelChains, chainId]) })),
-      // 默认五条不在 fuelChains 里，这里删不掉它们
+      // The five defaults aren't in fuelChains — they can't be removed here
       removeFuelChain: (chainId) => set((s) => ({ fuelChains: s.fuelChains.filter((x) => x !== chainId) })),
-      // 默认开：老用户升级上来 persist 合并时拿到的也是开
+      // On by default: upgrading users also get "on" when persist merges
       pressHaptics: true,
       setPressHaptics: (pressHaptics) => set({ pressHaptics }),
       notifyHaptics: {},
@@ -93,24 +93,24 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: '0x4.settings',
-      // 版本 1（2026-09-29）：「按键震动」「操作结果」合成一个「按键震动」，老设置任一开着就算开
+      // Version 1 (2026-09-29): "keypress haptics" and "operation result" merged into one "keypress haptics" — either old setting on counts as on
       version: 1,
       migrate: (persisted, version) => migrateSettings(persisted, version) as unknown as SettingsState,
       onRehydrateStorage: () => (state) => {
-        // 设置里已经没有「Solana 节点」入口（2026-09-25），以前自定义过的一律换回当前构建的默认节点
+        // Settings no longer has a "Solana node" entry (2026-09-25); anyone who customized one is switched back to the current build's default node
         if (state) state.rpcUrl = ENV.rpcUrl
-        // 白名单以后可能收窄（某条链的桥下线）：存过但已不在白名单的链去掉
+        // The whitelist may narrow later (a chain's bridge goes offline): drop stored chains no longer on the whitelist
         if (state) state.fuelChains = cleanFuelChains(state.fuelChains)
       },
     },
   ),
 )
 
-/** 老版本设置升级（导出给测试用） */
+/** Legacy settings migration (exported for tests) */
 export function migrateSettings(persisted: unknown, version: number): Record<string, unknown> {
   const p = { ...((persisted as Record<string, unknown>) || {}) }
   if (version < 1) {
-    // 两个开关没存过都算开；任一开着 → 合并后的「按键震动」开
+    // Either toggle never stored counts as on; either on → the merged "keypress haptics" is on
     p.pressHaptics = p.pressHaptics !== false || p.resultHaptics !== false
     delete p.resultHaptics
   }

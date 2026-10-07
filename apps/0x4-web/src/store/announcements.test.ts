@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 「0x4 官方」公告的实时事件：新公告插到最前面、未读 +1、重复事件不重复计；撤回删掉并按是否已读修正未读
+// Realtime events for "0x4 Official" announcements: new ones inserted at the front, unread +1, duplicate events not double-counted; retracted ones deleted with unread adjusted by read state
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handleAnnouncementEvent, useAnnouncements } from './announcements'
 

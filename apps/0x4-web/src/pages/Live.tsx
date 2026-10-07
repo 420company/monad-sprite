@@ -1,4 +1,4 @@
-// 直播以真实房间为主。2026-09-30 goat：随机视频取消，换成主播 PK（开播后在直播间里匹配 / 邀请），列表标出 PK 中和连胜。
+// Live centers on real rooms. 2026-09-30 goat: random video removed, replaced with streamer PK (match / invite inside the live room after going live); the list marks ongoing PKs and win streaks.
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowRight, ChevronRight, Copy, Keyboard, LoaderCircle, Mic, Plus, Radio, RefreshCw, Swords, Ticket, Trophy, Users, Video, WifiOff } from 'lucide-react'
@@ -27,17 +27,17 @@ import CommunityTabs from '@/components/CommunityTabs'
 import { useCommunityUnread } from '@/store/announcements'
 
 export interface RoomInfo { id: string; host: string; hostNickname: string | null; hostAvatar: string | null; hostEvm: string | null; title: string; kind: 'voice' | 'video'; price: number; priceSymbol: string | null; priceChainId: number | null; priceToken: string | null; priceDecimals: number | null; status: string; createdAt: number; viewers: number
-  /** 2026-09-30 直播改造：主播等级、这次开播的连胜、正在 PK 的对手 */
+  /** 2026-09-30 live revamp: host level, this stream's win streak, the current PK opponent */
   hostLevel?: number; streak?: number; pk?: { id: string; phase: string; oppHost: string; oppNickname: string } | null; endReason?: string | null
-  /** 直播卡片封面（主播选的；null = 自动） */
+  /** Live card cover (chosen by the streamer; null = auto) */
   cover?: string | null }
 
 export default function Live() {
   const nav = useNavigate()
   const { status, login } = useSocial()
-  // 网页版没连钱包（2026-09-29 goat）：房间列表是公开接口，照样能看；开播 / 匹配 / 进房间 / 会议点了就弹「连接 0x4 Wallet」
-  // 网页版：房间列表是公开接口，社区登没登录上都照样拉（2026-10-07 goat 截图：TokenPocket 里第一次用、还没同意条款，
-  // 整页写「暂时无法连接直播」，其实只是社区没登录）。没登录的原因在列表上面一行说（SocialLogin），点开播 / 进房间时再去同意条款或登录
+  // Web without a wallet (2026-09-29 goat): the room list is a public API and still viewable; go-live / match / enter-room / meeting taps pop "Connect 0x4 Wallet"
+  // Web: the room list is a public API — it's fetched whether or not the community is logged in (2026-10-07 goat's screenshot: first use in TokenPocket, terms not yet agreed,
+  // The whole page said "can't connect to live", when really just the community wasn't logged in). The reason it's not logged in is stated in one line above the list (SocialLogin); agreeing to terms or logging in happens when tapping go-live / enter-room
   const listOk = status === 'ready' || WEB_SURFACE
   const [data, setData] = useState<{ livekit: boolean; rooms: RoomInfo[]; updated: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -76,12 +76,12 @@ export default function Live() {
   return <div className="safe-top">
     <header className="page-header page-gutter">
       <div><h1 className="page-title">{WEB_SURFACE ? t('流媒体') : t('直播')}</h1><p className="mt-1 text-xs text-muted">{!listOk ? status === 'logging' ? t('正在连接') : t('未连接') : failed ? t('房间列表暂未更新') : data ? t('{n} 个房间正在直播', { n: data.rooms.length }) : t('正在获取房间')}</p></div>
-      {/* 扫码登录电脑端只留首页一个入口（2026-09-28 goat），直播页不再放「电脑端登录」 */}
+      {/* QR login to desktop keeps only the home entry (2026-09-28 goat); the live page no longer shows "desktop login" */}
       <div className="flex items-center gap-2">
         <Button size="sm" disabled={WEB_SURFACE ? !!data && !data.livekit : !available || failed} onClick={() => { if (!needAccount()) setCreating(true) }}><Radio size={17} />{t('开播')}</Button>
       </div>
     </header>
-    {/* 网页版（手机浏览器窄屏）：流媒体算社区的一个标签，顶上放和社区页一样的一排（CommunityTabs.tsx） */}
+    {/* Web (narrow mobile browser): streaming counts as a community tab, with the same row on top as the community page (CommunityTabs.tsx) */}
     {WEB_SURFACE && <CommunityTabs active="live" unread={communityUnread} />}
     {WEB_SURFACE && <div className="page-gutter"><SocialLogin bar /></div>}
 
@@ -113,7 +113,7 @@ export default function Live() {
       </>}
     </section>
 
-    {/* 主播 PK（2026-09-30 goat：取代随机视频）：开播后在直播间里随机匹配或邀请正在直播的主播 */}
+    {/* Streamer PK (2026-09-30 goat: replaces random video): after going live, randomly match or invite streamers who are live, inside the live room */}
     <section className="page-gutter mt-6 border-t border-line pt-4" aria-label={t('主播 PK')}>
       <div className="flex items-center gap-3">
         <Swords size={21} className="shrink-0 text-[#ff7a45]" />
@@ -121,14 +121,14 @@ export default function Live() {
         <Button size="sm" variant="secondary" onClick={() => setRanking(true)} data-testid="live-rank"><Trophy size={16} />{t('排行')}</Button>
       </div>
     </section>
-    {/* 会议（原 meet.420.meme，2026-09-29 goat：直播、会议放在一起） */}
+    {/* Meetings (formerly meet.420.meme; 2026-09-29 goat: live streams and meetings live together) */}
     <MeetingsSection ready={status === 'ready'} guest={WEB_SURFACE} />
     <CreateRoomSheet open={creating} onClose={() => setCreating(false)} />
     <RankSheet open={ranking} onClose={() => setRanking(false)} />
   </div>
 }
 
-/** 会议：新建、输入会议码加入、我最近的会议。进会后是整屏会议室（pages/MeetingRoom） */
+/** Meetings: create, join by code, my recent meetings. Joining opens the full-screen meeting room (pages/MeetingRoom) */
 function MeetingsSection({ ready, guest }: { ready: boolean; guest: boolean }) {
   const nav = useNavigate()
   const me = useSocial((s) => s.me)
@@ -170,7 +170,7 @@ function MeetingsSection({ ready, guest }: { ready: boolean; guest: boolean }) {
       </div>
       <Button type="submit" size="sm" disabled={!parsed || (!ready && !guest)}>{t('加入')}</Button>
     </form>
-    {/* 正在进行的会议（2026-09-30 goat）：公开的会议，有密码的带锁，点进去在进会前输密码 */}
+    {/* Ongoing meetings (2026-09-30 goat): public meetings; password-protected ones show a lock — enter the password before joining */}
     {!!active.list?.length && <div className="mt-4">
       <h3 className="text-xs text-muted">{t('正在进行的会议')}</h3>
       <div className="mt-2 divide-y divide-line/60">{active.list.slice(0, 10).map((m) => <button key={m.id} className="flex w-full items-center gap-3 py-3 text-left" onClick={() => { if (!needAccount()) nav(`/meet/${m.id}`) }} data-testid="active-meeting">
@@ -203,7 +203,7 @@ function MeetingsSection({ ready, guest }: { ready: boolean; guest: boolean }) {
   </section>
 }
 
-// 2026-10-02 goat：去掉「视频房 / 语音房」选择——不想露脸就在直播里关掉摄像头，就是语音直播。一律按视频房创建；以前建的语音房照常能进。
+// 2026-10-02 goat: drop the "video room / voice room" choice — camera-shy streamers just turn the camera off in the stream, that's a voice stream. Always create video rooms; old voice rooms still open fine.
 export function CreateRoomSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const nav = useNavigate()
   const [title, setTitle] = useState('')

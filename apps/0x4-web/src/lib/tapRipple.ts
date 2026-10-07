@@ -1,10 +1,10 @@
-// 全局按键「光晕」动效（2026-09-26 goat 在六个候选里选了 3 号：本体不动，按下时外沿呼出一圈同色柔光，松手慢慢收回）。
+// Global key-press "halo" animation (2026-09-26 goat picked #3 of six candidates: the element stays put; press breathes out a same-color soft ring from the edge, slowly retracting on release).
 //
-// 不改任何按钮组件：在 document 上抓 pointerdown，找到被按的按钮 / 链接按钮，给它加 .tap-halo；
-// pointerup / pointercancel 时换成 .tap-halo-out 让光晕 0.5 秒淡出，然后摘掉类名。
-// 光晕用 filter: drop-shadow 画在按钮自己的渲染结果外面：不占布局、不受按钮 overflow:hidden 裁剪、
-// 不覆盖按钮原有的 box-shadow，也不用往按钮里塞元素。颜色走主题强调色（--color-accent）。
-// 系统「减少动态效果」不放；disabled 的按钮不放。
+// No button components touched: catch pointerdown on document, find the pressed button / link-button, add .tap-halo;
+// on pointerup / pointercancel swap to .tap-halo-out for a 0.5s halo fade, then remove the class.
+// The halo is drawn outside the button's own rendering via filter: drop-shadow: no layout cost, not clipped by the button's overflow:hidden,
+// doesn't override the button's own box-shadow, and needs no inner elements. Color follows the theme accent (--color-accent).
+// Skipped with the OS "reduce motion"; skipped on disabled buttons.
 
 const SELECTOR = 'button, [role="button"], a.ui-button, .ui-button, .icon-button, .welcome-cta, .pearl-button, .tab, .chip, .seg > *'
 

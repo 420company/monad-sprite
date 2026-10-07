@@ -1,8 +1,8 @@
-// 签名适配层：把「原生密钥环」和「网页版本地私钥」包装成同一套接口，
-// 上层（转账、闪兑、合约、社交）不需要知道私钥在哪。
+// Signing adapter layer: wraps the "native keychain" and the "web local private key" behind one interface,
+// so upper layers (transfers, flash swaps, perps, social) never need to know where the private key is.
 //
-// App 里：私钥在 Swift 模块内，这里发请求收签名。
-// 网页版：没有原生层，仍用内存里的 Keypair / 私钥账户，行为和以前一致。
+// In-app: the private key lives in the Swift module; here we send requests and receive signatures.
+// Web: no native layer, still uses the in-memory Keypair / private-key account — same behavior as before.
 import { Transaction, VersionedTransaction, PublicKey, type Keypair } from '@solana/web3.js'
 import { toAccount } from 'viem/accounts'
 import { getTypesForEIP712Domain, hashDomain, hashStruct, serializeTransaction, type Account, type Hex } from 'viem'
@@ -11,10 +11,10 @@ import { Vault, b64 } from './native'
 import { t } from '@/lib/i18n'
 import type { BtcSigner } from '@/lib/btc'
 
-/** Solana 签名器。上层只用得到这三样，拿不到私钥 */
+/** Solana signer. Upper layers only get these three — the private key stays out of reach */
 export interface SolanaWallet {
   publicKey: PublicKey
-  /** 就地签名并返回同一笔交易 */
+  /** Sign in place and return the same transaction */
   signTransaction<T extends Transaction | VersionedTransaction>(tx: T): Promise<T>
   signMessage(message: Uint8Array): Promise<Uint8Array>
 }
@@ -45,10 +45,10 @@ export function nativeSolanaWallet(address: string): SolanaWallet {
   return {
     publicKey,
     async signTransaction(tx) {
-      // 两种交易的待签内容不同：旧版签 message，版本化交易签 message.serialize()
+      // The two transaction types sign different payloads: legacy signs message, versioned transactions sign message.serialize()
       const message = tx instanceof VersionedTransaction ? tx.message.serialize() : tx.serializeMessage()
       const signature = await sign(message)
-      // addSignature 的参数类型写的是 Buffer，运行时只要 64 字节就行
+      // addSignature's parameter is typed as Buffer, but at runtime any 64 bytes will do
       tx.addSignature(publicKey, signature as unknown as Parameters<Transaction['addSignature']>[1])
       return tx
     },
@@ -59,8 +59,8 @@ export function nativeSolanaWallet(address: string): SolanaWallet {
 // ---------- EVM ----------
 
 /**
- * 原生 EVM 账户。viem 的自定义账户接口，createWalletClient / writeContract / signTypedData
- * 全都照常用，区别只是签名那一步走原生。
+ * Native EVM account. viem's custom-account interface — createWalletClient / writeContract / signTypedData
+ * all work as usual; only the signing step goes through native.
  */
 export function nativeEvmAccount(address: string): Account {
   return withAuthorization(toAccount({
@@ -77,11 +77,11 @@ export function nativeEvmAccount(address: string): Account {
       return signature as Hex
     },
 
-    // EIP-712：结构化数据在网页层算成两个哈希，原生拼 0x1901 后签
+    // EIP-712: structured data is hashed into two hashes on the web layer; native prepends 0x1901 and signs
     async signTypedData(typedData) {
       const td = typedData as unknown as { domain?: Record<string, unknown>; types: Record<string, unknown>; primaryType: string; message: Record<string, unknown> }
-      // hashDomain 要的是域字段定义（EIP712Domain），不是业务类型；
-      // 传错会在 viem 内部炸成 't[e].map is not an object'，合约相关签名全挂。
+      // hashDomain wants the domain field definition (EIP712Domain), not the business types;
+      // passing the wrong one explodes inside viem as 't[e].map is not an object', taking down all contract-related signing.
       const domain = td.domain ?? {}
       const domainSeparator = hashDomain({
         domain,
@@ -92,7 +92,7 @@ export function nativeEvmAccount(address: string): Account {
       return signature as Hex
     },
 
-    // 交易：网页层序列化，把完整的未签名交易交给原生；原生检查是普通交易、自己算摘要再签（GPT-6 第二轮审查 #1）
+    // Transactions: serialized on the web layer, the complete unsigned tx handed to native; native verifies it's a plain transaction, computes the digest itself, then signs (GPT-6 2nd review #1)
     async signTransaction(transaction, args) {
       const serializer = args?.serializer ?? serializeTransaction
       const unsigned = await serializer(transaction)
@@ -103,27 +103,27 @@ export function nativeEvmAccount(address: string): Account {
       return serializer(transaction, { r, s, v, yParity: Number(v - 27n) })
     },
   }), async (auth) => {
-    // EIP-7702 授权（全自动交易开启时用）：原生专用方法，挂到哪个合约由原生写死，网页层只传链号和 nonce（GPT-6 审查 #1）
+    // EIP-7702 authorization (used when enabling full-auto trading): native-only method; which contract to attach to is hardcoded in native, the web layer only passes chainId and nonce (GPT-6 review #1)
     if (auth.address.toLowerCase() !== ALLOWED_7702.toLowerCase()) throw new Error(t('不支持这项授权'))
     const { signature } = await Vault.signAuthorization7702({ chainId: String(auth.chainId), nonce: String(auth.nonce) })
     const v = parseInt(signature.slice(130, 132), 16)
     const out = { r: `0x${signature.slice(2, 66)}` as Hex, s: `0x${signature.slice(66, 130)}` as Hex, yParity: v >= 27 ? v - 27 : v }
-    // 网页层再核对一遍：签名确实是对「挂到这个合约」的授权签的，防止原生和网页两边理解不一致
+    // The web layer double-checks: the signature really authorizes "attach to this contract" — guards against native/web disagreeing
     const signer = await recoverAddress({ hash: hashAuthorization({ contractAddress: auth.address, chainId: auth.chainId, nonce: auth.nonce }), signature: { r: out.r, s: out.s, yParity: out.yParity } })
     if (signer.toLowerCase() !== address.toLowerCase()) throw new Error(t('授权签名验证未通过'))
     return out
   }, async (p) => {
-    // 全自动的两个委托：原生按模板组装、弹系统确认框（写明额度和到期）后签。通用的结构化签名入口在原生里拒签委托（第二轮审查 #1）
+    // The two full-auto delegations: native assembles from a template and signs after the system confirmation dialog (allowance and expiry stated). The generic structured-signing entry refuses delegations inside native (2nd review #1)
     const r = await Vault.signAutoTrade({ perDay: p.perDay.toString(), start: String(p.start), until: String(p.until), salt: p.salt.toString() })
     return { buyErc20: r.buyErc20 as Hex, sell: r.sell as Hex }
   })
 }
 
-/** 唯一允许挂的 7702 实现：MetaMask Delegation Framework v1.3.0 的 EIP7702StatelessDeleGator（原生也写死同一个） */
+/** The only allowed 7702 implementation: MetaMask Delegation Framework v1.3.0's EIP7702StatelessDeleGator (native hardcodes the same one) */
 const ALLOWED_7702 = '0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B'
-/** 7702 授权签名（viem 的自定义账户没有这个方法，挂在账户对象上） */
+/** 7702 authorization signature (viem's custom account has no such method — hung on the account object) */
 export type AuthSigner = (auth: { address: Hex; chainId: number; nonce: number }) => Promise<{ r: Hex; s: Hex; yParity: number }>
-/** 全自动委托的原生签名（只有原生账户有；网页版 / Android 没有原生层，走 autoTradeCore 的通用签名） */
+/** Native signing of full-auto delegations (native accounts only; web / Android have no native layer — they use autoTradeCore's generic signing) */
 export type AutoTradeSigner = (p: { perDay: bigint; start: number; until: number; salt: bigint }) => Promise<{ buyErc20: Hex; sell: Hex } | null>
 function withAuthorization(acc: Account, sign: AuthSigner, autoTrade?: AutoTradeSigner): Account {
   return Object.assign(acc, { signAuthorization: sign }, autoTrade ? { signAutoTrade: autoTrade } : {})
@@ -136,11 +136,11 @@ function hexToBytes(hex: string): Uint8Array {
   return out
 }
 
-// ---------- 带闸的签名器（原生 App：钱包锁着也能拿地址，真签名时才要求验证） ----------
+// ---------- Gated signer (native app: addresses available while locked; verification only demanded at actual signing) ----------
 
 /**
- * 地址随时可用，签名前先过 ensure（没解锁就弹验证面板），再交给当前真正的签名器。
- * real 每次现取：解锁 / 锁定会换掉底下的签名器，这个外壳对象本身不变，页面拿着它不用重新订阅。
+ * Addresses always available; signing first passes ensure (pops the verification panel if not unlocked), then goes to the current real signer.
+ * real is fetched fresh each time: lock / unlock swaps the underlying signer while this shell object stays the same, so pages holding it never need to resubscribe.
  */
 export function gatedSolanaWallet(address: string, real: () => SolanaWallet | null, ensure: () => Promise<void>): SolanaWallet {
   const inner = async () => {
@@ -171,19 +171,19 @@ export function gatedEvmAccount(address: string, real: () => Account | null, ens
   }), async (auth) => {
     const r = (await inner()) as Account & { signAuthorization?: AuthSigner | ((a: { contractAddress: Hex; chainId: number; nonce: number }) => Promise<{ r: Hex; s: Hex; yParity?: number }>) }
     if (!r.signAuthorization) throw new Error(t('钱包不支持这项授权'))
-    // 网页版的本地私钥账户（viem privateKeyToAccount）参数名是 contractAddress
+    // The web local private-key account (viem privateKeyToAccount) names the parameter contractAddress
     const out = await (r.signAuthorization as (a: unknown) => Promise<{ r: Hex; s: Hex; yParity?: number }>)({ ...auth, contractAddress: auth.address })
     return { r: out.r, s: out.s, yParity: out.yParity ?? 0 }
   }, async (p) => {
-    // 底下是网页版 / Android 的本地私钥账户（没有原生层）：返回 null，由调用方走通用签名
+    // Below is the web / Android local private-key account (no native layer): returns null, the caller takes the generic signing path
     const r = (await inner()) as Account & { signAutoTrade?: AutoTradeSigner }
     return r.signAutoTrade ? r.signAutoTrade(p) : null
   })
 }
 
-// ---------- 比特币 ----------
+// ---------- Bitcoin ----------
 
-/** 原生比特币签名器：交易在网页层构造，签名（含 BIP143 哈希计算与「只签自己的币」检查）在原生 */
+/** Native Bitcoin signer: the transaction is built on the web layer; signing (incl. BIP143 hash computation and the "only sign my own coins" check) happens in native */
 export function nativeBtcSigner(address: string): BtcSigner {
   return {
     address,
@@ -194,14 +194,14 @@ export function nativeBtcSigner(address: string): BtcSigner {
   }
 }
 
-/** 带闸的比特币签名器：锁着时签名先弹验证面板，和 EVM / Solana 同一个闸 */
+/** Gated Bitcoin signer: signing while locked pops the verification panel first, same gate as EVM / Solana */
 export function gatedBtcSigner(address: string, real: () => BtcSigner | null, ensure: () => Promise<void>): BtcSigner {
   return {
     address,
     async signTransaction(req) {
       await ensure()
       const r = real()
-      // 解锁了却没有比特币签名器：派生出错（极少见），重新解锁会再算一次
+      // Unlocked but no Bitcoin signer: derivation failed (very rare); re-unlocking derives again
       if (!r) throw new Error(t('比特币密钥不可用，请锁定后重新解锁钱包'))
       return r.signTransaction(req)
     },

@@ -1,13 +1,13 @@
-// 「动钱才验证」的闸门（2026-09-25）。
+// The "verify only when moving money" gate (2026-09-25).
 //
-// 以前整个 App 挡在解锁页后面：锁着就什么都看不了，App 一关再开就得重新输密码 / 刷脸。
-// 现在（仅原生 App）拆成两层：
-//   看    —— 社交登录令牌和私信密钥存在本机安全存储里，打开就能刷动态、收发私信
-//   动钱  —— 签名器是「带闸的」：真要签名时才检查钱包解没解锁，没解锁就弹验证面板，
-//            验过了继续签，用户取消就抛 UnlockCancelled，调用方按普通失败处理
+// Previously the whole app sat behind the unlock screen: nothing visible while locked, and every app restart required the password / face scan again.
+// Now (native app only) split into two layers:
+//   Reading — social login tokens and DM keys live in on-device secure storage; the feed and DMs work right after opening
+//   Moving money — the signer is "gated": the unlock check happens only at actual signing time; if locked, pop the verification panel,
+//            Verified → continue signing; user-cancelled → throw UnlockCancelled, and the caller treats it as an ordinary failure
 //
-// 本模块不引用钱包 store（避免循环依赖）：是否已解锁由 store 通过 setUnlockedCheck 告诉这里，
-// 验证面板（components/UnlockSheet）订阅 useUnlockPrompt 显示。
+// This module doesn't import the wallet store (avoids a circular dependency): whether it's unlocked is told to this module by the store via setUnlockedCheck,
+// The verification panel (components/UnlockSheet) subscribes to useUnlockPrompt for display.
 import { create } from 'zustand'
 
 export class UnlockCancelled extends Error {
@@ -24,14 +24,14 @@ const lockListeners = new Set<() => void>()
 export function setUnlockedCheck(fn: () => boolean): void { isUnlocked = fn }
 
 /**
- * 网页版连着 0x4 插件时，解锁交给插件（请插件弹它自己的解锁窗口），不弹本机验证面板（网页版没有那个面板，
- * 2026-10-06 插件锁了网页不再登出之后，网页上「锁着」成了常态，不交给插件的话这里会一直等）。
- * 钱包 store 挂上插件时设置、摘掉时清掉
+ * On web with the 0x4 extension connected, unlocking is handed to the extension (ask it to pop its own unlock window) — the local verification panel isn't shown (web has no such panel;
+ * since 2026-10-06 the extension locking no longer logs web out, "locked" became the normal state on web — without handing off to the extension this would wait forever).
+ * Set when the wallet store mounts the extension, cleared when it's unmounted
  */
 let externalUnlock: (() => Promise<void>) | null = null
 export function setExternalUnlock(fn: (() => Promise<void>) | null): void { externalUnlock = fn }
 
-/** 签名前调用。已解锁直接过；否则弹验证面板（网页版插件：请插件解锁），同时来的多个请求共用一次验证 */
+/** Called before signing. Passes straight through when unlocked; otherwise pops the verification panel (web extension: ask the extension to unlock); concurrent requests share one verification */
 export function ensureUnlocked(reason = '确认这笔操作'): Promise<void> {
   if (isUnlocked()) return Promise.resolve()
   if (externalUnlock) return externalUnlock()
@@ -41,7 +41,7 @@ export function ensureUnlocked(reason = '确认这笔操作'): Promise<void> {
   })
 }
 
-/** 验证面板收尾：ok = 已解锁，false = 用户取消 */
+/** Verification panel teardown: ok = unlocked, false = user cancelled */
 export function finishUnlock(ok: boolean): void {
   const pending = waiters
   waiters = []
@@ -49,7 +49,7 @@ export function finishUnlock(ok: boolean): void {
   pending.forEach((w) => (ok ? w.resolve() : w.reject(new UnlockCancelled())))
 }
 
-/** 钱包锁定时通知（例如合约交易的代理密钥缓存要跟着清） */
+/** Notify on wallet lock (e.g. the perps trading agent-key cache must be cleared along) */
 export function onLock(fn: () => void): () => void {
   lockListeners.add(fn)
   return () => lockListeners.delete(fn)

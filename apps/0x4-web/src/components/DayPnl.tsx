@@ -1,6 +1,6 @@
-// 首页今日盈亏（2026-09-29 goat：「做一个 binance 那样的功能，有总余额的今日盈亏显示，包括现货和合约」）：
-// 余额下面一行（金额 + 百分比，涨绿跌红，零为中性），点开看钱包 / 合约账户各多少；隐藏余额时一起隐藏。
-// 地址下面的账户勋章（「最好在钱包地址下面加两个勋章，一个是普通账户，一个vip」）：点开是「账户种类」面板。
+// Home page today's PnL (2026-09-29 goat: "build a Binance-like feature — today's PnL on total balance, spot and perps included"):
+// One row under the balance (amount + percentage; green up, red down, neutral at zero); tap to see the wallet / perp account split; hidden together with the balance.
+// Account badge under the address ("better add two badges under the wallet address — one for regular accounts, one for VIP"): taps open the "account type" panel.
 import { ChevronRight, Crown } from 'lucide-react'
 import Sheet from '@/components/Sheet'
 import { fmtMoney, fmtUsd } from '@/lib/format'
@@ -10,13 +10,13 @@ import { useSocial } from '@/store/social'
 import { locale, t } from '@/lib/i18n'
 
 const tone = (v: number) => (pnlSign(v) > 0 ? 'text-up' : pnlSign(v) < 0 ? 'text-down' : 'text-muted')
-/** +$12.34 / -$5.00；不到半分钱显示 $0.00 */
+/** +$12.34 / -$5.00; under half a cent shows $0.00 */
 export const signedMoney = (v: number) => (pnlSign(v) === 0 ? '$0.00' : `${v > 0 ? '+' : '-'}${fmtMoney(Math.abs(v))}`)
-/** +1.02% / -0.50%；盈亏为零时 0.00% */
+/** +1.02% / -0.50%; 0.00% when PnL is zero */
 export const signedPct = (pnl: number, pct: number) => (pnlSign(pnl) === 0 || Math.abs(pct) < 0.005 ? '0.00%' : `${pct > 0 ? '+' : '-'}${Math.abs(pct).toFixed(2)}%`)
 const money = (v: number) => (v >= 1e6 ? fmtUsd(v, { compact: true }) : fmtMoney(v))
 
-/** 余额下面那一行 */
+/** The row under the balance */
 export function DayPnlLine({ summary, hidden, onOpen }: { summary: DaySummary | null; hidden: boolean; onOpen: () => void }) {
   if (!summary) return null
   return (
@@ -30,13 +30,13 @@ export function DayPnlLine({ summary, hidden, onOpen }: { summary: DaySummary | 
   )
 }
 
-/** 点开的分项面板 */
+/** The breakdown panel on tap */
 export function DayPnlSheet({ open, onClose, summary, hidden, walletUsd }: { open: boolean; onClose: () => void; summary: DaySummary | null; hidden: boolean; walletUsd: number | null }) {
   const mask = (s: string) => (hidden ? '****' : s)
   const rows: { label: string; value: string | null; pnl: number }[] = []
   if (summary?.spot) rows.push({ label: t('钱包'), value: walletUsd === null ? null : money(walletUsd), pnl: summary.spot.pnl })
   if (summary?.perp) rows.push({ label: t('合约账户'), value: money(summary.perp.equity), pnl: summary.perp.pnl })
-  // 和「北京时间 0 点起算」同一个时区，不按手机所在时区显示
+  // Same timezone as "counted from Beijing midnight" — not the phone's local timezone
   const lateAt = summary?.perp?.late ? new Date(summary.perp.since).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }) : null
   return (
     <Sheet open={open} onClose={onClose} title={t('今日盈亏')}>
@@ -70,7 +70,7 @@ export function DayPnlSheet({ open, onClose, summary, hidden, walletUsd }: { ope
   )
 }
 
-/** 地址下面的勋章：费率接口拿到了才显示（拿不到不猜），切换账户后等新账户的等级 */
+/** Badge under the address: shown only when the fee-tier API delivers (never guessed); after switching accounts, wait for the new account's tier */
 export function AccountBadge({ onOpen }: { onOpen: () => void }) {
   const vip = useFees((s) => s.fees.vip)
   const loadedFor = useFees((s) => (s.loadedAt > 0 ? s.account : null))

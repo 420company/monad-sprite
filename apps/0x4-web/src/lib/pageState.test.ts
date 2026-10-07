@@ -72,8 +72,8 @@ describe('页面状态会话记忆', () => {
   it('条目有上限，淘汰最久没用的；读一次算用过', () => {
     const s = createPageStateStore(null, 3)
     s.set('token.view:a', 'posts'); s.set('token.view:b', 'posts'); s.set('token.view:c', 'posts')
-    s.get('token.view:a')            // a 刚用过
-    s.set('token.view:d', 'posts')   // 挤掉最久没用的 b
+    s.get('token.view:a')            // a was just used
+    s.set('token.view:d', 'posts')   // evicts b, the least recently used
     expect(s.size()).toBe(3)
     expect(s.get('token.view:b')).toBeUndefined()
     expect(s.get('token.view:a')).toBe('posts')

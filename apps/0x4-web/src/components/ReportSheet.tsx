@@ -1,5 +1,5 @@
-// 举报弹层（2026-10-02 goat，上架要求）：全站只有一个，挂在 App 里；任何地方调 lib/safety 的 openReport() 打开。
-// 选原因、可以补一句说明、可以顺手把对方拉黑。举报存成客服工单，客服能看到被举报的原文。
+// Report sheet (2026-10-02 goat, listing requirement): only one in the whole app, mounted in the App; anywhere can open it via lib/safety's openReport().
+// Pick a reason, optionally add a note, optionally block the other person too. Reports are saved as support tickets; support sees the original reported text.
 import { useEffect, useState } from 'react'
 import { Check } from 'lucide-react'
 import Sheet from '@/components/Sheet'

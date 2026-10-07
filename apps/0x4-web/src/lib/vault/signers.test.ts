@@ -1,8 +1,8 @@
-// 原生签名适配层的对拍测试。
+// Differential test for the native signing adapter layer.
 //
-// 这里把原生那一侧换成「用本地私钥算」的替身，验证适配层自己算的 EIP-712 两个哈希
-// 与 viem 直接签出来的结果一致。曾经因为域字段传错，App 上所有合约签名全挂，
-// 界面只显示一句「暂时无法读取账户」，所以这条必须有测试守着。
+// Here the native side is swapped for a "compute with a local key" stand-in, verifying that the two EIP-712 hashes the adapter computes itself
+// match what viem signs directly. A wrongly-passed domain field once broke every contract signature in the app,
+// while the UI only showed "temporarily unable to read the account" — so this must be guarded by a test.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { privateKeyToAccount } from 'viem/accounts'
 import { keccak256, concatHex, type Hex } from 'viem'
@@ -10,7 +10,7 @@ import { keccak256, concatHex, type Hex } from 'viem'
 const PK = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318' as Hex
 const local = privateKeyToAccount(PK)
 
-// 替身：原生只做「拼 0x1901 再签」，和 Swift 里 signTypedData 的实现一致
+// The stand-in: native only does "prefix 0x1901 then sign", matching the signTypedData implementation in Swift
 const signEvmTypedData = vi.fn(async ({ domainSeparator, structHash }: { domainSeparator: string; structHash: string }) => ({
   signature: await local.sign({ hash: keccak256(concatHex(['0x1901', domainSeparator as Hex, structHash as Hex])) }),
 }))
@@ -35,7 +35,7 @@ describe('原生 EVM 账户', () => {
     expect(await account.signMessage!({ message })).toBe(await local.signMessage({ message }))
   })
 
-  // Aster 管理类请求（approveAgent）真实用到的结构：域有 4 个字段，业务类型自带
+  // The structure Aster management requests (approveAgent) actually use: 4 domain fields, business type included
   it('签 Aster 的 EIP-712 与 viem 一致', async () => {
     const typedData = {
       domain: { name: 'AsterSignTransaction', version: '1', chainId: 56, verifyingContract: '0x0000000000000000000000000000000000000000' as Hex },
@@ -48,7 +48,7 @@ describe('原生 EVM 账户', () => {
     expect(signEvmTypedData).toHaveBeenCalledTimes(1)
   })
 
-  // 域里只有部分字段时（没有 verifyingContract）也要算对
+  // Must also hash correctly with a partial domain (no verifyingContract)
   it('域字段缺省时也一致', async () => {
     const typedData = {
       domain: { name: 'Aster', version: '1', chainId: 1666 },

@@ -1,4 +1,4 @@
-// 本机聊天记录：真实 AES-GCM 加解密往返（成功路径），库里没有明文，换了密钥 / 挪了位置都解不开，按所有者和会话分开
+// Local chat history: real AES-GCM encrypt/decrypt round trip (happy path); the store holds no plaintext — rekeying or relocating breaks decryption; separated by owner and conversation
 import { describe, expect, it } from 'vitest'
 import { LocalChat, memoryBackend } from './localChat'
 
@@ -17,15 +17,15 @@ describe('本机加密存储', () => {
     ]
     await lc.save(conv, msgs)
     const back = await lc.load<typeof msgs[number]>(conv)
-    expect(back).toEqual([msgs[1], msgs[0], msgs[2]])   // 按时间正序
+    expect(back).toEqual([msgs[1], msgs[0], msgs[2]])   // Chronological order
 
-    // 存进库的内容看不到明文
+    // Stored content reveals no plaintext
     const dump = JSON.stringify([...be.raw.values()].map((r) => ({ ...r, ct: new TextDecoder().decode(r.ct) })))
     expect(dump).not.toContain('第一条')
     expect(dump).not.toContain('第二条')
     expect([...be.raw.values()].every((r) => r.iv.length === 12 && r.ct.length > 16)).toBe(true)
 
-    // 同一条重写：覆盖不重复
+    // Rewriting the same entry: overwritten, not duplicated
     await lc.save(conv, [{ ...msgs[0], text: '改过' }])
     expect((await lc.load<typeof msgs[number]>(conv)).map((m) => m.text)).toEqual(['第一条', '改过', ''])
   })
@@ -38,7 +38,7 @@ describe('本机加密存储', () => {
     await lc.save(conv, [{ id: 'a', ts: 1, text: 'x' }])
     const other = new LocalChat(be, newKey)
     expect(await other.load(conv)).toEqual([])
-    // 把 a 的密文原样搬到另一个会话的键下：附加数据绑定了位置，解不开
+    // Moving a's ciphertext as-is under another conversation's key: the associated data binds the location, so it won't decrypt
     const rec = [...be.raw.values()][0]
     const moved = LocalChat.conv('me', 'g', 'g2')
     await be.put([{ ...rec, k: `${moved}|a`, conv: moved }])
@@ -70,6 +70,6 @@ describe('本机加密存储', () => {
     expect(await lc.list('alice', 'd')).toEqual([])
     expect(await lc.list('alice', 'g')).toEqual([])
     expect(await lc.getMeta('alice', 'dm')).toBeNull()
-    expect(await lc.list('zed', 'd')).toEqual(['bob'])   // 别的钱包不受影响
+    expect(await lc.list('zed', 'd')).toEqual(['bob'])   // Other wallets unaffected
   })
 })

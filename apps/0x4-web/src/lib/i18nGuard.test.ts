@@ -1,7 +1,7 @@
-// 翻译守护（2026-09-29 goat：英文界面里验证身份面板冒出中文）：
-// ① 界面文件（src 下所有 .tsx）里，t() / tpl() 之外不许有用户看得见的中文。对照表这类「先写简体、显示时再 t()」的写法
-//    要登记在下面的 ALLOW 里并写清原因；新写的界面文字直接包 t()，不要往 ALLOW 里加。
-// ② 代码里 t('中文…') 用到的每个键，en.json 都要有英文（带「||语境」的键查不到时退回不带标记的，和 lib/i18n.ts 一致）。
+// Translation guard (2026-09-29 goat: Chinese leaked into the identity-verification panel in the English UI):
+// ① UI files (all .tsx under src): no user-visible Chinese outside t() / tpl(). Patterns like lookup tables that "store Simplified first, t() at display time"
+//    must be registered in ALLOW below with a clear reason; new UI strings should just use t() directly — don't grow ALLOW.
+// ② Every key used as t('Chinese…') in code must have English in en.json (tagged "||context" keys fall back to untagged, same as lib/i18n.ts).
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -14,20 +14,20 @@ function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name)
     if (statSync(p).isDirectory()) { if (name !== 'locales' && name !== 'node_modules') walk(p, out) }
-    // __ 开头的是本地临时预览页（验收截图用，不打包进 App）
+    // __-prefixed files are local throwaway preview pages (acceptance screenshots; not bundled into the app)
     else if (/\.(tsx?|ts)$/.test(name) && !/\.test\.tsx?$/.test(name) && !name.startsWith('__')) out.push(p)
   }
   return out
 }
 
 interface Lit { start: number; end: number; text: string }
-/** 简单词法：去掉注释，记下每个字符串字面量的位置（模板字符串里的 ${} 表达式按代码看） */
+/** Minimal lexer: strip comments, record each string literal's span (${} expressions in template strings treated as code) */
 function lex(src: string): { code: string; lits: Lit[] } {
   const out = src.split('')
   const lits: Lit[] = []
   let i = 0
   const blank = (a: number, b: number) => { for (let k = a; k < b; k++) if (out[k] !== '\n') out[k] = ' ' }
-  const tplStack: number[] = []   // 模板字符串里 ${ 的花括号深度
+  const tplStack: number[] = []   // Brace depth of ${ inside template strings
   let braceDepth = 0
   const readString = (q: string, resume = false) => {
     const s = i; if (!resume) i++
@@ -57,7 +57,7 @@ function lex(src: string): { code: string; lits: Lit[] } {
   return { code: out.join(''), lits }
 }
 
-/** t( / tpl( 调用覆盖的区间（括号配平，跳过字符串） */
+/** Spans covered by t( / tpl( calls (balanced parens, strings skipped) */
 function tSpans(code: string, lits: Lit[]): [number, number][] {
   const spans: [number, number][] = []
   const inLit = (p: number) => lits.some((l) => p >= l.start && p < l.end)
@@ -76,8 +76,9 @@ function tSpans(code: string, lits: Lit[]): [number, number][] {
 }
 
 /**
- * 允许留在 t() 之外的中文字面量：文件 → { 字面量原文: 原因 }。原因写清楚是「显示时再 t()」「不给用户看」还是「数据 / 协议」。
- * 只收已经核实过的；新写的界面文字请直接包 t()。
+ * Chinese literals allowed outside t(): file → { literal: reason }. The reason must say whether it's
+ * "t() at display time", "never user-visible", or "data / protocol". Only verified entries; new UI strings
+ * should just use t().
  */
 const DISPLAY_LATER = '对照表：写简体原文，显示时再 t()'
 const ALLOW: Record<string, Record<string, string>> = {
@@ -179,7 +180,7 @@ const ALLOW: Record<string, Record<string, string>> = {
     '买入代币': DISPLAY_LATER,
     '开播': DISPLAY_LATER,
   },
-  // 直播改造（2026-09-30）
+  // Live-streaming rework (2026-09-30)
   'src/live/PkHost.tsx': {
     '所有人': DISPLAY_LATER,
     '互相关注的人': DISPLAY_LATER,
@@ -271,7 +272,7 @@ const ALLOW: Record<string, Record<string, string>> = {
     ' 永续 · 开': '合约成交记成动态时的名字（存进数据给所有人看）；改成按语言显示需要调整数据格式，已列入建议',
     ' 永续 · 平': '合约成交记成动态时的名字（存进数据给所有人看）；改成按语言显示需要调整数据格式，已列入建议',
   },
-  // 电脑端合约终端记成交动态，和手机合约页同一格式（同上理由）
+  // Desktop perp terminal logs fills in the same format as the phone perp page (same reason as above)
   'src/desktop/pages/PerpTerminal.tsx': {
     '多': '合约成交记成动态时的名字（存进数据给所有人看），和手机合约页同一格式',
     '空': '合约成交记成动态时的名字（存进数据给所有人看），和手机合约页同一格式',
@@ -290,7 +291,7 @@ const ALLOW: Record<string, Record<string, string>> = {
     '已平仓': DISPLAY_LATER,
   },
   'src/pages/Room.tsx': {
-    // 2026-09-30 随机视频下线，举报原因表一起删了
+    // Random video retired 2026-09-30; the report-reason table went with it
     '门票': '判断报错 / 消息里有没有这几个字（逻辑用，不显示）',
     '移出': '服务器报错原文，只用来判断是哪种情况，不显示',
     '无法进入这个直播间': '服务器报错原文，只用来判断是哪种情况，不显示',
@@ -332,14 +333,14 @@ function violations() {
     const allow = ALLOW[rel] || {}
     const lineOf = (p: number) => src.slice(0, p).split('\n').length
     for (const l of lits) {
-      // 着色器源码（GLSL）写在模板字符串里，里面的 // 注释不显示给用户
+      // Shader source (GLSL) lives in template strings; the // comments inside never reach users
       const text = /gl_FragColor|precision\s+\w+p\s+float/.test(l.text) ? l.text.replace(/\/\/[^\n]*/g, '') : l.text
       if (!HAN.test(text)) continue
       if (spans.some(([a, b]) => l.start > a && l.start < b)) continue
       if (l.text in allow) continue
       out.push({ file: rel, line: lineOf(l.start), text: l.text })
     }
-    // 字符串和注释都去掉之后还剩中文 = JSX 里直接写的文字
+    // Chinese surviving after strings and comments are stripped = text written directly in JSX
     let bare = code.split('')
     for (const l of lits) for (let k = l.start; k < l.end; k++) if (bare[k] !== '\n') bare[k] = ' '
     const rest = bare.join('')
@@ -355,7 +356,7 @@ function violations() {
 describe('翻译守护', () => {
   it('界面里没有 t() 之外的中文（对照表登记在 ALLOW 并写明原因）', () => {
     const v = violations().map((x) => `${x.file}:${x.line} ${x.text}`)
-    // 排查时：I18N_GUARD_DUMP=文件路径 npx vitest run src/lib/i18nGuard.test.ts，完整清单写到那个文件
+    // Debugging: I18N_GUARD_DUMP=<path> npx vitest run src/lib/i18nGuard.test.ts writes the full list to that file
     if (process.env.I18N_GUARD_DUMP) writeFileSync(process.env.I18N_GUARD_DUMP, v.join('\n'))
     expect(v).toEqual([])
   })
@@ -376,7 +377,7 @@ describe('翻译守护', () => {
         const l = lits.find((x) => x.start === p)
         if (!l || !HAN.test(l.text)) continue
         const after = code.slice(l.end).trimStart()[0]
-        if (after !== ',' && after !== ')') continue   // t('…' + x) 这类拼接不是固定键
+        if (after !== ',' && after !== ')') continue   // Concatenations like t('…' + x) aren't static keys
         const base = l.text.split('||')[0]
         if (EN[l.text] === undefined && EN[base] === undefined) missing.push(`${relative(SRC, f)}: ${l.text}`)
       }

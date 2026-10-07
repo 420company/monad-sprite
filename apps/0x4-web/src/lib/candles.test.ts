@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 币种 K 线秒开（2026-09-29）：本机记住看过的、同一交易对请求合并、预取有额度、限流后一分钟不预取
+// Instant coin candles (2026-09-29): remember viewed ones locally, merge same-pair requests, prefetch quota, no prefetch for a minute after rate-limiting
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadDexCandles, peekDexCandles, prefetchDexCandles, resetCandleCache, resetServerCandleChannel } from './candles'
 import { resetCandleConfig } from './candleConfig'
@@ -10,10 +10,10 @@ const okBody = (n = 3) => ({ data: { attributes: { ohlcv_list: Array.from({ leng
 let calls = 0
 let status = 200
 let gate: Promise<void> | null = null
-// 服务器通道（/api/candles）单独记，calls 只数 GeckoTerminal
+// The server channel (/api/candles) counted separately; calls counts only GeckoTerminal
 let serverUrls: string[] = []
 
-/** 这个文件测的是「浏览器直连 GeckoTerminal」那条路的限流 / 预取逻辑：固定成完整历史只走直连（2026-09-30 起默认先问服务器，另有测试） */
+/** This file tests the "browser-direct GeckoTerminal" path's rate-limit / prefetch logic: pinned to direct-only full history (since 2026-09-30 the default asks the server first — covered elsewhere) */
 const DIRECT_ONLY = JSON.stringify({ v: 1, app: { fast: ['server', 'dexpaprika'], full: ['geckoterminal'] }, server: { ready: true } })
 
 beforeEach(() => {
@@ -34,7 +34,7 @@ describe('K 线秒开', () => {
     resetCandleCache()
     const known = peekDexCandles(input)
     expect(known?.candles).toHaveLength(3)
-    // 旧图的时间照原来的算：一分钟以上的会重新拉
+    // Old charts keep their original timing: older than a minute gets refetched
     const stored = JSON.parse(localStorage.getItem('0x4.candles.v1')!)
     for (const k of Object.keys(stored)) stored[k].at -= 120_000
     localStorage.setItem('0x4.candles.v1', JSON.stringify(stored))
@@ -57,7 +57,7 @@ describe('K 线秒开', () => {
   it('预取每分钟有额度，不会把 GeckoTerminal 的免费次数用光', async () => {
     for (let i = 0; i < 25; i++) prefetchDexCandles({ ...input, pairAddress: `Pair${i}` })
     await vi.waitFor(() => expect(calls).toBe(10))
-    // 用户自己点开的请求不受预取额度限制
+    // User-initiated requests ignore the prefetch quota
     await loadDexCandles({ ...input, pairAddress: 'PairUser' })
     expect(calls).toBe(11)
   })
@@ -101,7 +101,7 @@ describe('列表行按下预取', () => {
     const h2 = pressPrefetchHandlers({ chain: 'solana', address: 'Tok111' })
     h2.onPointerDown({ clientX: 0, clientY: 0 }); h2.onPointerUp()
     expect(calls).toBe(2)
-    // 同时向服务器通道预取，只读缓存（prefetch=1）
+    // Also prefetch via the server channel, cache-read only (prefetch=1)
     expect(serverUrls.length).toBeGreaterThan(0)
     expect(serverUrls.every((u) => u.includes('prefetch=1'))).toBe(true)
     vi.useRealTimers()
@@ -222,8 +222,8 @@ describe('服务器 K 线通道（DexPaprika 带密钥）', () => {
   })
 })
 
-// 2026-09-29 goat：网页版现货页 BTCB「K 线加载失败 / 暂无历史 K 线」。GeckoTerminal 按 IP 限流时回的 429 不带跨域头，
-// 浏览器里 fetch 直接抛「Failed to fetch」，看不到 429；以前原样抛出、预取接着打它，完整历史一直失败，也不会去问我们的服务器
+// 2026-09-29 goat: web spot page BTCB showed "candle load failed / no historical candles". GeckoTerminal's IP-rate-limit 429s carry no CORS headers,
+// so in-browser fetch just throws "Failed to fetch" with the 429 invisible; it used to rethrow as-is, prefetch kept hammering it, full history kept failing, and our server was never asked
 describe('GeckoTerminal 限流（浏览器里看不到 429）', () => {
   const serverCandles = [{ time: 1_790_000_000, open: 1, high: 2, low: 0.5, close: 1.5, volume: 1 }, { time: 1_790_003_600, open: 1.5, high: 2, low: 1, close: 1.8, volume: 1 }]
   it('直连抛 Failed to fetch：当限流，完整历史改问我们的服务器拿到数据；一分钟内预取不再打它', async () => {
@@ -237,10 +237,10 @@ describe('GeckoTerminal 限流（浏览器里看不到 429）', () => {
     expect(r.candles.map((c) => c.close)).toEqual([1.5, 1.8])
     expect(seen.filter((u) => u.includes('geckoterminal'))).toHaveLength(1)
     expect(seen.filter((u) => u.includes('/api/candles'))).toHaveLength(1)
-    // 预取不打它
+    // Prefetch leaves it alone
     prefetchDexCandles({ ...input, pairAddress: 'Pair222' })
     expect(seen.filter((u) => u.includes('geckoterminal'))).toHaveLength(1)
-    // 用户换个周期：照常直连试一次，失败照样从服务器拿到
+    // User switches interval: one direct attempt as usual; on failure the server still delivers
     const again = await loadDexCandles({ ...input, interval: '4h' })
     expect(again.candles).toHaveLength(2)
   })

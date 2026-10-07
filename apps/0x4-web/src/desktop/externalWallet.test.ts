@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// 网页版连外部钱包（2026-09-30 goat：MetaMask、Phantom 等也能连；合约交易等是 0x4 Wallet 专属）。
-// 守的几件事：EIP-6963 发现与排序（0x4 永远单独置顶、不和第三方混排）、外部钱包连接和登录（同一条 SIWE、personal_sign）、
-// 发交易走 eth_sendTransaction（外部钱包不给「只签不发」）、专属功能门禁（外部钱包看到专属卡，0x4 Wallet 照常）、断开和换号。
+// Web connecting external wallets (2026-09-30 goat: MetaMask, Phantom, etc. can connect too; perps trading etc. are 0x4 Wallet exclusives).
+// What's guarded: EIP-6963 discovery and ordering (0x4 always pinned alone on top, never mixed with third parties), external wallet connect and login (same SIWE, personal_sign),
+// Sending txs goes through eth_sendTransaction (external wallets don't offer "sign without sending"), exclusivity gating for exclusive features (external wallets see the exclusivity card, 0x4 Wallet as usual), disconnect and account-switch.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { act } from 'react'
@@ -12,7 +12,7 @@ import { Keypair } from '@solana/web3.js'
 import type { Ox4Provider } from '@/lib/vault/extension'
 
 vi.mock('@/lib/surface', () => ({ WEB_SURFACE: true }))
-// 这些用例测的是登录本身；「先同意条款」（2026-10-02，lib/safety.ts）另有 safety.test.ts 测，这里一律当已同意
+// These cases test login itself; "agree to terms first" (2026-10-02, lib/safety.ts) is covered by safety.test.ts — here everything counts as already agreed
 vi.mock('@/lib/safety', async (orig) => ({ ...(await orig<typeof import('@/lib/safety')>()), termsAccepted: () => true }))
 
 const { sortWallets, safeIcon, discoverWallets, useWalletDiscovery, OX4_RDNS } = await import('@/lib/vault/external')
@@ -24,7 +24,7 @@ const { walletClientFor } = await import('@/lib/evm')
 const { default: Ox4Only } = await import('./Ox4Only')
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-/** 真渲染到 jsdom（服务端渲染读不到 store 的当前状态） */
+/** Really renders into jsdom (server-side rendering can't read the store's current state) */
 async function renderHtml(el: React.ReactElement): Promise<string> {
   const div = document.createElement('div')
   const root = createRoot(div)
@@ -39,7 +39,7 @@ class NoSocket { readyState = 0; onopen = null; onclose = null; onmessage = null
 const ICON = 'data:image/svg+xml;base64,PHN2Zy8+'
 const info = (name: string, rdns: string) => ({ uuid: `${rdns}-uuid`, name, icon: ICON, rdns })
 
-/** 假的 EIP-1193 钱包：真私钥签 personal_sign，记下每个请求 */
+/** Fake EIP-1193 wallet: signs personal_sign with a real private key, records every request */
 function fakeEip1193(opts: { chainId?: number; reject?: boolean } = {}) {
   const acc = privateKeyToAccount(generatePrivateKey())
   const calls: { method: string; params?: unknown }[] = []
@@ -63,7 +63,7 @@ function fakeEip1193(opts: { chainId?: number; reject?: boolean } = {}) {
   return { provider, acc, calls, emit: (e: string, ...a: unknown[]) => (handlers[e] || []).forEach((cb) => cb(...a)) }
 }
 
-/** 本机假服务器：发 SIWE nonce、验登录签名（真的按消息恢复签名人） */
+/** Local fake server: issues SIWE nonces, verifies login signatures (really recovers the signer from the message) */
 function fakeServer() {
   const verified: { address: string; chainType: string; signer: string }[] = []
   let message = ''

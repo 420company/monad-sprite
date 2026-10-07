@@ -1,6 +1,6 @@
-// 主播 PK 的前端状态（2026-09-30，服务器 server/src/livePk.ts）。
-// 服务器通过实时连接推：roompk（两个房间都收到的公开状态）、roompk_link / roompk_unlink（只发给主播本人：进对面房间推流的令牌）、
-// roompk_queue_state（排队）、roompk_invite / roompk_invite_state（邀请）、roompk_notice（赢了 / 输了）、roompk_error。
+// Host PK frontend state (2026-09-30, server server/src/livePk.ts).
+// The server pushes over the realtime connection: roompk (public state both rooms receive), roompk_link / roompk_unlink (host only: the token for streaming into the other room),
+// roompk_queue_state (queue), roompk_invite / roompk_invite_state (invites), roompk_notice (won / lost), roompk_error.
 import { useEffect, useRef, useState } from 'react'
 import { useSocial } from '@/store/social'
 
@@ -10,20 +10,20 @@ export interface PkState {
   id: string; phase: 'running' | 'result' | 'linked'; startedAt: number; endsAt: number; resultUntil: number | null; serverNow: number
   me: PkSide; opp: PkSide; winner: 'me' | 'opp' | 'tie' | null; reason: string | null; valid: boolean
   top: { me: PkUser[]; opp: PkUser[] }; rematch: { me: boolean; opp: boolean }
-  /** 比分走势（2026-10-01，网页版 PK 卡片的 K 线）：开局 0:0 + 每次送礼一个点，按这个房间的视角 */
+  /** Score trend (2026-10-01, the web PK card's "candles"): starts 0:0 + one point per gift, from this room's perspective */
   history?: { t: number; me: number; opp: number }[]
 }
 export interface PkLink { pkId: string; url: string; token: string; oppRoom: string }
 export interface PkInvite { id: string; expiresAt: number; serverNow: number; from: { host: string; room: string; nickname: string; avatar: string | null; streak: number; level: number } }
 
-/** 左边这一方占的比例（0~1）。两边都是 0 时各一半 */
+/** The left side's share (0–1). Half each when both are 0 */
 export function pkRatio(me: number, opp: number): number {
   const total = me + opp
   if (total <= 0) return 0.5
-  // 最少给 8%，免得一边被挤没了看不见
+  // Minimum 8%, so one side can't be squeezed out of sight
   return Math.min(0.92, Math.max(0.08, me / total))
 }
-/** 剩余时间 mm:ss（服务器时间差已经修正过） */
+/** Remaining time mm:ss (server clock skew already corrected) */
 export function mmss(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
@@ -32,8 +32,8 @@ export function mmss(ms: number): string {
 export type QueueState = { state: 'idle' } | { state: 'queued'; since: number }
 
 /**
- * 某个直播间的 PK 状态。skew = 服务器时间 - 本机时间（倒计时用服务器的点）。
- * isHost：主播本人还会收到连线令牌、排队状态、邀请。
+ * A livestream room's PK state. skew = server time − local time (countdowns use the server's clock).
+ * isHost: the host additionally receives the link token, queue state, and invites.
  */
 export function usePk(roomId: string, isHost: boolean) {
   const socket = useSocial((s) => s.socket)
@@ -67,7 +67,7 @@ export function usePk(roomId: string, isHost: boolean) {
     })
     return () => { off() }
   }, [socket, roomId, isHost])
-  // 进房时补拉一次（实时连接断过、中途进来）
+  // Pull once on room entry (realtime connection dropped, or joined mid-way)
   useEffect(() => {
     let alive = true
     import('@/lib/social').then(({ api }) => api<{ pk: PkState | null }>(`/api/rooms/${roomId}/pk`)).then((r) => { if (alive && r.pk) { skew.current = r.pk.serverNow - Date.now(); setPk(r.pk) } }).catch(() => {})
@@ -86,7 +86,7 @@ export function usePk(roomId: string, isHost: boolean) {
   }
 }
 
-/** 每 250 毫秒刷新一次（倒计时） */
+/** Refresh every 250ms (countdown) */
 export function useTicker(active: boolean, ms = 250) {
   const [, set] = useState(0)
   useEffect(() => {

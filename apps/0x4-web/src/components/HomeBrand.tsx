@@ -1,14 +1,14 @@
-// 首页顶栏左边：猫 logo + 官方滚动公告（2026-09-29 goat：原来 logo 右边的「0x4」文字位置改成滚动公告）。
-// 没有生效的公告（或还没拉到、拉失败）时照旧显示「0x4」。
-// 有公告时只显示标题：多条轮流切换，标题比条子长就先停一下再平滑滚到末尾；系统开了「减弱动态效果」就不滚，逐条切换、超长的用省略号。
-// 点一下打开居中弹窗看全文（正文按纯文本显示，保留换行，绝不当 HTML），多条可以在弹窗里前后翻。
+// Home top bar, left: cat logo + official scrolling announcements (2026-09-29 goat: the "0x4" text that used to sit right of the logo becomes the scrolling announcement).
+// With no active announcement (or not yet pulled / pull failed), still show "0x4".
+// With announcements, show only the title: multiple ones rotate; a title longer than the strip pauses first, then scrolls smoothly to the end; with the OS "reduce motion" on, no scrolling — switch one by one, truncating long ones with an ellipsis.
+// Tap to open a centered modal with the full text (body rendered as plain text, line breaks preserved, never as HTML); multiple ones can be flipped through inside the modal.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { ChevronLeft, ChevronRight, Megaphone } from 'lucide-react'
 import Sheet from './Sheet'
 import { useHomeNotices, type HomeNotice } from '@/lib/homeNotices'
 import { locale, t } from '@/lib/i18n'
 
-/** 每条至少停留多久；标题要滚动时：先停 1.2 秒、按每秒 36 像素滚到末尾、再停 1.6 秒 */
+/** Minimum dwell per item; when a title needs scrolling: pause 1.2s first, scroll to the end at 36 px/s, pause 1.6s */
 const HOLD_MS = 4200
 const LEAD_MS = 1200
 const TAIL_MS = 1600
@@ -35,9 +35,9 @@ export function HomeBrandView({ notices }: { notices: HomeNotice[] }) {
 }
 
 /**
- * 没有公告时的「0x4」字标（2026-09-29 goat：常规字体太普通，换像素字体更有 web3 感）。
- * 字体 Pixelify Sans 600（打包在 App 里）；画面上的 0 用这款字体自带的像素「Ø」，
- * 呼应猫头 logo 上带斜线的 0。读屏读「0x4」（aria-label），画出来的字不进读屏。
+ * The "0x4" wordmark shown when there's no announcement (2026-09-29 goat: regular fonts look too plain — pixel font feels more web3).
+ * Pixelify Sans 600 (bundled in the app); the 0 on screen is this font's built-in pixel "Ø",
+ * echoing the slashed 0 on the cat-head logo. Screen readers hear "0x4" (aria-label); the drawn glyphs stay out of the reader.
  */
 export function BrandWordmark() {
   return <h1 className="brand-wordmark" aria-label="0x4"><span aria-hidden="true">Øx4</span></h1>
@@ -46,7 +46,7 @@ export function BrandWordmark() {
 export function NoticeTicker({ notices }: { notices: HomeNotice[] }) {
   const [index, setIndex] = useState(0)
   const [open, setOpen] = useState<number | null>(null)
-  const [scroll, setScroll] = useState(0)          // 当前这条要滚动的距离（像素），0 = 放得下
+  const [scroll, setScroll] = useState(0)          // How far the current item needs to scroll (pixels); 0 = fits
   const view = useRef<HTMLSpanElement>(null)
   const text = useRef<HTMLSpanElement>(null)
   const reduce = useRef(reducedMotion())
@@ -54,10 +54,10 @@ export function NoticeTicker({ notices }: { notices: HomeNotice[] }) {
   const i = count ? index % count : 0
   const cur = notices[i]
 
-  // 公告列表变了（比如被下架）：序号越界就从头开始
+  // The announcement list changed (e.g. one was taken down): an out-of-range index restarts from the top
   useEffect(() => { if (index >= count) setIndex(0) }, [index, count])
 
-  // 量一下标题有没有超出条子
+  // Measure whether the title overflows the strip
   const measure = useCallback(() => {
     const v = view.current, s = text.current
     if (!v || !s) return
@@ -73,7 +73,7 @@ export function NoticeTicker({ notices }: { notices: HomeNotice[] }) {
     return () => ro.disconnect()
   }, [measure])
 
-  // 轮播：只有一条时不切换；弹窗开着时停住
+  // Carousel: no switching with only one item; pause while the modal is open
   useEffect(() => {
     if (count < 2 || open !== null) return
     const stay = scroll ? LEAD_MS + (scroll / SPEED) * 1000 + TAIL_MS : HOLD_MS
@@ -97,7 +97,7 @@ export function NoticeTicker({ notices }: { notices: HomeNotice[] }) {
   )
 }
 
-/** 公告全文弹窗；index 为 null 时关着 */
+/** Full-announcement modal; closed when index is null */
 export function NoticeDialog({ notices, index, onIndex }: { notices: HomeNotice[]; index: number | null; onIndex: (i: number | null) => void }) {
   const count = notices.length
   const n = index === null ? null : notices[Math.min(index, count - 1)]

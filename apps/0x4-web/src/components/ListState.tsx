@@ -1,11 +1,11 @@
-// 列表的统一外观：空状态、滚到底加载更多、长文本截断。社区下各子页面（动态 / 消息 / 好友 / 排行）和个人主页共用，
-// 以前每个列表各写一套（有的居中灰字、有的带图标、有的什么都不显示），间距和字号都不一样。
+// Unified list appearance: empty states, load-more on scroll bottom, long-text truncation. Shared by community subpages (feed / messages / friends / rankings) and profile pages,
+// where each list previously had its own version (some centered gray text, some with icons, some showing nothing) with inconsistent spacing and font sizes.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { LoaderCircle, RefreshCw, type LucideIcon } from 'lucide-react'
 import Button from './Button'
 import { t } from '@/lib/i18n'
 
-/** 空状态：线条图标 + 一句话 + 可选的补充说明和按钮 */
+/** Empty state: line icon + one line of text + optional extra description and button */
 export function EmptyState({ icon: Icon, title, hint, action, className = '' }: { icon: LucideIcon; title: string; hint?: string; action?: ReactNode; className?: string }) {
   return (
     <div className={`empty-state ${className}`} role="status">
@@ -18,9 +18,9 @@ export function EmptyState({ icon: Icon, title, hint, action, className = '' }: 
 }
 
 /**
- * 滚到底加载更多：放在列表最后，进入视口（提前 600px）就调 onMore。
- * 每次加载结束都重新观察一次：一页内容不满一屏时哨兵一直在视口里，不重新观察就不会再触发。
- * 没有 IntersectionObserver 的环境退回成一个「加载更多」按钮。
+ * Load-more on scroll bottom: sits at the list's end, calls onMore when entering the viewport (600px early).
+ * Re-observes after every load: when a page's content doesn't fill a screen, the sentinel stays in the viewport and would never fire again without re-observing.
+ * Environments without IntersectionObserver fall back to a "load more" button.
  */
 export function LoadMore({ onMore, loading, done, failed, onRetry, count }: { onMore: () => void; loading: boolean; done: boolean; failed: boolean; onRetry: () => void; count: number }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -42,7 +42,7 @@ export function LoadMore({ onMore, loading, done, failed, onRetry, count }: { on
   )
 }
 
-/** 长文本：超过 lines 行截断，末尾「查看更多」原地展开（评论、简介这类不值得跳详情页的文字） */
+/** Long text: truncated past lines lines, with an inline "view more" expander (text like comments and bios that doesn't deserve a detail page) */
 export function MoreText({ text, lines = 4, className = '' }: { text: string; lines?: 3 | 4 | 6; className?: string }) {
   const ref = useRef<HTMLParagraphElement>(null)
   const [over, setOver] = useState(false)
@@ -64,10 +64,10 @@ export function MoreText({ text, lines = 4, className = '' }: { text: string; li
 }
 
 /**
- * 翻页（2026-09-27 goat：社区各子版块每页最多 30 条，多了点翻页，不要一直往下滚）。
- * items 可以是本地的全量列表，也可以是 usePaged 分批拉来的：传 loadMore / done 时，
- * 本页不满 30 条且服务器还有就自动补拉；点「下一页」时本地不够也先去拉。
- * reset 变了（切了筛选 / 换了数据）回到第 1 页。翻页后把列表开头滚进视口。
+ * Pagination (2026-09-27 goat: community sections show at most 30 items per page — paginate instead of endless scrolling).
+ * items can be a local full list or fetched in batches by usePaged: when loadMore / done are passed,
+ * a page under 30 items auto-fetches more if the server has them; tapping "next page" fetches first when the local list is short.
+ * reset changes (filter switched / data changed) return to page 1. After flipping, the list's start scrolls into view.
  */
 export const LIST_PAGE = 30
 export function usePager<T>(items: T[] | null | undefined, opts: { reset?: unknown; loadMore?: () => void; done?: boolean; loading?: boolean; failed?: boolean; size?: number } = {}) {
@@ -82,13 +82,13 @@ export function usePager<T>(items: T[] | null | undefined, opts: { reset?: unkno
   const localPages = Math.max(1, Math.ceil(list.length / size))
   const cur = Math.min(page, localPages - 1)
   const pageItems = list.slice(cur * size, cur * size + size)
-  // 等着翻过去的那一页数据到了就翻；服务器说没有了就作罢
+  // Flip once the target page's data arrives; give up when the server says there's no more
   useEffect(() => {
     if (want == null) return
     if (list.length > want * size) { setPage(want); setWant(null) }
     else if (!more || opts.failed) setWant(null)
   }, [want, list.length, more, opts.failed, size])
-  // 本页不满且还有更多：自动补拉（usePaged 的 loadMore 在加载中 / 已到底 / 失败时自己会忽略）
+  // Page underfilled and more exists: auto-fetch (usePaged's loadMore ignores itself while loading / at end / on failure)
   useEffect(() => {
     if (items && pageItems.length < size && more && !opts.loading && !opts.failed) opts.loadMore?.()
   }, [items, pageItems.length, size, more, opts.loading, opts.failed]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -107,7 +107,7 @@ export function usePager<T>(items: T[] | null | undefined, opts: { reset?: unkno
   return { pageItems, page: cur, pages: more ? null : localPages, hasPrev, hasNext, waiting: want != null, prev: () => hasPrev && go(cur - 1), next: () => hasNext && go(cur + 1), anchor }
 }
 
-/** 翻页条：上一页 / 页码 / 下一页。只有一页时不显示 */
+/** Pagination bar: previous / page numbers / next. Hidden with only one page */
 export function Pager({ p, failed, onRetry, className = '' }: { p: ReturnType<typeof usePager<unknown>>; failed?: boolean; onRetry?: () => void; className?: string }) {
   if (!p.hasPrev && !p.hasNext && !failed) return null
   const btn = 'min-h-11 rounded-lg px-4 text-sm font-medium text-accent disabled:text-muted disabled:opacity-40'

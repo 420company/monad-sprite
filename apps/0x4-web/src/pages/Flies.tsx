@@ -1,4 +1,4 @@
-// 果蝇实验室：养一只自己的果蝇（stonkfly 连接组模拟）观察真实账户变化
+// Fruit fly lab: raise your own fruit fly (stonkfly connectome simulation) and watch real account changes
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Activity, ArrowLeft, ChevronRight, Gift, Info, Link2, Plus, Trophy } from 'lucide-react'
@@ -23,7 +23,7 @@ export default function Flies() {
   const { status, me } = useSocial()
   const [list, setList] = useState<Fly[]>([])
   const [loadErr, setLoadErr] = useState(false)
-  // 我的果蝇（最多 10 只）+ 钱包里的 Zalien 卡（2026-09-27 起凭卡领养）
+  // My flies (max 10) + Zalien cards in the wallet (card-based adoption since 2026-09-27)
   const [mine, setMine] = useState<Fly[] | undefined>(undefined)
   const [cards, setCards] = useState<ZalienCards | null>(null)
   const [cardsErr, setCardsErr] = useState<string | null>(null)
@@ -36,14 +36,14 @@ export default function Flies() {
   const [revision, setRevision] = useState(0)
   const [workerOk, setWorkerOk] = useState(true)
   const [cap, setCap] = useState<{ capacity: number; remaining: number; plans: Record<FlyPlan, FlyPlanDef> } | null>(null)
-  // 运营赠送：名单里的地址免费领养
+  // Ops gifting: allowlisted addresses adopt for free
   const [grant, setGrant] = useState<{ plan: FlyPlan; months: number; note: string | null } | null>(null)
   const [creating, setCreating] = useState(false)
   const [rankOpen, setRankOpen] = useState(false)
   const ranked = useMemo(() => [...list].sort((a, b) => (b.pnl ?? -Infinity) - (a.pnl ?? -Infinity)), [list])
   const rankPager = usePager(ranked)
   const load = () => setRevision((n) => n + 1)
-  // 读取状态独立于领养状态；切换登录身份时取消旧请求，失败不能当作没有果蝇。
+  // Read state is independent of adoption state; switching login identity cancels old requests, and failures must not be treated as "no flies".
   useEffect(() => {
     const controller = new AbortController()
     const signal = controller.signal
@@ -58,10 +58,10 @@ export default function Flies() {
       setCards(null); setCardsErr(null)
       Promise.all([
         api<{ list: Fly[] }>('/api/flies/mine/all', { signal }).then((r) => { if (!signal.aborted) setMine(r.list) }).catch(() => { if (!signal.aborted) setMineErr(true) }),
-        // 查卡失败（链上节点暂时不通）不影响看自己的果蝇，只在卡片区提示
+        // Card lookup failing (chain node temporarily unreachable) doesn't block viewing my flies — only a notice in the card area
         !ADOPT_IN_APP ? Promise.resolve() : api<ZalienCards>('/api/zalien/cards', { signal }).then((r) => { if (!signal.aborted) setCards(r) }).catch((e) => { if (!signal.aborted) setCardsErr(errorText(e, t('加载失败，稍后再试'))) }),
       ]).finally(() => { if (!signal.aborted) setMineLoading(false) })
-      // 生活状态（公开接口）：卡片上直接显示它此刻在做什么
+      // Life status (public API): the card shows what it's doing right now
       api<{ list: { id: string; life: { text: string; textEn: string } }[] }>('/api/life', { signal }).then((r) => { if (!signal.aborted) setLives(Object.fromEntries(r.list.map((x) => [x.id, locale() === 'en-US' ? x.life.textEn : x.life.text]))) }).catch(() => {})
     } else { setMine([]); setMineLoading(false) }
     return () => controller.abort()
@@ -83,7 +83,7 @@ export default function Flies() {
         {cap && !workerOk && <div className="mt-2 rounded-xl bg-down/10 px-3 py-2 text-xs text-down">{t('服务暂时不可用，请稍后再试。')}<button onClick={load} className="ml-2 font-semibold underline">{t('重试')}</button></div>}
       </section>
 
-      {/* 小精灵排行：页面上只放一个入口按钮，点开再看（2026-09-27 goat：别整页往下铺） */}
+      {/* Sprite leaderboard: just one entry button on the page — tap to view (2026-09-27 goat: don't sprawl it down the whole page) */}
       <button onClick={() => setRankOpen(true)} className="mt-6 flex w-full items-center gap-3 rounded-2xl border border-line/70 bg-card p-3 text-left active:scale-[.99]">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent"><Trophy size={18} aria-hidden="true" /></div>
         <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{t('小精灵排行')}</div><div className="text-xs text-muted">{loading ? t('加载中…') : loadErr ? t('加载失败，稍后再试') : t('共 {n} 只 · 按账户盈亏排序', { n: list.length })}</div></div>
@@ -122,25 +122,25 @@ function FlyCard({ f, rank, mine, to }: { f: Fly; rank?: number; mine?: boolean;
   )
 }
 
-/** iOS 上架版（lib/features ADOPT_IN_APP 为假）：只列出已经有的小精灵。不查钱包里的 NFT，不出现领养入口，也不写去哪领养 */
+/** iOS store build (lib/features ADOPT_IN_APP is false): only lists existing sprites. No wallet NFT lookup, no adoption entry, no mention of where to adopt */
 function MySprites({ mine }: { mine: Fly[] }) {
   if (!mine.length) return <div className="rounded-2xl border border-line/70 bg-card p-4 text-sm text-muted">{t('你还没有小精灵')}</div>
   return <div className="space-y-2">{mine.map((f) => <FlyCard key={f.id} f={f} mine />)}</div>
 }
 
-// 日期跟随 App 语言，不跟浏览器语言
+// Dates follow the app language, not the browser language
 const day = (ms: number) => new Date(ms).toLocaleDateString(locale(), { month: 'short', day: 'numeric' })
 
-/** 我的 Zalien 与果蝇。手机 App 里不出现价格、续费和铸造入口（苹果审核）；网页版空闲卡可以付费领养 */
+/** My Zalien and flies. No prices, renewals, or mint entries in the mobile app (App Store review); idle cards can be adopted for a fee on web */
 export function MyZaliens({ lives, mine, cards, cardsErr, grant, price, onClaim, onGrant, onLink, onRetry }: { lives: Record<string, string>; mine: Fly[]; cards: ZalienCards | null; cardsErr: string | null; grant: { plan: FlyPlan; months: number; note: string | null } | null; price?: number; onClaim: (c: { tokenId: number; free: boolean }) => void; onGrant: () => void; onLink: () => void; onRetry: () => void }) {
   const list = cards?.cards || []
   const full = !!cards && cards.liveFlies >= cards.maxFlies
   const byId = new Map(mine.map((f) => [f.id, f]))
-  // 不挂在「我钱包里的卡」上的果蝇：赠送领的、老的、卡已经卖掉还在跑到期的
+  // Flies not attached to "cards in my wallet": gifted ones, legacy ones, ones whose card was sold but are still running to expiry
   const shown = new Set(list.filter((c) => c.fly?.mine).map((c) => c.fly!.id))
   const others = mine.filter((f) => !shown.has(f.id))
   const empty = !!cards && !list.length && !mine.length
-  // 卡多的时候分页，每页 5 张
+  // Paginate when there are many cards, 5 per page
   const PER = 5
   const pages = Math.max(1, Math.ceil(list.length / PER))
   const [page, setPage] = useState(0)
@@ -177,7 +177,7 @@ export function MyZaliens({ lives, mine, cards, cardsErr, grant, price, onClaim,
       {others.length > 0 && <div className="space-y-2">{others.map((f) => <FlyCard key={f.id} f={f} mine to={`/fly/${f.id}/live`} />)}</div>}
       {empty && !grant && (
         <div className="rounded-2xl border border-line/70 bg-card px-4 py-6 text-center">
-          {/* 2026-09-27 goat 定稿文案，别改 */}
+          {/* 2026-09-27 goat: finalized copy — do not change */}
           <div className="text-lg font-semibold">{t('想要领养小精灵？')}</div>
           <p className="mt-1.5 text-sm leading-relaxed text-muted">{t('当前地址中未检测到持有Zalien.')}</p>
           <p className="mt-1 text-sm font-semibold tracking-wide text-accent">Zalien is the key.</p>
@@ -210,6 +210,6 @@ function CardRow({ c, fly, life, full, price, onClaim }: { c: ZalienCard; fly?: 
   if (c.status === 'free') {
     return <div className={row}>{img}<div className="min-w-0 flex-1">{title}<div className="text-xs text-muted">{t('可免费领养 1 个月')}</div></div><Button size="sm" disabled={full} onClick={() => onClaim({ tokenId: c.tokenId, free: true })}>{full ? t('已达上限') : t('免费领养')}</Button></div>
   }
-  // 未领养（免费月已用）：手机 App 里只写状态，不写价格也不给付费入口
+  // Unadopted (free month used): in the mobile app show only the status — no price, no payment entry
   return <div className={row}>{img}<div className="min-w-0 flex-1">{title}<div className="text-xs text-muted">{t('此卡当前未被领养')}</div></div>{!BALANCE_FEATURES ? <span className="shrink-0 rounded-full bg-card2 px-2.5 py-1 text-xs text-muted">{t('未领养')}</span> : <Button size="sm" variant="secondary" disabled={full} onClick={() => onClaim({ tokenId: c.tokenId, free: false })}>{t('领养 · {price}/月', { price: fmtUsd(price ?? 10) })}</Button>}</div>
 }

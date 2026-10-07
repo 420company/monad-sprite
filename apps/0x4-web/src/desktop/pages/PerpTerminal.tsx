@@ -1,11 +1,11 @@
-// 网页版「合约」交易终端（2026-09-29 goat 第三轮：K 线和左侧币种列表重新设计；仓位栏在电脑上看不到、要往下拉；止盈止损展开穿模）。
-// 参考 Hyperliquid / Lighter，一屏放下、整页不滚、各面板自己滚：
-//   上：合约头——币对选择器（贴着按钮的下拉面板：搜索 + 热门 / 涨幅 / 跌幅 / 自选，替代原来左侧整列市场列表）+ 实时价格和 24h 统计
-//   中：K 线（开高低收）｜盘口 + 最新成交（交易所公开接口的真实深度和逐笔，websocket 推送，断了退回轮询）
-//   右：下单面板 320（整列高）：保证金模式、杠杆、市价 / 限价、做多 / 做空、数量、比例、只减仓、止盈止损（两行排在面板内）、合约账户
-//   下：仓位 / 当前委托 / 成交记录（固定高度，一屏内可见，表格自己滚）
-// 下单、平仓、撤单、存取款调用的是 lib/aster 里和手机合约页（src/pages/Perp.tsx）完全相同的函数，参数算法也照搬；
-// 下单 / 平仓 / 撤单前过同一个闸（网页版没连 0x4 浏览器插件就去连）。行情失败显示空状态，不放假数据。
+// Web "Perps" trading terminal (2026-09-29 goat round 3: K-lines and the left coin list redesigned; the positions bar wasn't visible on desktop without scrolling; TP/SL expansion clipped through).
+// Modeled on Hyperliquid / Lighter: everything fits one screen, the page itself doesn't scroll, each panel scrolls on its own:
+//   Top: perps header — pair selector (dropdown panel hugging the button: search + hot / gainers / losers / favorites, replacing the old full left market list) + live price and 24h stats
+//   Middle: K-lines (OHLC) | order book + latest trades (real depth and tick data from the exchange's public API, websocket push, falling back to polling when cut)
+//   Right: order panel 320 (full column height): margin mode, leverage, market / limit, long / short, size, ratio, reduce-only, TP/SL (two rows inside the panel), perps account
+//   Bottom: positions / open orders / fill history (fixed height, visible within one screen, the table scrolls itself)
+// Ordering, closing, cancelling, and deposit/withdraw call exactly the same functions in lib/aster as the phone perps page (src/pages/Perp.tsx), with the parameter math copied too;
+// Ordering / closing / cancelling all pass the same gate (on web, connect the 0x4 browser extension if not connected). Failed quotes show an empty state — never fake data.
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeftRight, ChevronDown, Crosshair, LoaderCircle, Lock, RefreshCw, Search, Star, Wallet } from 'lucide-react'
@@ -48,27 +48,27 @@ const fmtPx = (n: number) => n >= 1000 ? n.toLocaleString('en-US', { maximumFrac
 const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '-' : ''}${money(Math.abs(n))}`
 const dir = (n: number) => n >= 0 ? 'up' : 'down'
-/** 合计手续费率：交易所吃单 0.04%（挂单 0）+ 平台费（普通 0.06% / VIP 0.04%，服务器下发）。和手机合约页同一算法 */
+/** Total fee rate: exchange taker 0.04% (maker 0) + platform fee (0.06% regular / 0.04% VIP, pushed by the server). Same math as the phone perps page */
 const feeRate = (type: string) => Number(((type === 'market' ? 0.0004 : 0) + perpFeeRate()).toFixed(6))
-/** 下单 / 平仓 / 撤单（含改杠杆）前过闸：网页版没连 0x4 浏览器插件就去连，这次不往下做（和手机合约页 perpGate 的网页分支一致） */
+/** Gate before ordering / closing / cancelling (including leverage changes): on web without the 0x4 browser extension connected, go connect it and stop here (matches the web branch of the phone perps page's perpGate) */
 const perpGate = () => !needWallet()
 const FAV_KEY = '0x4.perpFav'
 
 type PxFmt = (n: number, c: string) => string
-/** 下单面板里正在填的这一单：show = 填了东西、要在 K 线上画预览线；没填时也带着方向和现价，「在图上选价格」要用 */
+/** The order being filled in the order panel: show = something was entered, draw the preview line on the K-line chart; even when empty it carries direction and current price for "pick price on chart" */
 type Draft = PlanDraft & { show: boolean }
-/** K 线上拖线 / 选价之后回填给下单面板的价格（n 每次加 1，同一个价格也能再填一次） */
+/** The price filled back into the order panel after dragging lines / picking a price on the K-line chart (n increments each time, so the same price can be filled again) */
 type ChartPx = { kind: 'limit' | ProtectKind; px: number; n: number }
 /**
- * 合约账户读到哪一步（2026-09-29：网页版只读查询不再自动弹授权，要分清「还没授权交易密钥」和「还没入金」）：
- * none 没连钱包 / loading 读取中 / ready 正常 / noAgent 交易密钥还没授权（第一次下单时会请用户在插件里授权）/
- * noDeposit 交易所说这个钱包还没入金 / cancelled 用户在插件里拒绝了签名（不再自动重读，等用户点重试）/ error 其他错误
+ * How far the perps account read got (2026-09-29: web read-only queries no longer auto-trigger authorization — "no trading key authorized yet" must be distinguished from "not funded yet"):
+ * none = no wallet / loading = reading / ready = ok / noAgent = trading key not authorized yet (the user will be asked to authorize in the extension on their first order) /
+ * noDeposit = the exchange says this wallet hasn't funded / cancelled = user rejected the signature in the extension (no more auto re-reads; wait for the user to hit retry) / error = anything else
  */
-/** locked：0x4 插件锁着（2026-10-06 起插件锁了网页不登出），读合约账户要插件签名，不自动弹解锁，给「解锁」按钮 */
+/** locked: the 0x4 extension is locked (since 2026-10-06, extension locking no longer logs web out); reading the perps account needs the extension's signature — don't auto-pop unlock, give an "Unlock" button */
 type AcctState = { kind: 'none' | 'loading' | 'ready' | 'noAgent' | 'noDeposit' | 'cancelled' | 'locked' } | { kind: 'error'; msg: string }
 
 export default function PerpTerminal() {
-  // 进合约页先拉一次费率（VIP 按 0.04% 收），拉到后重新渲染手续费显示
+  // On entering the perps page, pull the fee rate once (VIPs pay 0.04%); re-render the fee display after it arrives
   setPerpFeeRate(useFees((s) => s.fees.perpRate))
   useEffect(() => { void useFees.getState().load() }, [])
   const { evmAccount, keysUnlocked } = useWallet()
@@ -84,33 +84,33 @@ export default function PerpTerminal() {
   const [orders, setOrders] = useState<PerpOrder[]>([])
   const [fills, setFills] = useState<PerpFill[]>([])
   const [acct, setAcct] = useState<AcctState>({ kind: 'none' })
-  /** 用户拒绝过签名：定时刷新不再去读账户，点「重试」才读 */
+  /** The user once rejected signing: periodic refreshes no longer read the account — only "Retry" reads */
   const paused = useRef(false)
   const [fund, setFund] = useState<'deposit' | 'withdraw' | null>(null)
-  // 从小精灵页「去存入 USDT」过来（?fund=deposit）：直接打开存入窗口，不让人自己在右下角找（2026-10-05 goat）
+  // Arriving from the sprite page's "Deposit USDT" (?fund=deposit): open the deposit window directly instead of making people hunt for it at the bottom-right (2026-10-05 goat)
   useEffect(() => { if (params.get('fund') === 'deposit') { setFund('deposit'); const p = new URLSearchParams(params); p.delete('fund'); setParams(p, { replace: true }) } }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  /** 盘口里点的价格：填进限价单（n 每次加 1，同一个价格点两次也能再填） */
+  /** A price tapped in the order book: filled into the limit order (n increments each time, so tapping the same price twice fills it again) */
   const [bookPx, setBookPx] = useState<{ px: number; n: number } | null>(null)
   const [liveRetry, setLiveRetry] = useState(0)
-  // K 线上的交易线（2026-10-02 goat 第一批）
+  // Trading lines on the K-line chart (2026-10-02 goat batch 1)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [chartPx, setChartPx] = useState<ChartPx | null>(null)
-  /** 在图上给已有仓位新设 / 改动的止盈止损：点了「确认」才发给交易所 */
+  /** TP/SL newly set / changed on the chart for an existing position: only sent to the exchange after tapping "Confirm" */
   const [pending, setPending] = useState<PlanPending | null>(null)
-  /** 正在图上选价格：draft = 给下单面板里这一单选，pos = 给已有仓位选 */
+  /** Picking a price on the chart: draft = picking for the current order in the order panel, pos = picking for an existing position */
   const [pickMode, setPickMode] = useState<{ kind: ProtectKind; target: 'draft' | 'pos' } | null>(null)
   const [protectBusy, setProtectBusy] = useState(false)
   useEffect(() => { setPending(null); setPickMode(null); setChartPx(null) }, [coin])
-  /** 自选：存本机，和手机合约页同一个键 */
+  /** Favorites: stored locally, same key as the phone perps page */
   const [favs, setFavs] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]') } catch { return [] } })
   const toggleFav = (c: string) => setFavs((cur) => {
     const next = cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]
-    try { localStorage.setItem(FAV_KEY, JSON.stringify(next)) } catch { /* 存不了也不影响交易 */ }
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(next)) } catch { /* Failing to save doesn't affect trading */ }
     return next
   })
 
-  // 行情和账户分开读：新用户在交易所还没有账户，账户接口会报错，不能因此连行情也看不到
-  // 主动授权交易密钥：只想看余额 / 小精灵开的仓也能授权（原来只有第一次下单才弹，2026-10-05 goat）
+  // Read markets and account separately: new users have no exchange account yet, so the account endpoint errors — that must not take down market data too
+  // Proactively authorize the trading key: authorizable even just to view balances / the sprite's positions (it used to pop only on the first order, 2026-10-05 goat)
   const [authBusy, setAuthBusy] = useState(false)
   const authorize = async () => {
     if (!evmAccount || authBusy) return
@@ -125,7 +125,7 @@ export default function PerpTerminal() {
     if (!evmAccount || !keysUnlocked) { setAccount(null); setOrders([]); setFills([]); setAcct({ kind: evmAccount ? 'locked' : 'none' }); return }
     if (paused.current && !force) return
     paused.current = false
-    // 第一次读、或者用户点了重试（之前失败 / 取消）才显示「读取中」；下单后的刷新不闪
+    // Show "loading" only on the first read or when the user hits retry (after a failure / cancellation); post-order refreshes don't flash
     setAcct((s) => s.kind === 'none' || (force && (s.kind === 'error' || s.kind === 'cancelled')) ? { kind: 'loading' } : s)
     try {
       const [a, o, f, br] = await Promise.all([
@@ -134,26 +134,26 @@ export default function PerpTerminal() {
       ])
       if (m) setMarkets(m.map((x) => br[x.coin] ? { ...x, maxLeverage: br[x.coin] } : x))
       setAccount(a); setOrders(o); setFills(f); setAcct({ kind: 'ready' })
-      // 账户已开通：顺便授权只读代理，手动合约的成交才能计入 VIP 交易额（后台进行，每次打开最多一次）
+      // Account already opened: also authorize the read-only agent so manual perps fills count toward VIP volume (done in the background, at most once per launch)
       void linkPerpReader(evmAccount)
     } catch (e) {
-      // NO_AGENT：交易密钥还没授权（网页版只读查询不弹授权窗口，第一次下单时再授权）；only be used after deposit：还没入金。都是新用户的正常状态
+      // NO_AGENT: trading key not authorized yet (web read-only queries don't pop the auth window — authorization happens at the first order); "only be used after deposit": not funded yet. Both are normal states for new users
       const raw = e instanceof Error ? e.message : String(e ?? '')
       const msg = errorText(e, t('读取失败'))
       setAccount(null); setOrders([]); setFills([])
       if (raw === 'NO_AGENT' || msg === 'NO_AGENT') setAcct({ kind: 'noAgent' })
       else if (/only be used after deposit/i.test(`${raw} ${msg}`)) setAcct({ kind: 'noDeposit' })
-      else if (!msg) { paused.current = true; setAcct({ kind: 'cancelled' }) }   // 用户在插件里拒绝了：不再自动弹
+      else if (!msg) { paused.current = true; setAcct({ kind: 'cancelled' }) }   // The user rejected in the extension: no more auto-popping
       else setAcct({ kind: 'error', msg })
     }
   }, [evmAccount, keysUnlocked])
-  // 换钱包：清掉「拒绝过」的记忆
+  // Wallet switched: clear the "rejected before" memory
   useEffect(() => { paused.current = false }, [evmAccount])
-  // 8 秒刷新一次；标签页在后台时不刷
+  // Refresh every 8 seconds; not refreshed while the tab is in the background
   useEffect(() => { void refresh(); const id = window.setInterval(() => { if (!document.hidden) void refresh() }, 8000); return () => window.clearInterval(id) }, [refresh])
 
   const market = useMemo(() => markets.find((m) => m.coin === coin), [markets, coin])
-  /** 按这个币的价格精度显示（小币 0.0043540 不能显示成 0.00） */
+  /** Display at this coin's price precision (a small coin at 0.0043540 must not show as 0.00) */
   const pxOf = useCallback<PxFmt>((n, c) => {
     const d = markets.find((x) => x.coin === c)?.pxDecimals
     if (!(n > 0)) return '--'
@@ -166,7 +166,7 @@ export default function PerpTerminal() {
   const mark = live.stats.mark || market?.markPx || 0
   const pos = useMemo(() => account?.positions.find((p) => p.coin === coin && p.size > 0) ?? null, [account, coin])
   const coinOrders = useMemo(() => orders.filter((o) => o.coin === coin), [orders, coin])
-  // 仓位没了：没确认的止盈止损跟着作废；要换掉的旧单已经不在了（被触发 / 在别处撤了）：改成新挂一张
+  // Position gone: unconfirmed TP/SL are voided along with it; if the old order to replace is already gone (triggered / cancelled elsewhere): place a fresh one instead
   useEffect(() => { if (!pos) { setPending(null); setPickMode((p) => p?.target === 'pos' ? null : p) } }, [pos])
   useEffect(() => { setPending((p) => p && p.oid !== undefined && !coinOrders.some((o) => o.oid === p.oid) ? { ...p, oid: undefined } : p) }, [coinOrders])
   const planLines = useMemo(() => buildPlan({ mark, position: pos, orders: coinOrders, draft: draft?.show ? draft : null, pending }), [mark, pos, coinOrders, draft, pending])
@@ -187,7 +187,7 @@ export default function PerpTerminal() {
     try { await cancelOrder(evmAccount, m, o.oid); toast.success(t('已撤单')); setPending((p) => p?.oid === o.oid ? null : p); void refresh() } catch (e) { alertError(e, t('撤单失败')) }
   }
 
-  // ---- K 线上的交易线：拖线、选价、确认 ----
+  // ---- Trading lines on the K-line chart: drag, pick price, confirm ----
   const bump = (kind: ChartPx['kind'], px: number) => setChartPx((c) => ({ kind, px, n: (c?.n || 0) + 1 }))
   const onPlanMove = (l: PlanLine, px: number) => {
     if (l.role === 'draftEntry') bump('limit', px)
@@ -196,7 +196,7 @@ export default function PerpTerminal() {
     else if (l.role === 'tp' || l.role === 'sl') setPending({ kind: l.role, px, oid: l.oid })
     else if (l.role === 'pendingTp' || l.role === 'pendingSl') setPending((p) => p ? { ...p, px } : p)
   }
-  /** 选价时跟着鼠标的那条线上写什么：这个价的预计盈亏，价格放错了边直接说 */
+  /** What the mouse-following line says while picking a price: the estimated PnL at that price; say so directly when the price is on the wrong side */
   const pickAt = (px: number) => {
     if (!pickMode) return {}
     if (pickMode.target === 'pos' && pos) {
@@ -212,7 +212,7 @@ export default function PerpTerminal() {
   const onPick = (px: number) => {
     if (!pickMode) return
     if (pickMode.target === 'draft') bump(pickMode.kind, px)
-    // 这个仓位已经挂着同一种单：算作改它（先撤旧的再挂新的）
+    // This position already has the same kind of order: treat as modifying it (cancel the old, place the new)
     else setPending({ kind: pickMode.kind, px, oid: coinOrders.find((o) => orderKind(o) === pickMode.kind)?.oid })
     setPickMode(null)
   }
@@ -227,7 +227,7 @@ export default function PerpTerminal() {
       toast.success(cur.kind === 'tp' ? t('止盈已设在 {px}', { px: pxOf(cur.px, coin) }) : t('止损已设在 {px}', { px: pxOf(cur.px, coin) }))
       setPending(null)
     } catch (e) {
-      // 旧的已经撤了、新的没挂上：这个仓位现在少了一道保护，必须明说（待确认的线留着，再点一次确认就是直接新挂）
+      // Old one cancelled, new one not placed: this position is now missing a layer of protection — say so plainly (keep the pending line; tapping confirm again places a fresh one directly)
       if ((e as { protectionGone?: boolean } | null)?.protectionGone) {
         setPending({ kind: cur.kind, px: cur.px })
         useAlert.getState().show({
@@ -248,7 +248,7 @@ export default function PerpTerminal() {
     onPick, onPickCancel: () => setPickMode(null),
   } : undefined
 
-  // 还没拿到行情：整块显示加载 / 失败 / 没有这个合约，只说一次
+  // No quotes yet: the whole block shows loading / failed / no-such-contract — stated only once
   if (!market) {
     return (
       <div className="tx-term tx-perp-empty">
@@ -280,7 +280,7 @@ export default function PerpTerminal() {
   )
 }
 
-/** 合约头：币对选择器 + 最新价 + 标记价 / 指数价 / 24h / 持仓量 / 资金费率和倒计时（全部是交易所的真实数据，拿不到显示 --） */
+/** Perps header: pair selector + latest price + mark / index price / 24h / open interest / funding rate and countdown (all real exchange data; "--" when unavailable) */
 function PerpHead({ market, markets, live, last, favs, onFav, onPick, pxOf, stale, onRetry }: {
   market: PerpMarket; markets: PerpMarket[]; live: PerpStats; last?: number; favs: string[]
   onFav: (c: string) => void; onPick: (c: string) => void; pxOf: PxFmt; stale: boolean; onRetry: () => void
@@ -328,7 +328,7 @@ function PerpHead({ market, markets, live, last, favs, onFav, onPick, pxOf, stal
   )
 }
 
-/** 币对选择下拉：搜索 + 热门（按成交额）/ 涨幅 / 跌幅 / 自选；涨跌幅只算有成交的 */
+/** Pair picker dropdown: search + hot (by volume) / gainers / losers / favorites; gain/loss only counts pairs with trades */
 function MarketPicker({ open, anchor, onClose, markets, current, favs, onFav, onPick }: {
   open: boolean; anchor: RefObject<HTMLButtonElement | null>; onClose: () => void; markets: PerpMarket[]; current: string; favs: string[]
   onFav: (c: string) => void; onPick: (c: string) => void
@@ -382,8 +382,8 @@ function MarketPicker({ open, anchor, onClose, markets, current, favs, onFav, on
 }
 
 /**
- * K 线：交易所公开接口，10 秒刷新一次（标签页在后台时不刷）；两次刷新之间最后一根的收盘价跟着最新成交价走。
- * 工具栏两个开关（2026-10-02 goat 第二批，记在本机）：「买卖力量」= K 线下面一栏，「大单」= 图上的气泡
+ * K-lines: the exchange's public endpoint, refreshed every 10 seconds (not refreshed while the tab is in the background); between refreshes the last candle's close follows the latest trade price.
+ * Two toolbar toggles (2026-10-02 goat batch 2, stored locally): "buy/sell pressure" = a strip under the K-lines, "large orders" = bubbles on the chart
  */
 function PerpChart({ market, pxOf, plan, live, pos, orders }: { market: PerpMarket; pxOf: PxFmt; plan?: PlanProps; live: PerpLive; pos: PerpPosition | null; orders: PerpOrder[] }) {
   const [interval, setIval] = usePageState<Interval>('desk.perp.interval', '1h', oneOf('1m', '5m', '15m', '1h', '4h', '1d'))
@@ -397,7 +397,7 @@ function PerpChart({ market, pxOf, plan, live, pos, orders }: { market: PerpMark
     set({ status: 'loading', data: [], asOf: 0 })
     const load = () => loadCandles(coin, interval, 300)
       .then((data) => { if (alive) set({ status: 'ready', data, asOf: Date.now() }) })
-      // 刷新失败：手上已有这张图就留着显示（工具栏小字说明），没有就显示失败 + 重试
+      // Refresh failed: if we already have this chart, keep showing it (toolbar small print explains); otherwise show failure + retry
       .catch(() => { if (alive) set((c) => ({ ...c, status: 'error' })) })
     void load()
     const id = window.setInterval(() => { if (!document.hidden) void load() }, 10_000)
@@ -408,7 +408,7 @@ function PerpChart({ market, pxOf, plan, live, pos, orders }: { market: PerpMark
   const flow = useMemo(() => showFlow ? flowOf(s.data) : null, [showFlow, s.data])
   const bubbles = useMemo(() => showBig ? bubblesOf(live.big, INTERVAL_SEC[interval]) : [], [showBig, live.big, interval])
   const since = live.bigSince ? new Date(live.bigSince).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) : ''
-  // 「问小精灵」：点的那一刻把这张图整理成摘要（仓位只带比例，不带数量和金额）。买卖力量不管开关开没开都带上
+  // "Ask the sprite": the moment it's tapped, summarize this chart into a digest (positions carry ratios only, no amounts or values). Buy/sell pressure is included whether its toggle is on or not
   const getBrief = () => buildBrief({
     market: 'perp', symbol: coin, interval, candles, flow: flowOf(s.data), big: live.big, bigSince: live.bigSince,
     position: pos ? { isLong: pos.isLong, leverage: pos.leverage, roe: pos.roe, liquidationPx: pos.liquidationPx } : null,
@@ -429,18 +429,18 @@ function PerpChart({ market, pxOf, plan, live, pos, orders }: { market: PerpMark
   )
 }
 
-/** 下单面板。表单和算法照搬手机合约页：保证金 × 杠杆 = 仓位价值，数量 = 仓位价值 ÷ 价格 */
+/** Order panel. Form and math copied from the phone perps page: margin × leverage = position value, size = position value ÷ price */
 function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, onDraft, picking, onPickPx, onFund, onDone, onRetry, onAuthorize, authBusy, onUnlock }: {
   market: PerpMarket; account: PerpAccount | null; connected: boolean; acct: AcctState
   pxOf: PxFmt; bookPx: { px: number; n: number } | null; onFund: (m: 'deposit' | 'withdraw') => void; onDone: () => void; onRetry: () => void
   onAuthorize: () => void; authBusy: boolean
-  /** 插件锁着时的「解锁」：请 0x4 插件弹解锁窗口，解锁后页面自动重新读账户 */
+  /** "Unlock" while the extension is locked: ask the 0x4 extension to pop its unlock window; the page re-reads the account automatically after unlocking */
   onUnlock: () => void
-  /** K 线上拖线 / 选价后回填的价格 */
+  /** The price filled back after dragging lines / picking a price on the K-line chart */
   chartPx: ChartPx | null
-  /** 把正在填的这一单报给合约页，画成 K 线上的预览线 */
+  /** Report the order being filled to the perps page, drawn as the preview line on the K-line chart */
   onDraft: (d: Draft) => void
-  /** 正在图上给这一单选止盈 / 止损价 */
+  /** Currently picking the TP / SL price for this order on the chart */
   picking: ProtectKind | null
   onPickPx: (kind: ProtectKind | null) => void
 }) {
@@ -451,7 +451,7 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
   const [unit, setUnit] = useState<'margin' | 'coin'>('margin')
   const [type, setType] = useState<'market' | 'limit'>('market')
   const [side, setSide] = useState<'long' | 'short'>('long')
-  /** 默认逐仓：亏损锁死在这个仓位的保证金里 */
+  /** Isolated by default: losses are locked inside this position's margin */
   const [isCross, setIsCross] = useState(false)
   const [limitPx, setLimitPx] = useState('')
   const [reduceOnly, setReduceOnly] = useState(false)
@@ -459,7 +459,7 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
   const [tp, setTp] = useState('')
   const [sl, setSl] = useState('')
   const [busy, setBusy] = useState(false)
-  /** 点了下单但不能下的原因（写在对应输入框下面）；改输入就清掉 */
+  /** Why an order can't be placed after tapping order (written under the matching input); cleared when the input changes */
   const [hint, setHint] = useState<{ at: 'amt' | 'px' | ProtectKind; text: string } | null>(null)
   const [pop, setPop] = useState<'lev' | 'mode' | null>(null)
   const levBtn = useRef<HTMLButtonElement>(null)
@@ -467,22 +467,22 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
   const amtInput = useRef<HTMLInputElement>(null)
   const pxInput = useRef<HTMLInputElement>(null)
 
-  // 切换市场时只在超过上限时压到上限；只支持逐仓的市场把开关拨回逐仓
+  // When switching markets, clamp to the cap only when over it; markets supporting only isolated get the switch flipped back to isolated
   useEffect(() => { if (lev > market.maxLeverage) setLev(market.maxLeverage) }, [market.maxLeverage]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (market.onlyIsolated && isCross) setIsCross(false) }, [market.onlyIsolated]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 换币清掉填了一半的单
+  // Switching coins clears the half-filled order
   useEffect(() => { setAmt(''); setLimitPx(''); setTp(''); setSl(''); setHint(null) }, [market.coin])
   useEffect(() => { setHint(null) }, [amt, limitPx, type, side, lev, tp, sl, tpsl])
-  // 盘口里点了某一档：切到限价、填进价格
+  // Tapped a level in the order book: switch to limit, fill in the price
   useEffect(() => { if (bookPx) { setType('limit'); setLimitPx(String(bookPx.px)) } }, [bookPx])
-  // K 线上拖了预览线、或在图上选了价格：填回对应的输入框（按交易所的价格精度）
+  // Dragged a preview line on the K-line chart, or picked a price on the chart: fill it back into the matching input (at the exchange's price precision)
   useEffect(() => {
     if (!chartPx) return
     const v = roundPx(chartPx.px, market.pxDecimals)
     if (chartPx.kind === 'limit') { setType('limit'); setLimitPx(v) }
     else { setTpsl(true); (chartPx.kind === 'tp' ? setTp : setSl)(v) }
   }, [chartPx]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 杠杆和保证金模式是按币种记在合约账户上的：有持仓时以持仓的实际设置为准
+  // Leverage and margin mode are recorded per coin on the perps account: with a position open, the position's actual settings win
   const pos = account?.positions.find((x) => x.coin === market.coin)
   useEffect(() => { if (pos) { setLev(pos.leverage); setIsCross(pos.isCross) } }, [pos?.leverage, pos?.isCross, market.coin]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -494,12 +494,12 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
   const maxNotional = free * lev
   const liq = price > 0 && notional > 0 ? (side === 'long' ? price * (1 - 1 / lev + 0.005) : price * (1 + 1 / lev - 0.005)) : 0
   const sizePct = maxNotional > 0 ? Math.min(100, Math.round((notional / maxNotional) * 100)) : 0
-  // 把这一单报给合约页画预览线：填了数量、限价、止盈或止损任何一样就画（只减仓的单不画止盈止损和强平价）
+  // Report this order to the perps page for the preview line: draw when size, limit price, or TP/SL has any input (reduce-only orders don't draw TP/SL or the liquidation price)
   const isLimit = type === 'limit' && Number(limitPx) > 0
   const tpN = tpsl && !reduceOnly && Number(tp) > 0 ? Number(tp) : undefined
   const slN = tpsl && !reduceOnly && Number(sl) > 0 ? Number(sl) : undefined
   const showDraft = size > 0 || isLimit || tpN !== undefined || slN !== undefined
-  /** 真正会下的数量（按交易所的数量精度往下取），预计盈亏按它算 */
+  /** The size that will actually be ordered (floored to the exchange's size precision); estimated PnL is computed from it */
   const sizeR = Number(roundSz(size, market.szDecimals))
   useEffect(() => {
     onDraft({ show: showDraft, isLong: side === 'long', entry: price, isLimit, size: sizeR, margin, liq: liq || undefined, tp: tpN, sl: slN, reduceOnly })
@@ -526,7 +526,7 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
   const loadingAccount = connected && acct.kind === 'loading'
   const needDeposit = connected && (acct.kind === 'noDeposit' || (acct.kind === 'ready' && free <= 0))
   const readFailed = connected && (acct.kind === 'error' || acct.kind === 'cancelled')
-  /** 交易密钥还没授权：读不到余额，下单前不按保证金拦（交易所会校验），第一次下单时插件会先请用户授权 */
+  /** Trading key not authorized yet: balances unreadable — don't gate on margin before ordering (the exchange validates); the extension asks the user to authorize at the first order */
   const noAgent = connected && acct.kind === 'noAgent'
 
   const submit = async () => {
@@ -536,7 +536,7 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
     if (type === 'limit' && !(Number(limitPx) > 0)) { setHint({ at: 'px', text: t('请输入价格') }); pxInput.current?.focus(); return }
     if (!(notional >= MIN_NOTIONAL)) { setHint({ at: 'amt', text: t('仓位价值最少 ${min}，交易所会拒掉更小的单。', { min: MIN_NOTIONAL }) }); amtInput.current?.focus(); return }
     if (!noAgent && margin > free + 1e-6) { setHint({ at: 'amt', text: t('保证金不够：需要 {need} USDT，可用 {free} USDT', { need: money(margin), free: money(free) }) }); amtInput.current?.focus(); return }
-    // 止盈止损放错了边（比如做多的止盈低于现价）：交易所会当场拒掉，仓位开了却没有保护。发单前就拦下来
+    // TP/SL placed on the wrong side (e.g. long TP below spot): the exchange rejects it on the spot, leaving the position unprotected. Block it before the order goes out
     for (const kind of ['tp', 'sl'] as const) {
       const v = kind === 'tp' ? tpN : slN
       const issue = v === undefined ? null : protectIssue(kind, side === 'long', v, [market.markPx, price])
@@ -544,16 +544,16 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
     }
     setBusy(true)
     try {
-      // 杠杆和保证金模式随单子一起设（网页版和主单、止盈止损合在插件的一个确认窗口里；手机 App 照旧先设杠杆再下单）
+      // Leverage and margin mode are set along with the order (on web they're folded with the main order and TP/SL into the extension's single confirmation window; the phone app still sets leverage first, then orders)
       const r = await placeOrder(evmAccount, { market, leverage: lev, isCross, isBuy: side === 'long', size, limitPx: type === 'limit' ? Number(limitPx) : undefined, reduceOnly, slippageBps, takeProfit: tpsl && Number(tp) > 0 ? Number(tp) : undefined, stopLoss: tpsl && Number(sl) > 0 ? Number(sl) : undefined })
       if (r.resting) toast.success(t('已挂单，成交后会出现在持仓里'))
       else {
         const fv = { coin: market.coin, sz: fmtAmount(r.filledSz), px: fmtPx(r.avgPx) }
         toast.success(side === 'long' ? t('做多 {coin} 成交 {sz} @ {px}', fv) : t('做空 {coin} 成交 {sz} @ {px}', fv))
-        // 交易即社交：开仓记为买入，多空用不同的标识区分（和手机合约页同一格式）
+        // Trading is social: opening a position counts as a buy, longs/shorts distinguished by different markers (same format as the phone perps page)
         reportTrade({ side: 'buy', chainId: -1, token: `${market.coin}:${side}`, symbol: `${market.coin} ${side === 'long' ? '多' : '空'} ${lev}x`, name: `${market.coin} 永续 · 开${side === 'long' ? '多' : '空'}`, realized: 0, qty: r.filledSz, usd: r.filledSz * r.avgPx, chainKey: 'hyperliquid' })
       }
-      // 止盈 / 止损没挂上：明确告诉用户，输入框不清空，方便马上补挂或平仓
+      // TP / SL not placed: tell the user explicitly, keep the inputs filled for a quick re-place or close
       const pf = r.protectionFailed || []
       if (pf.length) {
         toast.error(pf.length === 2 ? t('止盈和止损都没有挂上，这个仓位现在没有保护。请重新设置，或手动平仓') : pf[0] === 'sl' ? t('止损没有挂上，这个仓位现在没有止损保护。请重新设置，或手动平仓') : t('止盈没有挂上，请重新设置'))
@@ -647,7 +647,7 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
           <label className="tx-check"><input type="checkbox" checked={reduceOnly} onChange={(e) => setReduceOnly(e.target.checked)} />{t('只减仓')}</label>
           <label className="tx-check"><input type="checkbox" checked={tpsl} onChange={(e) => setTpsl(e.target.checked)} aria-expanded={tpsl} />{t('止盈 / 止损')}</label>
         </div>
-        {/* 止盈止损：两行排，都在面板宽度以内（2026-09-29 goat：原来两列并排输入框溢出面板右边） */}
+        {/* TP/SL: two rows, both within the panel width (2026-09-29 goat: the old two-column inputs overflowed past the panel's right edge) */}
         {tpsl && <div className="tx-tpsl">
           {(['tp', 'sl'] as const).map((kind) => {
             const v = kind === 'tp' ? tp : sl
@@ -663,7 +663,7 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
               </div>
             )
           })}
-          {/* 到止盈 / 止损价的预计盈亏：一行放两个，不把下单面板撑高 */}
+          {/* Estimated PnL at the TP / SL price: two per row, so the order panel isn't stretched taller */}
           {ests.length > 0 && <p className="tx-est" title={t('按入场价和数量估算，不含手续费和资金费')}>
             {ests.map(({ kind, pnl }) => <span key={kind}>{kind === 'tp' ? t('止盈') : t('止损')} <b className={pnl >= 0 ? 'up' : 'down'}>{signed(pnl)}{margin > 0 ? ` (${pnl >= 0 ? '+' : ''}${(pnl / margin * 100).toFixed(1)}%)` : ''}</b></span>)}
           </p>}
@@ -682,7 +682,7 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
         </dl>
       </div>
 
-      {/* 合约账户：连了钱包才显示（没连时只在主按钮上说一次） */}
+      {/* Perps account: shown only with a wallet connected (stated once on the main button when not connected) */}
       {connected && <section className="tx-acct" aria-label={t('合约账户')}>
         <div className="tx-acct-head"><h3>{t('合约账户')}</h3>{acct.kind !== 'ready' && acct.kind !== 'none' && <span className={`tx-state-chip ${acct.kind === 'error' || acct.kind === 'cancelled' ? 'warn' : ''}`}>{
           acct.kind === 'loading' ? t('读取中') : acct.kind === 'locked' ? <button type="button" className="underline-offset-2 hover:underline" onClick={onUnlock}>{t('解锁查看')}</button> : acct.kind === 'noAgent' ? <button type="button" className="underline-offset-2 hover:underline" disabled={authBusy} onClick={onAuthorize}>{authBusy ? t('授权中…') : t('授权后查看余额')}</button> : acct.kind === 'noDeposit' ? t('未入金') : acct.kind === 'cancelled' ? t('已取消') : t('读取失败')}</span>}</div>
@@ -700,13 +700,13 @@ function OrderPanel({ market, account, connected, acct, pxOf, bookPx, chartPx, o
   )
 }
 
-/** 插件钱包上的「网页快捷交易」开关接口（lib/vault/extension.ts ox4PerpSession；手机 App 的钱包没有） */
+/** The "web quick trading" toggle API on the extension wallet (lib/vault/extension.ts ox4PerpSession; the phone app's wallet doesn't have it) */
 interface PerpSessionApi { status(): Promise<Ox4PerpSession>; start(): Promise<Ox4PerpSession>; end(): Promise<Ox4PerpSession> }
 
 /**
- * 网页快捷交易（2026-09-30 goat：登录时授权一次，之后网页下单不再逐笔弹窗）。
- * 开着：写明直接生效，可以关；没开（登录时没勾、锁过钱包、过了 24 小时）：一个「开启」按钮，插件弹窗确认。
- * 状态跟着合约页一起每 8 秒问一次插件（插件里点了关闭、钱包锁了，这里跟着变）
+ * Web quick trading (2026-09-30 goat: authorize once at login, no per-order popups on web afterwards).
+ * On: says it takes effect immediately, and it can be turned off; off (not checked at login, wallet was locked, past 24 hours): an "Enable" button, extension pops to confirm.
+ * The state is re-asked from the extension every 8 seconds along with the perps page (turned off in the extension, wallet locked — this follows along)
  */
 function QuickTrade({ account }: { account: unknown }) {
   const api = (account as { ox4PerpSession?: PerpSessionApi } | null)?.ox4PerpSession
@@ -736,7 +736,7 @@ function QuickTrade({ account }: { account: unknown }) {
     </p>
 }
 
-/** 下方页签：仓位 / 当前委托 / 成交记录（所有合约，可以只看当前这个）。固定高度，一屏内可见，表格自己滚 */
+/** Bottom tabs: Positions / Open orders / Fill history (all contracts, can filter to the current one). Fixed height, visible within one screen, the table scrolls itself */
 function BottomTabs({ account, orders, fills, connected, acct, current, pxOf, markOf, onPick, onClose, onCancel, onRetry, onAuthorize, authBusy, onUnlock }: {
   account: PerpAccount | null; orders: PerpOrder[]; fills: PerpFill[]; connected: boolean; acct: AcctState; current: string
   pxOf: PxFmt; markOf: (c: string) => number; onPick: (c: string) => void; onClose: (p: PerpPosition) => Promise<void>; onCancel: (o: PerpOrder) => Promise<void>; onRetry: () => void
@@ -744,7 +744,7 @@ function BottomTabs({ account, orders, fills, connected, acct, current, pxOf, ma
 }) {
   const [tab, setTab] = usePageState<'pos' | 'orders' | 'fills'>('desk.perp.tab', 'pos', oneOf('pos', 'orders', 'fills'))
   const [onlyCur, setOnlyCur] = usePageState<boolean>('desk.perp.onlyCur', false, isBool)
-  /** 平仓两步确认：第一次点变成「确认平仓」，4 秒内再点才平（不弹浏览器对话框） */
+  /** Two-step close confirmation: first tap turns into "confirm close", a second tap within 4s actually closes (no browser dialog) */
   const [arming, setArming] = useState<string | null>(null)
   const [working, setWorking] = useState<string | null>(null)
   useEffect(() => { if (!arming) return; const id = window.setTimeout(() => setArming(null), 4000); return () => window.clearTimeout(id) }, [arming])
@@ -826,17 +826,17 @@ function BottomTabs({ account, orders, fills, connected, acct, current, pxOf, ma
   )
 }
 
-/** 文案里的 {chain} 换成加粗的 BNB Chain（整句一起翻译，加粗保留） */
+/** Replace {chain} in the copy with bold "BNB Chain" (translate the whole sentence together, keep the bold) */
 function boldChain(s: string) {
   const [a, b = ''] = s.split('{chain}')
   return <>{a}<b>BNB Chain</b>{b}</>
 }
 
-/** 存入 / 提出：都走 BNB Chain 的 USDT，gas 用 BNB。和手机合约页的存取款弹层同一套函数、同一套校验（电脑端居中模态框） */
+/** Deposit / withdraw: both go through USDT on BNB Chain, gas in BNB. Same functions and same validation as the phone perps page's deposit sheet (centered modal on desktop) */
 function FundModal({ mode, onClose, account }: { mode: 'deposit' | 'withdraw' | null; onClose: () => void; account: PerpAccount | null }) {
   const { evmAddress, evmAccount } = useWallet()
   const holdings = usePortfolio((s) => s.holdings)
-  // 别的链上的美元稳定币：提示先闪兑成 BNB Chain 上的 USDT
+  // USD stablecoins on other chains: prompt to swap into USDT on BNB Chain first
   const others = holdings.filter((h) => ['USDT', 'USDC', 'USDG', 'USDE'].includes(h.symbol.toUpperCase()) && !(h.chainId === BSC_CHAIN_ID && h.symbol.toUpperCase() === 'USDT') && h.amount >= 1)
   const [fee, setFee] = useState<number | null>(null)
   const [phase, setPhase] = useState('')

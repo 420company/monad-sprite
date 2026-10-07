@@ -1,54 +1,54 @@
-// 自动锁定。
+// Auto-lock.
 //
-// 在此之前，`lock()` 全项目只有设置页那一个手动入口在调：手机往桌上一放，
-// 谁拿起来都能直接花钱。钱包不能这样。
+// Before this, `lock()` had exactly one manual call site project-wide (the settings page): leave the phone on a table
+// and whoever picks it up can spend directly. A wallet can't work like that.
 //
-// 两个触发源，用同一个超时阈值：
-//   ① 切后台 / 切标签页  —— 离开超过阈值，回来就锁
-//   ② 就在前台但没人动   —— 闲置超过阈值直接锁
+// Two triggers, one shared timeout threshold:
+//   ① backgrounded / tab switched away — lock on return after the threshold
+//   ② foreground but idle — lock directly past the threshold
 //
-// ⚠️ 外部浏览器流程必须豁免。X 授权、法币入金这些会调 Browser.open，
-//    原生壳里等于把 App 切到后台，回来就被锁在门外，流程直接断掉。
-//    所以给外部流程留了 suspend / resume 一对闸。
+// ⚠️ External browser flows must be exempt. X authorization, fiat on-ramps, etc. call Browser.open,
+//    which backgrounds the app inside the native shell — returning locked out would kill the flow.
+//    So external flows get a suspend / resume gate pair.
 import { App } from '@capacitor/app'
 import { isNative } from '@/lib/native'
 import { useSettings } from '@/store/settings'
 import { useWallet } from '@/store/wallet'
 
-/** 记满一次「人还在」。鼠标、键盘、触摸都算 */
+/** One more "user is here" tick. Mouse, keyboard, and touch all count */
 let lastActiveAt = Date.now()
-/** 离开前台的时刻；在前台时为 null */
+/** When the app left the foreground; null while in the foreground */
 let leftAt: number | null = null
-/** > 0 表示正处在外部流程里（例如 X 授权），这期间不计时也不锁 */
+/** > 0 means inside an external flow (e.g. X authorization) — no timing, no locking meanwhile */
 let suspendDepth = 0
 
 const touch = () => { lastActiveAt = Date.now() }
 
-/** 外部浏览器流程开始：暂停自动锁定 */
+/** External browser flow starts: pause auto-lock */
 export function suspendAutoLock(): void {
   suspendDepth++
   leftAt = null
 }
 
-/** 外部浏览器流程结束：恢复计时，并把「刚回来」算成一次活动 */
+/** External browser flow ends: resume timing, and count the "just returned" as one activity */
 export function resumeAutoLock(): void {
   suspendDepth = Math.max(0, suspendDepth - 1)
   touch()
 }
 
-/** 当前阈值（毫秒）。-1 = 从不锁，0 = 一离开就锁 */
+/** Current threshold (ms). -1 = never lock, 0 = lock the moment it leaves */
 const timeout = () => useSettings.getState().autoLockMs
 
 function lockNow(): void {
   const { wallet, lock } = useWallet.getState()
-  if (wallet) lock()   // 路由守卫看到签名器变 null 会自己跳到 /unlock
+  if (wallet) lock()   // The route guard jumps to /unlock on its own when it sees the signer become null
 }
 
 function onHidden(): void {
   if (suspendDepth > 0) return
   const t = timeout()
   if (t < 0) return
-  if (t === 0) { lockNow(); return }   // 「立即」就是离开当场锁，不等回来
+  if (t === 0) { lockNow(); return }   // "Immediately" locks the moment it leaves — no waiting for return
   leftAt = Date.now()
 }
 
@@ -62,7 +62,7 @@ function onVisible(): void {
 }
 
 /**
- * 装上监听。整个 App 只调一次，返回卸载函数（给测试和热更新用）。
+ * Installs the listeners. Called once for the whole app; returns the teardown function (for tests and hot reload).
  */
 export function initAutoLock(): () => void {
   const acts: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'wheel']
@@ -71,7 +71,7 @@ export function initAutoLock(): () => void {
   const onVis = () => (document.hidden ? onHidden() : onVisible())
   document.addEventListener('visibilitychange', onVis)
 
-  // 原生壳：切后台时 webview 不一定触发 visibilitychange，要用 Capacitor 的事件
+  // Native shell: backgrounding doesn't always fire visibilitychange in the webview — use Capacitor's events
   let removeNative: (() => void) | undefined
   if (isNative) {
     App.addListener('appStateChange', ({ isActive }) => (isActive ? onVisible() : onHidden()))
@@ -79,11 +79,11 @@ export function initAutoLock(): () => void {
       .catch(() => {})
   }
 
-  // 前台闲置：每 15 秒看一眼就够，没必要更密
+  // Foreground idle: checking every 15 s is enough, no need for more
   const timer = window.setInterval(() => {
     if (suspendDepth > 0 || document.hidden) return
     const t = timeout()
-    if (t <= 0) return   // 0 只管切后台，前台不踢人；-1 是从不
+    if (t <= 0) return   // 0 only handles backgrounding, never kicks foreground users; -1 is never
     if (Date.now() - lastActiveAt >= t) lockNow()
   }, 15_000)
 
@@ -95,7 +95,7 @@ export function initAutoLock(): () => void {
   }
 }
 
-/** 供设置页展示用。顺序即选项顺序 */
+/** For the settings page display. Order = option order */
 export const AUTO_LOCK_OPTIONS: { label: string; value: number }[] = [
   { label: '立即', value: 0 },
   { label: '1 分钟', value: 60_000 },
@@ -105,7 +105,7 @@ export const AUTO_LOCK_OPTIONS: { label: string; value: number }[] = [
   { label: '从不', value: -1 },
 ]
 
-/** 测试用：把内部计时器摆到指定状态 */
+/** For tests: force the internal timer into a given state */
 export const __testing = {
   setLastActive: (ms: number) => { lastActiveAt = ms },
   setLeftAt: (ms: number | null) => { leftAt = ms },

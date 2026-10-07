@@ -1,5 +1,5 @@
-// 比特币链上数据：全部经过我们后端的 /api/btc/* 只读代理（server/src/btc.ts），
-// 上游是 mempool.space（备用 blockstream.info），手机不直连第三方，不暴露用户 IP。
+// Bitcoin on-chain data: all goes through our backend's /api/btc/* read-only proxy (server/src/btc.ts),
+// Upstream is mempool.space (fallback blockstream.info); phones never talk to third parties directly, so user IPs aren't exposed.
 import { API_BASE } from './env'
 import { fetchJson } from './http'
 import type { Utxo } from './btc'
@@ -20,9 +20,9 @@ interface EsploraTx {
 }
 
 export interface BtcBalance {
-  /** 已确认（sat） */
+  /** Confirmed (sat) */
   confirmed: number
-  /** 未确认的净变化（sat，可能为负：正在转出） */
+  /** Unconfirmed net change (sat; may be negative: sending in progress) */
   pending: number
 }
 
@@ -39,18 +39,18 @@ export async function getBtcUtxos(address: string): Promise<Utxo[]> {
   return list.map((u) => ({ txid: u.txid, vout: u.vout, value: u.value, confirmed: !!u.status?.confirmed }))
 }
 
-/** 一条比特币收发记录（从本地址的角度） */
+/** One Bitcoin send/receive record (from this address's perspective) */
 export interface BtcActivity {
   txid: string
-  /** 净变化（sat）：正数收入、负数转出（已含手续费） */
+  /** Net change (sat): positive = received, negative = sent (fees included) */
   delta: number
   fee: number
   confirmed: boolean
   blockHeight?: number
   blockTime?: number
-  /** 对方地址（转出时是第一个非找零输出，收入时是第一个输入） */
+  /** Counterparty address (first non-change output when sending, first input when receiving) */
   counterparty?: string
-  /** 带 OP_RETURN 备注 */
+  /** With an OP_RETURN memo */
   hasMemo: boolean
 }
 
@@ -68,22 +68,22 @@ export function toActivity(tx: EsploraTx, address: string): BtcActivity {
   }
 }
 
-/** 最近的交易（Esplora 一次最多给 50 条未确认 + 25 条已确认） */
+/** Recent transactions (Esplora returns at most 50 unconfirmed + 25 confirmed per call) */
 export async function getBtcActivity(address: string): Promise<BtcActivity[]> {
   const txs = await fetchJson<EsploraTx[]>(`${BASE}/address/${address}/txs`)
   return txs.map((tx) => toActivity(tx, address))
 }
 
 export interface FeeRates {
-  /** 约 10 分钟（下一个区块） */
+  /** ~10 minutes (the next block) */
   fast: number
-  /** 约 1 小时 */
+  /** ~1 hour */
   normal: number
-  /** 约 1 天 */
+  /** ~1 day */
   slow: number
 }
 
-/** 手续费三档（sat/vB）。保留一位小数向上取，最低 1；保证 省 ≤ 标准 ≤ 快 */
+/** Three fee tiers (sat/vB). Round up to one decimal, minimum 1; guarantee economy ≤ standard ≤ fast */
 export function pickFeeRates(est: Record<string, number>): FeeRates {
   const at = (...targets: string[]) => {
     for (const k of targets) if (Number(est[k]) > 0) return Number(est[k])
@@ -110,19 +110,19 @@ export async function getTxStatus(txid: string): Promise<EsploraStatus> {
   return fetchJson<EsploraStatus>(`${BASE}/tx/${txid}/status`)
 }
 
-/** 确认数：未确认 0，已确认 = 最新高度 − 所在高度 + 1 */
+/** Confirmations: 0 when unconfirmed; confirmed = latest height − its height + 1 */
 export function confirmations(status: { confirmed: boolean; block_height?: number }, tip: number): number {
   if (!status.confirmed || !status.block_height) return 0
   return Math.max(1, tip - status.block_height + 1)
 }
 
-/** 广播已签名交易，返回 txid。节点拒绝时把原因翻成人话 */
+/** Broadcast a signed transaction, returning the txid. When the node rejects, translate the reason into human words */
 export async function broadcastBtc(hex: string): Promise<string> {
   const res = await fetch(`${BASE}/tx`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: hex })
   const text = await res.text()
   if (res.ok) return text.trim()
   let reason = text
-  try { reason = (JSON.parse(text) as { error?: string }).error || text } catch { /* 纯文本 */ }
+  try { reason = (JSON.parse(text) as { error?: string }).error || text } catch { /* Plain text */ }
   if (/min relay fee|insufficient fee|mempool min fee/i.test(reason)) throw new Error(t('手续费太低，网络没有接收，请选高一档再试'))
   if (/missing|spent|conflict|bad-txns-inputs/i.test(reason)) throw new Error(t('有币已经被花掉了，刷新余额后再试'))
   throw new Error(t('广播失败：{reason}', { reason: reason.slice(0, 160) }))

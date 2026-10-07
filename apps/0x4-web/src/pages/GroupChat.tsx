@@ -1,4 +1,4 @@
-// 群聊：实时消息 + 服务器上的聊天记录（往上翻加载更早的）、长按菜单（回复 / 复制 / 删除）、成员管理、打赏、管理员私信
+// Group chat: realtime messages + server chat history (scroll up to load earlier), long-press menu (reply / copy / delete), member management, tips, admin DMs
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BALANCE_FEATURES } from '@/lib/features'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -50,22 +50,22 @@ import UserName from '@/components/UserName'
 import { useBack } from '@/lib/useBack'
 import { errorText } from '@/lib/errors'
 
-/** 消息撤回时限：发出后 2 分钟内 */
+/** Unsend window: within 2 minutes of sending */
 const RECALL_MS = 2 * 60_000
 
 export default function GroupChat() {
   const { id = '' } = useParams()
   const nav = useNavigate()
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /community
+  // Back: go back if there is a previous page (its state / scroll get restored); push / deep-link opens go to /community
   const back = useBack('/community')
   const { status, me, details, messages, roomOnline, polls, groupHasMore, loadGroup, loadGroupHistory, deleteGroupMessage, enterRoom, exitRoom, sendMessage, sendImage, joinGroup, leaveGroup, setRole, kick, setPoll, setActiveGroup } = useSocial()
   const [requests, setRequests] = useState<{ address: string; evmAddress?: string | null; message: string | null; nickname: string | null; avatar: string | null }[]>([])
   const [requestsOpen, setRequestsOpen] = useState(false)
   const group = details[id]
-  // 成员弹层每页最多 30 人
+  // Member sheet shows at most 30 per page
   const memberPager = usePager(group?.members, { reset: id })
-  // 只有群成员看得到聊天记录（2026-09-29 goat）：没加入、或者已经退群，本机残留的消息也不显示
-  // 我拉黑的人发的消息在我这边不显示（2026-10-02 上架要求；服务器照常转发，别人看得到）
+  // Only group members see the chat history (2026-09-29 goat): not joined, or already left — even locally cached messages are hidden
+  // Messages from people I blocked don't show on my side (2026-10-02 listing requirement; the server still forwards them, others can see)
   const blockedList = useBlocks((s) => s.list)
   const allList = group?.role ? (messages[id] || []) : []
   const list = useMemo(() => blockedList.length ? allList.filter((m) => !blockedList.some((b) => b.address === m.from)) : allList, [allList, blockedList])
@@ -75,7 +75,7 @@ export default function GroupChat() {
   const [showMembers, setShowMembers] = useState(false)
   const [tipTarget, setTipTarget] = useState<Member | null | 'any'>(null)
   const [memberAction, setMemberAction] = useState<Member | null>(null)
-  // 平台工作人员（lord 后台里的管理员 / 客服，goat 说的 MOD）：可以开关「禁止群成员私信」、可以私信群成员
+  // Platform staff (admins / support in the lord backend — what goat calls MOD): can toggle "block member DMs" and DM group members
   const staffRole = useStaffRole()
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [packetOpen, setPacketOpen] = useState(false)
@@ -93,16 +93,16 @@ export default function GroupChat() {
   const tokenHolding = market && holdings.find(h => h.chainId === market.chainId && sameAddr(h.mint, market.address) && h.amount > 0)
   const fileInput = useRef<HTMLInputElement>(null)
   const bottom = useRef<HTMLDivElement>(null)
-  // 长按气泡的菜单：step=delete 时是第二步（选删除范围）
+  // Long-press bubble menu: step=delete is the second step (pick delete scope)
   const [menu, setMenu] = useState<{ m: ChatMessage; anchor: MenuAnchor; step: 'main' | 'delete' } | null>(null)
   const loadOlder = useCallback(() => loadGroupHistory(id, true), [id, loadGroupHistory])
 
-  // 图片 / 视频：选完立刻以「发送中」出现在列表底部，上传完发出、等服务器回显后换成正式消息
+  // Images / videos: appear at the bottom as "sending" right after picking, sent after upload, swapped for the real message once the server echo arrives
   const media = usePendingMedia<GroupAlbumItem>({
     upload: async (f, onProgress) => {
       const file = f.kind === 'image' ? await compressForUpload(f.file) : f.file
       const r = await uploadFile(file, file.name, onProgress)
-      // 回显到了直接用本机这份显示，不再下载一遍
+      // Once the echo arrives, display this local copy — don't download again
       primeMediaUrl(absUrl(r.url, SOCIAL_API), f.local)
       if (r.thumb) primeMediaUrl(absUrl(r.thumb, SOCIAL_API), f.local)
       return r.kind === 'video' || f.kind === 'video' ? { url: r.url, kind: 'video' } : { url: r.url, ...(r.thumb ? { thumb: r.thumb } : {}), ...(r.width && r.height ? { w: r.width, h: r.height } : {}), kind: 'image' }
@@ -115,14 +115,14 @@ export default function GroupChat() {
       return 'await'
     },
   })
-  // 回显到了（列表里出现我发的、带同一个文件地址的消息）就把发送中那条去掉
+  // Once the echo arrives (my message with the same file URL shows in the list), remove the "sending" entry
   useEffect(() => {
     for (const a of media.list) {
       const first = a.state !== 'uploading' ? a.results[0]?.url : undefined
       if (first && list.some((m) => m.from === me?.address && (m.meta?.url === first || (Array.isArray(m.meta?.images) && (m.meta.images as GroupAlbumItem[]).some((x) => x?.url === first))))) media.confirm(a.id)
     }
   }, [list, media.list, me?.address]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 滚动按「消息 + 发送中」一起算：新加一条发送中的也滚到底
+  // Scrolling counts "messages + sending" together: a newly added "sending" entry also scrolls to bottom
   const scrollList = useMemo(() => (media.list.length ? [...list, ...media.list.map((a) => ({ id: a.id, from: me?.address || '' }))] : list), [list, media.list, me?.address])
   const { box, onScroll, loadingOlder } = useChatScroll(scrollList, !!groupHasMore[id], loadOlder, me?.address)
 
@@ -131,11 +131,11 @@ export default function GroupChat() {
   const byAddr = useMemo(() => Object.fromEntries((group?.members || []).map((m) => [m.address, m])), [group])
   const myMute = me ? byAddr[me.address]?.mutedUntil : undefined
   const mutedText = isAdmin ? null : myMute && myMute > Date.now() ? (isForever(myMute) ? t('你已被永久禁言') : t('你已被禁言，到 {time} 解除', { time: muteEnd(myMute) })) : group?.mutedAll ? t('全体禁言中，只有群主和管理员可以发言') : null
-  // 管理员能管普通成员，群主还能管管理员；群主本人谁也管不了
+  // Admins manage regular members; the owner also manages admins; nobody can manage the owner
   const canManage = (m: Member) => isAdmin && m.address !== me?.address && m.role !== 'owner' && (group?.role === 'owner' || m.role === 'member')
   const canDmLock = isAdmin || !!staffRole
-  // 群会议（2026-10-07 goat「群里能不能直接发起会议…群里的人都知道现在在开会，可以直接点进去」）：
-  // 顶部挂「群里正在开会」，「＋」里「群会议」发起或直接进；在不在开每 20 秒问一次服务器（会开完自己消失），群里有人发起时马上再问
+  // Group meetings (2026-10-07 goat: "can we start a meeting right in the group… everyone in the group knows a meeting is on and can tap straight in"):
+  // A "meeting in progress" banner sits at the top; start or join from "+" → "Group meeting"; whether a meeting is on is asked of the server every 20s (disappears on its own when done), and asked immediately when someone in the group starts one
   const [gMeeting, setGMeeting] = useState<GroupMeeting | null>(null)
   const [meetOpen, setMeetOpen] = useState(false)
   const [meetForm, setMeetForm] = useState({ title: '', password: '' })
@@ -150,7 +150,7 @@ export default function GroupChat() {
       api<{ meeting: GroupMeeting | null }>(`/api/groups/${id}/meeting`).then((r) => {
         if (!alive) return
         setGMeeting(r.meeting)
-        // 消息列表里这个群的「会议中」跟着变（开完会自己消失）
+        // This group's "in meeting" badge in the message list follows along (disappears on its own when the meeting ends)
         useSocial.setState((st) => ({ myGroups: st.myGroups.map((x) => (x.id === id && (x.meeting?.id ?? null) !== (r.meeting?.id ?? null) ? { ...x, meeting: r.meeting } : x)) }))
       }).catch(() => {})
     }
@@ -174,7 +174,7 @@ export default function GroupChat() {
       nav(`/meet/${r.meeting.id}`)
     } catch (e) { toast.error(errorText(e, t('发起失败'))) } finally { setMeetBusy(false) }
   }
-  // 发消息的人已经不在成员列表里（退群、被移出）时去拉他的公开资料，不然只能显示默认头像和 Solana 地址
+  // When the sender is no longer in the member list (left, removed), fetch their public profile — otherwise only a default avatar and Solana address can be shown
   const [outsiders, setOutsiders] = useState<Record<string, Profile>>({})
   const fetching = useRef(new Set<string>())
   useEffect(() => {
@@ -193,14 +193,14 @@ export default function GroupChat() {
     setActiveGroup(id)
     loadGroup(id).then((g) => {
       if (!alive) return
-      if (!g.role) return   // 没加入：不拉聊天记录（服务器也只给群成员）
+      if (!g.role) return   // Not joined: don't fetch chat history (the server only gives it to members anyway)
       enterRoom(id)
       loadGroupHistory(id).catch(() => {})
     }).catch((e) => { if (alive) setLoadErr(errorText(e, t('加载失败'))) })
     return () => { alive = false; setActiveGroup(null) }
   }, [id, status, loadGroup, loadGroupHistory, enterRoom, exitRoom])
 
-  // 群的代币地址是唯一行情标识；普通群不请求报价，也不显示交易入口。
+  // The group's token address is the sole market-data key; regular groups don't request quotes or show a trade entry.
   useEffect(() => {
     setTrade(null); setQuoteFailed(false)
     if (!groupToken) return
@@ -224,14 +224,14 @@ export default function GroupChat() {
     setText(''); setReplyTo(null); emoji.dismiss()
   }
 
-  // 相册多选：最多 9 张，多了只取前 9 张
+  // Album multi-pick: at most 9, extras are dropped beyond the first 9
   const pickMedia = (files: FileList | null) => {
     const { files: picked, truncated } = pickMediaFiles(files)
     if (fileInput.current) fileInput.current.value = ''
     if (truncated) toast.error(t('最多选 {n} 张', { n: MAX_PICK }))
     if (picked.length) { setToolsOpen(false); media.start(picked) }
   }
-  // 语音录完直接上传（上传中屏幕中间出一个小浮层，不占输入栏）
+  // Voice uploads right after recording (a small floating indicator mid-screen while uploading, doesn't occupy the input bar)
   const sendVoice = async (blob: Blob, seconds: number) => {
     setUploading(true)
     try {
@@ -252,8 +252,8 @@ export default function GroupChat() {
   const openRequests = async () => {
     try { setRequests(await api(`/api/groups/${id}/requests`)); setRequestsOpen(true) } catch (e) { toast.error(errorText(e, t('加载失败'))) }
   }
-  // 待处理的入群申请（2026-10-03 goat：「我申请了加入群组，用户在哪里同意申请呢」——以前要点开成员列表才找得到）：
-  // 管理员进群就查一次，有的话群顶上一条「N 人申请加入 · 去处理」；从「申请加入」通知点进来（?requests=1）直接打开申请列表
+  // Pending join requests (2026-10-03 goat: "I applied to join a group — where does the user approve it?" — previously buried inside the member list):
+  // Admins check once on entering the group; if any, a "N requests to join · handle" banner at the top; entering from the "join request" notification (?requests=1) opens the request list directly
   const [searchParams, setSearchParams] = useSearchParams()
   const [pendingN, setPendingN] = useState(0)
   const approval = isAdmin && group?.joinMode === 'approval'
@@ -270,17 +270,17 @@ export default function GroupChat() {
     searchParams.delete('requests'); setSearchParams(searchParams, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approval, searchParams])
-  // 通过 / 拒绝入群申请；处理完最后一条自动关闭弹层
+  // Approve / reject join requests; the sheet auto-closes after the last one is handled
   const decide = async (addr: string, action: 'approve' | 'reject') => {
     try { await api(`/api/groups/${id}/requests/${addr}/${action}`, { method: 'POST' }); setRequests((r) => { const left = r.filter((x) => x.address !== addr); if (!left.length) setRequestsOpen(false); return left }); setPendingN((n) => Math.max(0, n - 1)); loadGroup(id); useSocial.getState().loadGroups() } catch (e) { toast.error(errorText(e, t('操作失败'))) }
   }
-  // 群管理（2026-09-27 goat）：改群名、群公告、全体禁言；禁言某人在成员操作里
+  // Group management (2026-09-27 goat): rename group, group announcement, mute-all; muting a specific person lives in member actions
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [annOpen, setAnnOpen] = useState(false)
   const [form, setForm] = useState<{ name: string; announcement: string; avatar: string | null }>({ name: '', announcement: '', avatar: null })
   const [saving, setSaving] = useState(false)
   const openSettings = () => { if (!group) return; setForm({ name: group.name, announcement: group.announcement || '', avatar: group.avatar || null }); setShowMembers(false); setAnnOpen(false); setSettingsOpen(true) }
-  // 群头像（2026-10-07 goat「名字头像都可以修改，群主自己就能改」，官方社区也一样）：选图 → 压缩 → 上传，点「保存」才生效
+  // Group avatar (2026-10-07 goat: "name and avatar are both editable, the owner does it themselves" — same for official communities): pick → compress → upload, takes effect on "Save"
   const avatarInput = useRef<HTMLInputElement>(null)
   const [avatarBusy, setAvatarBusy] = useState(false)
   const pickAvatar = async (f?: File | null) => {
@@ -296,19 +296,19 @@ export default function GroupChat() {
     if (!form.name.trim()) return toast.error(t('请填写群名'))
     setSaving(true)
     try {
-      // 官方社区群主也能改群名和头像（2026-10-07 goat）；头像空字符串 = 去掉
+      // Official community owners can also rename and change the avatar (2026-10-07 goat); empty avatar string = remove
       await api(`/api/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name: form.name.trim(), avatar: form.avatar || '', announcement: form.announcement.trim() }) })
       toast.success(t('已保存')); setSettingsOpen(false); loadGroup(id); useSocial.getState().loadGroups()
     } catch (e) { toast.error(errorText(e, t('保存失败'))) } finally { setSaving(false) }
   }
-  // 进群需要验证（2026-10-07 goat：群设置里没有这个开关，服务器早就支持 joinMode）：开 = 申请后群主 / 管理员同意才进，关 = 直接加入
+  // Join requires approval (2026-10-07 goat: the group settings had no such switch, but the server has long supported joinMode): on = owner/admin approval needed after applying, off = join directly
   const setJoinMode = async (mode: 'open' | 'approval') => {
     try { await api(`/api/groups/${id}`, { method: 'PUT', body: JSON.stringify({ joinMode: mode }) }); loadGroup(id); useSocial.getState().loadGroups() } catch (e) { toast.error(errorText(e, t('操作失败'))) }
   }
   const setMuteAll = async (on: boolean) => {
     try { await api(`/api/groups/${id}/mute-all`, { method: 'POST', body: JSON.stringify({ on }) }); loadGroup(id) } catch (e) { toast.error(errorText(e, t('操作失败'))) }
   }
-  // 禁止群成员私信（2026-09-29 goat）：群主 / 管理员 / 平台工作人员随时可以开关，服务器按同样的身份核对
+  // Block member DMs (2026-09-29 goat): owner / admins / platform staff can toggle anytime, the server verifies the same identity
   const setDmLock = async (on: boolean) => {
     try { await api(`/api/groups/${id}/dm-lock`, { method: 'POST', body: JSON.stringify({ on }) }); loadGroup(id) } catch (e) { toast.error(errorText(e, t('操作失败'))) }
   }
@@ -318,7 +318,7 @@ export default function GroupChat() {
   const [gateOpen, setGateOpen] = useState(false)
   const [transferTo, setTransferTo] = useState<Member | null>(null)
   const [rechecking, setRechecking] = useState(false)
-  // 复核成员持仓：不再满足门槛的普通成员被移出
+  // Re-verify member holdings: regular members no longer meeting the threshold get removed
   const recheck = async () => {
     setRechecking(true)
     try { const r = await api<{ checked: number; removed: number; failed: number }>(`/api/groups/${id}/gate/recheck`, { method: 'POST' }); toast.success(r.failed ? t('复核 {checked} 人，移出 {removed} 人，{failed} 人暂时无法查询', { checked: r.checked, removed: r.removed, failed: r.failed }) : t('复核 {checked} 人，移出 {removed} 人', { checked: r.checked, removed: r.removed })); loadGroup(id) } catch (e) { toast.error(errorText(e, t('复核失败'))) } finally { setRechecking(false) }
@@ -343,7 +343,7 @@ export default function GroupChat() {
       ]
     }
     const isText = !m.kind || m.kind === 'text'
-    // 撤回：自己发的文字 / 图片 / 视频 / 语音，2 分钟内，所有人那里都删掉且不留提示。红包、礼物、转账等涉及资金的不能撤回
+    // Unsend: own text / images / videos / voice, within 2 minutes, deleted for everyone with no trace. Money-related messages (red packets, gifts, transfers) can't be unsent
     const recallable = m.from === me?.address && Date.now() - m.ts < RECALL_MS && (!m.kind || ['text', 'image', 'video', 'voice'].includes(m.kind))
     return [
       ...(recallable ? [{ key: 'recall', label: t('撤回'), icon: <Undo2 size={17} />, onSelect: () => { setMenu(null); deleteGroupMessage(id, m.id, 'all').then(() => toast.success(t('已撤回'))).catch((e) => toast.error(errorText(e, t('撤回失败')))) } }] : []),
@@ -353,7 +353,7 @@ export default function GroupChat() {
     ]
   }
 
-  // 「正在输入」提示已去掉（2026-09-25 goat：占地方），也就不再上报输入状态
+  // The "typing…" indicator was removed (2026-09-25 goat: took up space), so typing status is no longer reported either
   const onType = (v: string) => setText(v)
 
   if (loadErr) {
@@ -379,7 +379,7 @@ export default function GroupChat() {
         <button onClick={() => setShowMembers(true)} className="icon-button" aria-label={t('成员')} title={t('成员')}><Users size={20} /></button>
       </header>
 
-      {/* 群里正在开会：点了直接进（设了密码的进会页会让输密码） */}
+      {/* Meeting in progress in this group: tap to join directly (the meeting page asks for the password if one is set) */}
       {isMember && gMeeting && (
         <button onClick={() => nav(`/meet/${gMeeting.id}`)} className="flex shrink-0 items-center gap-2 border-b border-line bg-up/10 px-4 py-2.5 text-left text-[13px] font-medium" data-testid="group-meeting-bar">
           <Video size={15} className="shrink-0 text-up" aria-hidden="true" />
@@ -388,7 +388,7 @@ export default function GroupChat() {
           <span className="shrink-0 font-semibold text-up">{t('加入')}</span>
         </button>
       )}
-      {/* 待处理的入群申请（管理员才看得到） */}
+      {/* Pending join requests (admins only) */}
       {approval && pendingN > 0 && (
         <button onClick={() => void openRequests()} className="flex shrink-0 items-center gap-2 border-b border-line bg-accent/15 px-4 py-2.5 text-left text-[13px] font-medium" data-testid="group-requests-bar">
           <UserPlus size={15} className="shrink-0 text-accent" aria-hidden="true" />
@@ -397,7 +397,7 @@ export default function GroupChat() {
           <ChevronRight size={14} className="shrink-0 text-accent" />
         </button>
       )}
-      {/* 群公告：只有群成员看得到（服务器只给群成员返回），点开看全文 */}
+      {/* Group announcement: members only (the server only returns it to members), tap to read the full text */}
       {isMember && group.announcement && (
         <button onClick={() => setAnnOpen(true)} className="flex shrink-0 items-center gap-2 border-b border-line bg-accent/10 px-4 py-2 text-left text-[13px]">
           <Megaphone size={15} className="shrink-0 text-accent" aria-hidden="true" />
@@ -435,7 +435,7 @@ export default function GroupChat() {
           if (m.meta?.event === 'packet' && m.meta.packet) {
             const p = m.meta.packet as PacketInfo
             const creator = byAddr[p.creator]
-            // 根据后续的领取事件实时更新剩余个数
+            // Remaining count updates live from subsequent claim events
             const claims = list.filter((x) => x.meta?.event === 'packet_claim' && x.meta.packetId === p.id)
             const remaining = claims.length ? Math.min(...claims.map((c) => Number(c.meta?.remainingCount ?? p.remainingCount))) : p.remainingCount
             const live = { ...p, remainingCount: remaining, status: remaining <= 0 ? 'done' : p.status }
@@ -473,7 +473,7 @@ export default function GroupChat() {
             {isAdmin && <button onClick={() => setPollOpen(true)} className="icon-button" aria-label={t('投票')} title={t('投票')}><BarChart3 size={20} /></button>}
             {group.role === 'owner' && <button onClick={() => { setToolsOpen(false); setText((v) => (v.includes(AT_ALL) ? v : `${AT_ALL} ${v}`)) }} className="icon-button" aria-label={t('@所有人')} title={t('@所有人')}><AtSign size={20} /></button>}
           </div>}
-          {/* 2026-09-26 goat：表情面板改到输入框上方（输入框钉在最底下） */}
+          {/* 2026-09-26 goat: emoji panel moved above the input (input pinned at the very bottom) */}
           {emoji.open && <EmojiPicker className="-mx-3 mb-2" onPick={emoji.pick} onBackspace={emoji.backspace} />}
           <div className="flex items-end gap-1.5">
             <button onClick={() => { emoji.setOpen(false); setToolsOpen(value => !value) }} className="icon-button" aria-label={toolsOpen ? t('收起附件') : t('添加附件')} aria-expanded={toolsOpen} title={t('附件')}>{toolsOpen ? <X size={21} /> : <Plus size={21} />}</button>
@@ -485,7 +485,7 @@ export default function GroupChat() {
         </div>
       )}
 
-      {/* 成员列表 */}
+      {/* Member list */}
       <Sheet open={showMembers} onClose={() => setShowMembers(false)} title={t('成员 · {n}', { n: group.memberCount })}>
         {group.num ? (
           <div className="mb-3 flex items-center justify-between rounded-xl bg-card2 px-3 py-2.5">
@@ -511,7 +511,7 @@ export default function GroupChat() {
       </Sheet>
       <GateSheet open={gateOpen} onClose={() => setGateOpen(false)} groupId={id} gate={group.gate} onSaved={() => { loadGroup(id); useSocial.getState().loadGroups() }} />
 
-      {/* 入群申请（管理员） */}
+      {/* Join requests (admins) */}
       <Sheet open={requestsOpen} onClose={() => setRequestsOpen(false)} title={t('入群申请')}>
         {!requests.length && <div className="py-8 text-center text-sm text-muted">{t('没有待处理的申请')}</div>}
         {requests.map((r) => (
@@ -524,7 +524,7 @@ export default function GroupChat() {
         ))}
       </Sheet>
 
-      {/* 举报列表（管理员） */}
+      {/* Report list (admins) */}
       <Sheet open={reportsOpen} onClose={() => setReportsOpen(false)} title={t('举报')}>
         {!reports.length && <div className="py-8 text-center text-sm text-muted">{t('没有待处理的举报')}</div>}
         {reports.map((r) => (
@@ -537,7 +537,7 @@ export default function GroupChat() {
       </Sheet>
 
       <RedPacketSheet open={packetOpen} onClose={() => setPacketOpen(false)} groupId={id} />
-      {/* 发起群会议：名字可不填（用「群名 群会议」），密码可不填；拿到链接的人都能进，设了密码要输密码 */}
+      {/* Start a group meeting: name optional (defaults to "<group name> group meeting"), password optional; anyone with the link can join, password required if set */}
       <Sheet open={meetOpen} onClose={() => setMeetOpen(false)} title={t('群会议')} dismissible={!meetBusy}>
         <label className="block text-xs text-muted">{t('会议名称')}
           <input value={meetForm.title} maxLength={60} onChange={(e) => setMeetForm((f) => ({ ...f, title: e.target.value }))} placeholder={`${group.name} ${t('群会议')}`} className="mt-1 w-full rounded-xl border border-line bg-card px-3 py-2.5 text-base text-fg placeholder:text-muted" />
@@ -549,7 +549,7 @@ export default function GroupChat() {
       </Sheet>
       <PollSheet open={pollOpen} onClose={() => setPollOpen(false)} groupId={id} />
 
-      {/* 群管理 */}
+      {/* Group management */}
       <Sheet open={settingsOpen} onClose={() => setSettingsOpen(false)} title={t('群管理')}>
         <div className="mb-4 flex items-center gap-3">
           <Avatar address={group.id} src={form.avatar} name={form.name || group.name} size={56} />
@@ -585,21 +585,21 @@ export default function GroupChat() {
         {isAdmin && <Button variant="secondary" className="mt-4 w-full" onClick={openSettings}>{t('编辑公告')}</Button>}
       </Sheet>
 
-      {/* 成员操作 */}
+      {/* Member actions */}
       <Sheet open={!!memberAction} onClose={() => setMemberAction(null)} title={memberAction ? displayName(memberAction) : ''}>
         {memberAction && (
           <div className="space-y-2">
             <button onClick={() => nav(`/u/${memberAction.address}`, { state: { profile: memberAction } })} className="mb-3 flex w-full items-center gap-3 text-left"><Avatar address={memberAction.address} src={memberAction.avatar} name={memberAction.nickname} size={48} /><div className="min-w-0 text-xs text-muted"><div className="truncate">{memberAction.evmAddress || memberAction.address}</div>{memberAction.bio && <div className="mt-1 text-fg">{memberAction.bio}</div>}<div className="mt-1 text-accent">{t('查看主页')} ›</div></div></button>
             {BALANCE_FEATURES && memberAction.address !== me?.address && <Button variant="secondary" className="w-full" onClick={() => { setTipTarget(memberAction); setMemberAction(null) }}><Gift size={16} /> {t('送礼物')}</Button>}
             {BALANCE_FEATURES && memberAction.address !== me?.address && <Button variant="secondary" className="w-full" onClick={() => { setTransferTo(memberAction); setMemberAction(null) }}><Wallet size={16} /> {t('转账（余额即时到账）')}</Button>}
-            {/* 私信（2026-09-29 goat：按钮只写「私信」）。群主 / 管理员 / 平台工作人员照常；普通成员在开了「禁止群成员私信」的群里不能私信其他普通成员 */}
+            {/* DM (2026-09-29 goat: the button just says "DM"). Owner / admins / platform staff as usual; regular members can't DM other regular members in groups with "block member DMs" on */}
             {memberAction.address !== me?.address && (isAdmin || staffRole
               ? <Button variant="secondary" className="w-full" onClick={() => nav(`/dm/${memberAction.address}`)}><MessageSquareLock size={16} /> {t('发私信')}</Button>
               : group.dmLocked && memberAction.role === 'member'
                 ? <p className="rounded-xl bg-card2 px-3 py-2.5 text-center text-xs text-muted">{t('群管理员已关闭群成员私信')}</p>
                 : <Button variant="secondary" className="w-full" onClick={() => nav(`/dm/${memberAction.address}`)}><MessageSquareLock size={16} /> {t('私信（需互相关注）')}</Button>)}
             {memberAction.address !== me?.address && <Button variant="ghost" className="w-full" onClick={() => report(memberAction)}><Flag size={14} /> {t('举报')}</Button>}
-            {/* 管理（2026-09-29 goat：成员管理里点人要有单独的管理菜单）。按身份显示：群主能设 / 撤管理员，也能禁言、移出、封禁管理员；管理员只能管普通成员 */}
+            {/* Manage (2026-09-29 goat: tapping a person in member management needs a dedicated manage menu). Shown per role: the owner can appoint/remove admins, and mute, remove, ban admins; admins can only manage regular members */}
             {isAdmin && memberAction.address !== me?.address && (
               <div className="mt-2 rounded-xl bg-card2 p-3">
                 <div className="mb-2 text-xs font-semibold text-muted">{t('管理此成员')}</div>
@@ -636,21 +636,21 @@ export default function GroupChat() {
 
 const AT_ALL = '@所有人'
 const MUTE_OPTIONS: [number, string][] = [[10, '10 分钟'], [60, '1 小时'], [1440, '1 天'], [10080, '7 天'], [-1, '永久']]
-/** 永久禁言在服务器存的是很远的将来 */
+/** A permanent mute is stored on the server as a far-future timestamp */
 const isForever = (ms: number) => ms > Date.now() + 3650 * 86400_000
 const muteEnd = (ms: number) => new Date(ms).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 function Bubble({ m, prev, me, member, self, reply, onReply, onMenu, onUser, liveMeeting }: { m: ChatMessage; prev?: ChatMessage; me: string; member?: Profile & { role?: Member['role'] }; self?: Profile | null; reply?: ChatMessage; onReply: () => void; onMenu: (a: MenuAnchor) => void; onUser: () => void; liveMeeting?: string | null }) {
-  // 长按 / 右键 = 操作菜单（回复、复制、删除），双击 = 回复。hook 放在最前面，保证每次渲染调用顺序一致
+  // Long-press / right-click = action menu (reply, copy, delete), double-tap = reply. Hooks go first so call order stays consistent across renders
   const press = useLongPress(onMenu, onReply)
   const nav = useNavigate()
-  // 手机 App 没有余额类功能：送礼、余额红包、领红包、红包退回这几类系统消息不显示（网页版照常）
+  // The mobile app has no balance features: system messages for gifts, balance red packets, claiming, and red-packet refunds are hidden (web unchanged)
   const ev = m.kind === 'system' ? String(m.meta?.event || '') : ''
   if (!BALANCE_FEATURES && (ev === 'gift' || ev.startsWith('cpacket'))) return null
   if (m.kind === 'system' && m.meta?.event === 'cpacket') {
     return <CreditPacketBubble packetId={String(m.meta.packetId)} creator={String(m.meta.creator)} creatorName={typeof (m.meta.params as { name?: unknown } | undefined)?.name === 'string' ? String((m.meta.params as { name: string }).name) : m.text.split(' 发了')[0]} total={Number(m.meta.total)} message={String(m.meta.message || '')} me={me} />
   }
-  // 「XX 发起了群会议」：会议还在开就带「加入」，开完了写「已结束」（2026-10-07 群会议）
+  // "XX started a group meeting": shows "Join" while the meeting is still on, "Ended" once it's over (2026-10-07 group meetings)
   if (m.kind === 'system' && m.meta?.event === 'meeting') {
     const mt = m.meta.meeting as { id?: string; title?: string; hasPassword?: boolean } | undefined
     const live = !!mt?.id && mt.id === liveMeeting
@@ -683,8 +683,8 @@ function Bubble({ m, prev, me, member, self, reply, onReply, onMenu, onUser, liv
     )
   }
   const mine = m.from === me
-  // 2026-09-25 goat：一条消息「太重」。去掉每条下面的时间和回复按钮；时间改成间隔 5 分钟以上才在中间出一条（微信式），
-  // 回复改成双击气泡或长按菜单里选
+  // 2026-09-25 goat: a message row was "too heavy". Removed the per-message timestamp and reply button; timestamps now appear as a centered divider only when the gap exceeds 5 minutes (WeChat-style),
+  // reply moved to double-tap the bubble or the long-press menu
   const grouped = prev && prev.from === m.from && prev.kind !== 'system' && m.ts - prev.ts < 60_000
   const showTime = !prev || m.ts - prev.ts > 5 * 60_000
   const name = displayName(member || { address: m.from })
@@ -693,7 +693,7 @@ function Bubble({ m, prev, me, member, self, reply, onReply, onMenu, onUser, liv
     <>
     {showTime && <div className="mb-1 mt-4 text-center text-[11px] text-muted">{chatTime(m.ts)}</div>}
     <div className={`flex items-start gap-2 ${mine ? 'flex-row-reverse' : ''} ${grouped || showTime ? 'mt-1' : 'mt-3'}`}>
-      {/* 头像：别人的在左、自己的在右；连发时后面几条留空位对齐 */}
+      {/* Avatars: others' on the left, mine on the right; consecutive messages leave the space blank to align */}
       {grouped ? <div className="w-8 shrink-0" /> : mine
         ? <Avatar address={m.from} src={self?.avatar} name={self?.nickname} size={32} chainId={self?.avatarNft?.chainId} />
         : <button onClick={onUser} className="shrink-0"><Avatar address={m.from} src={member?.avatar} name={member?.nickname} size={32} chainId={member?.avatarNft?.chainId} /></button>}
@@ -714,14 +714,14 @@ function Bubble({ m, prev, me, member, self, reply, onReply, onMenu, onUser, liv
   )
 }
 
-/** 聊天里的时间分隔：今天只显示时分，其他日子带月日 */
+/** Chat time dividers: today shows HH:mm only, other days include month/day */
 function chatTime(ts: number) {
   const d = new Date(ts), now = new Date()
   const hm = d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
   return d.toDateString() === now.toDateString() ? hm : `${d.toLocaleDateString(locale(), { month: 'numeric', day: 'numeric' })} ${hm}`
 }
 
-/** 「禁止群成员私信」开关（2026-09-29 goat）：群设置和成员管理里各放一个，样式和「全体禁言」一致 */
+/** The "block member DMs" switch (2026-09-29 goat): one in group settings and one in member management, styled like "mute all" */
 function DmLockSwitch({ on, onChange, className = '' }: { on: boolean; onChange: (on: boolean) => void; className?: string }) {
   return (
     <div className={`flex items-center justify-between gap-3 rounded-xl bg-card2 px-3 py-3 ${className}`}>

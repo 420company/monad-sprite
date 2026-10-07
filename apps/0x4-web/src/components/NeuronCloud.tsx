@@ -1,5 +1,5 @@
-// 果蝇脑神经元云：程序化生成的 2,914 条神经元，外部通过 ref 触发「放电」与「整脑脉冲」
-// 果蝇交易员页按真实模拟的 spike 数触发放电
+// Fruit-fly brain neuron cloud: 2,914 procedurally generated neurons; "fire" and "whole-brain pulse" triggered externally via ref
+// The fly-trader page fires based on the real simulated spike count
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { t } from '@/lib/i18n'
 
@@ -60,7 +60,7 @@ const NeuronCloud = forwardRef<NeuronCloudHandle, { className?: string }>(functi
     let raf = 0
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const frame = () => {
-      // reduced-motion 下按需绘制；清掉旧句柄，后续新 tick 才能重新唤醒画布。
+      // Draw on demand under reduced-motion; clear old handles so later ticks can re-wake the canvas.
       raf = 0
       ctx.clearRect(0, 0, size, size)
       ctx.drawImage(base, 0, 0, size, size)

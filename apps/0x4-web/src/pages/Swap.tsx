@@ -1,4 +1,4 @@
-// 闪兑：任意链任意代币之间互换（同链走 DEX，跨链走桥），由 LI.FI 聚合路由
+// Flash swap: swap any token on any chain (same-chain via DEX, cross-chain via bridge), routed by LI.FI aggregation
 import { useEffect, useId, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ArrowDownUp, ArrowLeft, ChevronDown, Clock, ExternalLink, RefreshCw } from 'lucide-react'
@@ -27,21 +27,21 @@ import { explorerTx } from '@/lib/rpc'
 import { useWide } from '@/desktop/useWide'
 
 const SOL_NATIVE = CHAINS[0].native
-/** 卖出 BTC 点「最大」时留给比特币网络手续费的余量（BTC） */
+/** When selling BTC with "max", the amount (BTC) reserved for Bitcoin network fees */
 const BTC_FEE_RESERVE = 0.0001
-// 默认交易对：BSC 上的 BNB → BSC 上的 USDT（2026-09-25 goat 要求，BSC 优先）
+// Default pair: BNB on BSC → USDT on BSC (2026-09-25 goat's request, BSC first)
 const BSC = CHAINS.find((c) => c.id === 56)!
 const BSC_BNB = BSC.native
 const BSC_USDT = BSC.tokens.find((x) => sameAddr(x.address, '0x55d398326f99059fF775485246999027B3197955'))!
 
-/** embedded：嵌在网页版「现货」页右栏里（2026-09-29），不显示返回按钮，标题写「闪兑与跨链」；
- *  bare：放进网页版弹窗里（2026-10-02 个人中心「闪兑」），页头整个不要，弹窗自己有标题和关闭 */
+/** embedded: nested in the web "Spot" page's right column (2026-09-29), no back button, title says "Flash swap & cross-chain";
+ *  bare: placed in a web popup (2026-10-02 profile "Flash swap"), no page header at all — the popup has its own title and close */
 export default function Swap({ embedded = false, bare = false }: { embedded?: boolean; bare?: boolean } = {}) {
   const fees = useFees((s) => s.fees)
-  // 网页版宽屏单独打开 /swap：中间一块大小合适的卡片，不铺满整屏（2026-10-05 goat「为什么要全屏」）；窄屏照手机版，嵌在现货页 / 弹窗里的不管
+  // Web widescreen opening /swap standalone: a sensibly-sized centered card, not full screen (2026-10-05 goat: "why full screen"); narrow screens follow mobile, embedded-in-spot/popup instances unaffected
   const wide = useWide()
   const deskCard = WEB_SURFACE && wide && !bare && !embedded
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），直接打开的回资产首页
+  // Back: go back if there is a previous page (its state / scroll get restored); direct opens go to the asset home
   const back = useBack('/')
   const { address, evmAddress, btcAddress, wallet, evmAccount, btc, kind } = useWallet()
   const { holdings, refresh } = usePortfolio()
@@ -57,7 +57,7 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
   const [quoting, setQuoting] = useState(false)
   const [quoteErr, setQuoteErr] = useState<string | null>(null)
   const [phase, setPhase] = useState<ExecPhase | 'idle' | 'done'>('idle')
-  /** 源链交易刚发出、还没确认时的哈希：先放区块浏览器链接（2026-10-05） */
+  /** Source-chain tx just sent, not yet confirmed: show the block explorer link first (2026-10-05) */
   const [pendingTx, setPendingTx] = useState<string | null>(null)
   const [sentHash, setSentHash] = useState<string | null>(null)
   const [quotedFor, setQuotedFor] = useState('')
@@ -65,13 +65,13 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
   const amountId = useId()
   const busy = phase === 'approving' || phase === 'signing' || phase === 'sent'
 
-  // 带参数进来（如合约页「闪兑到 Arbitrum」）：?from=链id:地址&to=链id:地址，能认出来的就预填
+  // Arriving with params (e.g. perp page's "flash swap to Arbitrum"): ?from=chainId:address&to=chainId:address — prefill what can be recognized
   const location = useLocation()
   useEffect(() => {
     const q = new URLSearchParams(location.search)
     const pick = (v: string | null): ChainToken | null => {
       if (!v) return null
-      // 比特币（2026-09-30 比特币闪兑）不在 CHAINS 里，单独认：?from=20000000000001:bitcoin
+      // Bitcoin (2026-09-30 Bitcoin flash swap) isn't in CHAINS — recognized separately: ?from=20000000000001:bitcoin
       const [cid, addr] = v.split(':'); const chain = [...CHAINS, BTC_CHAIN].find((c) => c.id === Number(cid)); if (!chain || !addr) return null
       if (sameAddr(addr, chain.native.address)) return chain.native
       const t = chain.tokens.find((x) => sameAddr(x.address, addr)); if (t) return t
@@ -85,23 +85,23 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
   }, [location.search, holdings.length])
 
   const fromHolding = findHolding(holdings, from)
-  // Solana 出发的交易要 SOL 付手续费；一点没有就别让人点到最后才报「过期」
+  // Solana-originated txs need SOL for fees; with zero SOL don't let the user click all the way through only to get "expired"
   const solBalance = usePortfolio((s) => s.solBalance)
   const needSol = from.chainId === SOLANA_CHAIN_ID && !(from.address === SOL_NATIVE.address) && solBalance < 0.003
   const balance = fromHolding?.amount ?? 0
   const amt = Number(amount)
   const valid = Number.isFinite(amt) && amt > 0 && amt <= balance && !needSol && !(from.chainId === to.chainId && sameAddr(from.address, to.address))
-  // 每条链用各自的地址：Solana / 比特币 bc1q / EVM 0x（lib/btcSwap.ts）
+  // Each chain uses its own address: Solana / Bitcoin bc1q / EVM 0x (lib/btcSwap.ts)
   const fromAddr = swapAddressFor(from.chainId, { address, evmAddress, btcAddress })
   const toAddr = swapAddressFor(to.chainId, { address, evmAddress, btcAddress })
-  // 涉及比特币：外部钱包（MetaMask 等）没有比特币，0x4 Wallet 专属；0x4 Wallet 还没生成比特币地址的，先去收款页生成
+  // Involving Bitcoin: external wallets (MetaMask etc.) have no Bitcoin — 0x4 Wallet exclusive; if the 0x4 Wallet hasn't generated a Bitcoin address yet, generate one on the receive page first
   const btcSide = isBtcChain(from.chainId) || isBtcChain(to.chainId)
   const btcBlocked = btcSide && !btcAddress ? (kind === 'external' ? t('比特币兑换是 0x4 Wallet 专属功能') : t('请先在收款页生成比特币地址')) : null
   const fromBtc = isBtcChain(from.chainId)
   const quoteKey = JSON.stringify([amount, from.chainId, from.address, from.decimals, to.chainId, to.address, to.decimals, fromAddr, toAddr, slippageBps])
   const currentQuote = quotedFor === quoteKey && valid && !quoting
 
-  // 报价（防抖）
+  // Quotes (debounced)
   useEffect(() => {
     if (busy) return
     setQuote(null); setQuoteErr(null); setQuotedFor(''); setQuoting(false)
@@ -118,7 +118,7 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
         })
         if (alive) { setQuote(q); setQuotedFor(quoteKey) }
       } catch (e) {
-        // 卖出 BTC：跨链服务按地址查 UTXO，刚转入还没确认时会查不到（2026-09-30 实测 1003 No UTXOs found）
+        // Selling BTC: the cross-chain service looks up UTXOs by address — just-deposited unconfirmed funds won't be found (2026-09-30 test: 1003 No UTXOs found)
         const noUtxo = e instanceof Error && /UTXO/i.test(e.message)
         if (alive) setQuoteErr(noUtxo ? t('比特币余额暂不可用，请等入账确认后再试') : e instanceof Error && (e.message.includes('404') || e.message.includes('No available')) ? t('暂无可用路线，试试换个币种或金额') : errorText(e, t('报价失败')))
       } finally {
@@ -129,7 +129,7 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
   }, [busy, amount, valid, from, to, fromAddr, toAddr, slippageBps, quoteKey, retry])
 
   const summary = useMemo(() => (quote ? summarizeStep(quote) : null), [quote])
-  // 价格：代币自带的 → 持仓里的（网址预选的 BTC 这类原生币不带价格）→ 稳定币按 1
+  // Price: the token's own → from holdings (URL-preselected native coins like BTC carry no price) → stables at 1
   const priceOf = (t: ChainToken) => t.priceUsd || findHolding(holdings, t)?.priceUsd || (isStable(t.symbol) ? 1 : 0)
   const outAmount = summary ? fromBaseUnits(summary.toAmount, to.decimals) : null
 
@@ -148,7 +148,7 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
         fromAmount: amt, toAmount: outAmount || 0, tool: quote.tool,
       })
       toast.success(summary?.crossChain ? t('已发出，等待跨链到账') : t('闪兑成功'))
-      // 换出 / 换入的若是山寨币，记为卖出 / 买入
+      // If the from / to token is an altcoin, record as sell / buy
       if (isReportable(from)) reportTrade({ side: 'sell', chainId: from.chainId, token: from.address, symbol: from.symbol, name: from.name, logo: from.logo, qty: amt, usd: summary?.fromAmountUsd || amt * priceOf(from), tx: hash })
       if (isReportable(to)) reportTrade({ side: 'buy', chainId: to.chainId, token: to.address, symbol: to.symbol, name: to.name, logo: to.logo, qty: outAmount || 0, usd: summary?.toAmountUsd || (outAmount || 0) * priceOf(to), tx: hash + ':in' })
       setAmount('')
@@ -160,19 +160,19 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
   }
 
   const sent = sentHash ? transfers.find((t) => t.txHash === sentHash) : undefined
-  // 进度：网页版明说「请在 0x4 插件窗口里确认」，发出后「已发出，等待链上确认」（lib/execPhase.ts）
+  // Progress: web explicitly says "please confirm in the 0x4 extension window", after sending "sent, waiting for on-chain confirmation" (lib/execPhase.ts)
   const progress = busy ? execPhaseText(phase as ExecPhase, signerOf(kind)) : null
   const pendingLink = pendingTx ? (from.chainId === SOLANA_CHAIN_ID ? explorerTx(pendingTx) : CHAINS.find((c) => c.id === from.chainId)?.explorerTx(pendingTx)) : undefined
   const btnText = progress ? progress.main : !amt ? t('输入金额') : amt > balance ? t('余额不足') : quoting ? t('获取最优路线…') : quoteErr ? t('无可用路线') : summary?.crossChain ? t('确认跨链闪兑') : t('确认闪兑')
 
   return (
     <div className={deskCard ? 'desk-swap wc-panel' : bare ? '' : 'safe-top'}>
-      {/* 闪兑不是底部标签页，从资产首页 / 币详情进来：左上角给个返回（以前没有，只能点底部标签离开） */}
+      {/* Flash swap isn't a bottom tab; entering from the asset home / coin details: give it a top-left back button (previously none — you could only leave via bottom tabs) */}
       {!bare && <header className="page-header page-gutter"><div className="flex items-center gap-1">{!embedded && <button onClick={back} className="icon-button -ml-2" aria-label={t('返回')} data-tooltip={t('返回')}><ArrowLeft size={21} /></button>}<h1 className="page-title">{embedded ? t('闪兑与跨链') : t('闪兑')}</h1></div></header>}
       <div className="page-gutter">
       <fieldset disabled={busy} className="min-w-0 disabled:opacity-60">
 
-      {/* 支付 */}
+      {/* Pay */}
       <section className="py-2" aria-label={t('支付资产')}>
         <div className="flex items-center justify-between gap-3">
           <label htmlFor={amountId} className="text-sm text-muted">{t('支付')}</label>
@@ -189,7 +189,7 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
         <div className="h-px flex-1 bg-line" /><button onClick={flip} disabled={busy} className="icon-button bg-card2 text-fg" aria-label={t('交换支付与接收资产')} title={t('交换资产')}><ArrowDownUp size={18} /></button><div className="h-px flex-1 bg-line" />
       </div>
 
-      {/* 收到 */}
+      {/* Receive */}
       <section className="border-b border-line pb-6" aria-label={t('接收资产')}>
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-muted">{t('预计收到')}</span>
@@ -200,12 +200,12 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
       </section>
       </fieldset>
 
-      {/* 交易详情。2026-09-28 goat：不显示兑换经过哪些平台（路线），对用户没有用 */}
+      {/* Trade details. 2026-09-28 goat: don't show which platforms the swap routes through — useless to users */}
       {currentQuote && summary && (
         <div className="mt-5 space-y-3 text-sm" aria-label={t('交易详情')}>
           <Line k={t('预计耗时')} v={<span className="flex items-center gap-1"><Clock size={12} />{summary.seconds < 60 ? t('{n} 秒', { n: summary.seconds }) : t('{n} 分钟', { n: Math.ceil(summary.seconds / 60) })}</span>} />
           <Line k={t('最少到账')} v={`${fmtAmount(fromBaseUnits(summary.toAmountMin, to.decimals), 6)} ${to.symbol}`} />
-          {/* 卖出 BTC 不收平台费，只有服务方固定费（lib/btcSwap.ts 文件头） */}
+          {/* Selling BTC carries no platform fee, only the service's fixed fee (lib/btcSwap.ts header) */}
           <Line k={t('手续费')} v={spotFeeLabel(fees, 'lifi')} />
           <Line k={t('桥 / 协议费')} v={fmtMoney(summary.feeUsd)} />
           <Line k={fromBtc ? t('比特币网络手续费') : t('预计 Gas')} v={fmtMoney(summary.gasUsd)} />
@@ -229,7 +229,7 @@ export default function Swap({ embedded = false, bare = false }: { embedded?: bo
         </div>
       )}
 
-      {/* 刚发出的订单进度 */}
+      {/* Progress of the just-sent order */}
       {sent && (
         <div className="mt-5 border-y border-line py-4 text-sm">
           <div className="flex items-center justify-between">

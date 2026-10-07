@@ -1,10 +1,10 @@
-// 网页版「行情」（2026-09-29 goat 第三轮：「说不出来哪不对，就是感觉特别奇怪」——上一版一张大卡片里画一个数据很稀的币的走势图 + 右边热门榜 + 下面卡片格子）。
-// 参考 Polymarket 首页 + GMGN / Zora 列表，去掉大走势图：
-//   2026-09-30 goat：顶部三块榜单卡（热门 / 涨幅榜 / 新币）和下面表格的页签重复，删掉，只留整宽代币表：
-//   整宽代币表——排序页签（热门 / 涨幅 / 成交额 / 新币 / 股票 / 自选）+ 链筛选 + 搜索；列 # · 代币 · 价格 · 1h · 24h · 成交额 · 流动性 · 市值 · 走势 · 交易，
-//       表头吸顶、数字列右对齐、可点表头排序，50 个一页往下加
-// 走势线只画真实数据、只在代价小的地方画：服务器 K 线通道里已经缓存的前几名（desktop/trade/spark.tsx），拿不到就不画、整列不出现。
-// 数据全部来自现有接口（发现页同一套 store/discoverFeed、自选 store/favorites、搜索 lib/market），接口失败显示空状态和重试，不放假数据。
+// Web "Markets" (2026-09-29 goat 3rd round: "can't say what's wrong, just feels really off" — the previous version drew a sparse-data coin's chart in one big card + hot list on the right + card grid below).
+// Modeled on the Polymarket homepage + GMGN / Zora lists, dropping the big chart:
+//   2026-09-30 goat: the top three list cards (hot / gainers / new) duplicated the table's tabs below — removed, leaving only the full-width token table:
+//   full-width token table — sort tabs (hot / gainers / volume / new / stocks / watchlist) + chain filter + search; columns # · token · price · 1h · 24h · volume · liquidity · mcap · spark · trade,
+//       sticky header, numeric columns right-aligned, clickable headers to sort, 50 per page appending downward
+// Sparklines draw only real data, only where it's cheap: the top rows already cached in the server candle channel (desktop/trade/spark.tsx) — if unavailable, skip drawing and hide the whole column.
+// All data from existing APIs (Discover's store/discoverFeed, watchlist store/favorites, search lib/market); API failures show empty states and retry, never fake data.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ChevronRight, CloudOff, RefreshCw, Search, Star } from 'lucide-react'
@@ -32,17 +32,17 @@ const chainLabel = (dexKey: string) => MARKET_PRIMARY.find((c) => c.dexKey === d
 const tokenPath = (x: MarketToken) => `/token/${x.chain}/${x.address}`
 const pre = (x: MarketToken) => { if (x.pairAddress) prefetchDexCandles({ chain: x.chain, address: x.address, pairAddress: x.pairAddress, interval: '1h' }) }
 const dir = (n?: number) => n == null ? 'mute' : n >= 0 ? 'up' : 'down'
-/** 榜单里的涨跌：超过 1000% 的不带小数（+59,047% 比 +59046.69% 好读，也不挤掉价格） */
+/** List change figures: over 1000% drops decimals (+59,047% reads better than +59046.69% and doesn't crowd out the price) */
 const pctShort = (n?: number) => n != null && Math.abs(n) >= 1000 ? `${n > 0 ? '+' : '-'}${Math.round(Math.abs(n)).toLocaleString('en-US')}%` : fmtPct(n)
-/** 金额类统计：数据商给 0 表示没有这项数据，显示 -- 而不是 $0.00 */
+/** Money stats: the data provider's 0 means "no such data" — show -- instead of $0.00 */
 const big = (n?: number) => (n && n > 0 ? fmtUsd(n, { compact: true }) : '--')
-/** 涨幅榜只收够深的池子：流动性和 24h 成交额都不低于 5 万美元，免得几百美元的池子拉出几千倍霸榜 */
+/** Gainers list only takes deep pools: liquidity and 24h volume both ≥ $50k, so a few-hundred-dollar pool can't print a thousand-x and dominate */
 const deep = (x: MarketToken) => (x.liquidityUsd || 0) >= 50_000 && (x.volume24h || 0) >= 50_000 && !isStable(x.symbol)
 const sortVal: Record<SortKey, (x: MarketToken) => number | undefined> = {
   price: (x) => x.priceUsd, h1: (x) => x.change1h, h24: (x) => x.change24h, vol: (x) => x.volume24h, liq: (x) => x.liquidityUsd, mcap: (x) => x.marketCap || x.fdv,
 }
 
-/** 上线多久：几分钟 / 几小时 / 几天 */
+/** How long since listing: minutes / hours / days */
 function age(ts?: number): string {
   if (!ts) return '--'
   const m = Math.max(0, Math.floor((Date.now() - ts) / 60000))
@@ -55,14 +55,14 @@ export default function Markets() {
   const { feeds, load } = useDiscoverFeed()
   const favorites = useFavorites((s) => s.items)
   const { cache, put } = useMarket()
-  // 点一个币：在行情页上弹出交易窗口（2026-10-05 goat），不再跳去现货页
+  // Clicking a coin: pop the trade window over the market page (2026-10-05 goat) — no more jumping to the spot page
   const [quick, setQuick] = useState<{ chain: string; address: string } | null>(null)
   const [tab, setTab] = usePageState<Tab>('desk.markets.tab2', 'hot', oneOf('hot', 'gain', 'volume', 'new', 'stocks', 'favorites'))
   const [chain, setChain] = usePageState<string>('desk.markets.chain', 'all')
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean } | null>(null)
   const [limit, setLimit] = useState(PAGE)
   const [query, setQuery] = useState('')
-  // 搜索结果（2026-09-30：官方置顶、冒牌不显示，规则见 lib/market.ts rankSearch）
+  // Search results (2026-09-30: official pinned, impostors hidden — rules in lib/market.ts rankSearch)
   const [found, setFound] = useState<SearchResult | null>(null)
   const results = found?.tokens ?? null
   const [searching, setSearching] = useState(false)
@@ -72,7 +72,7 @@ export default function Markets() {
   const listRef = useRef<HTMLElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  // 热门 / 涨幅 / 新币几个页签的数据：进页面拉一次，之后 20 秒刷新（页面在后台时不拉）
+  // Data for the hot / gainers / new tabs: fetched once on entry, refreshed every 20s (not while the page is in background)
   useEffect(() => {
     const all = (force: boolean) => { void load('market', force); void load('hot', force); void load('new', force) }
     all(false)
@@ -83,7 +83,7 @@ export default function Markets() {
   useEffect(() => { if (tab === 'stocks') void load('stocks') }, [tab, load])
   useEffect(() => { setLimit(PAGE) }, [tab, chain, query, sort])
   useEffect(() => { setSort(null) }, [tab])
-  // 键盘 / 聚焦搜索（和外框 ⌘K 不冲突：只在没有别的输入框聚焦时）
+  // Keyboard / focus search (no conflict with the shell ⌘K: only when no other input is focused)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
@@ -95,7 +95,7 @@ export default function Markets() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // 自选：按链批量取最新报价，20 秒刷新
+  // Watchlist: latest quotes batched per chain, refreshed every 20s
   useEffect(() => {
     if (tab !== 'favorites' || !favorites.length) return
     let alive = true
@@ -113,7 +113,7 @@ export default function Markets() {
     return () => { alive = false; clearInterval(id) }
   }, [tab, favorites, put, favRetry])
 
-  // 搜索：名称、符号或合约地址，停手 350 毫秒再查
+  // Search: name, symbol or contract address — query 350ms after the user stops typing
   useEffect(() => {
     const q = query.trim()
     if (!q) { setFound(null); setSearching(false); return }
@@ -135,9 +135,9 @@ export default function Markets() {
   }, [market.list, hot.list])
   const newest = useMemo(() => [...fresh.list].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)), [fresh.list])
   const byVolume = useMemo(() => [...market.list].filter((x) => !isStable(x.symbol)).sort((a, b) => (b.volume24h || 0) - (a.volume24h || 0)), [market.list])
-  // 自选：收藏了的一律显示（2026-10-02 goat：收藏两个新币后默认 5 个「消失」了、数字还是 7）。
-  // 以前只显示拿到了报价的，某次报价没拉回来那几行就不见了；现在没报价的那行价格显示「--」，下次刷新拿到再补上。
-  // 名字用收藏时存的叫法（BTC、BNB），不露出行情里的 BTCB / WBNB，和手机端一致。
+  // Watchlist: everything favorited is shown (2026-10-02 goat: after favoriting two new coins, 5 of the defaults "disappeared" while the count still said 7).
+  // Previously only rows with quotes were shown — rows whose quotes failed to arrive vanished; now quote-less rows show "--" for price and get filled in on the next refresh.
+  // Names use the favorited label (BTC, BNB), not the market feed's BTCB / WBNB — consistent with mobile.
   const favList = useMemo(() => favorites.map((f): MarketToken => {
     const q = cache[marketKey(f.chain, f.address)]
     return q ? { ...q, symbol: f.symbol } : { chain: f.chain, chainId: f.chainId, address: f.address, symbol: f.symbol, name: f.name, logo: f.logo || '', priceUsd: undefined as unknown as number }
@@ -158,7 +158,7 @@ export default function Markets() {
       return sort.desc ? vb - va : va - vb
     })
   }, [filtered, sort])
-  // 自选一个报价都还没拿到时才显示「加载中 / 加载失败」；拿到一部分就先显示，没拿到的那几行价格是「--」
+  // "Loading / load failed" only shows when no quotes have arrived at all; partial quotes display immediately, missing rows show "--"
   const favQuoted = favorites.some((f) => cache[marketKey(f.chain, f.address)])
   const loading = results ? searching : tab === 'favorites' ? favState === 'loading' && !favQuoted : !!feed && !feed.at && !feed.list.length && (feed.loading || !feed.error)
   const failed = !results && (tab === 'favorites' ? favState === 'error' && !favQuoted : !!feed?.error && !feed.list.length)
@@ -168,11 +168,11 @@ export default function Markets() {
   }
   const shown = list.slice(0, limit)
 
-  // 走势线：只问表格前 12 行（服务器只查缓存）；一个都没拿到就整列不显示
+  // Sparklines: only asked for the table's first 12 rows (server checks cache only); if none arrive, the whole column hides
   const sparkWant = useMemo(() => shown.slice(0, 12), [shown])
   const sparks = useSparks(sparkWant, 20)
   const tableSpark = shown.some((x) => sparks.has(sparkKey(x)))
-  /** 表格一行（排名那一格传进来：正常结果写名次，折叠展开的写「·」） */
+  /** One table row (rank cell passed in: normal results write the rank, expanded-collapse rows write "·") */
   const mrow = (x: MarketToken, rank: string) => {
     const pts = sparks.get(sparkKey(x))
     return (
@@ -250,7 +250,7 @@ export default function Markets() {
                 </>}
         </div>
       </section>
-      {/* 2026-10-03 goat：原来左边那句「价格来自各链去中心化交易所的实时成交。」删掉，只留右边的链接 */}
+      {/* 2026-10-03 goat: the old left-side line "Prices are live fills from DEXs on each chain." was removed, keeping only the right-side link */}
       <p className="tx-mfoot"><Link to="/spot" className="tx-link">{t('去现货交易')}<ChevronRight size={13} /></Link></p>
       {quick && <TokenQuick key={`${quick.chain}:${quick.address}`} chain={quick.chain} address={quick.address} onClose={() => setQuick(null)} />}
     </div>

@@ -1,4 +1,4 @@
-// 转账工具：SOL / SPL 代币 / EVM 原生币 / ERC20，用于打赏与发送
+// Transfer utility: SOL / SPL tokens / EVM native coins / ERC20, for tipping and sending
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js'
 import type { SolanaWallet } from '@/lib/vault/signers'
 import { getAssociatedTokenAddressSync, createTransferCheckedInstruction, createAssociatedTokenAccountIdempotentInstruction, getMint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token'
@@ -11,14 +11,14 @@ import { t } from '@/lib/i18n'
 
 export interface TransferParams {
   chainId: number
-  /** 原生币用 NATIVE_SOL / NATIVE_EVM，SPL 用 mint，ERC20 用合约 */
+  /** Native coins use NATIVE_SOL / NATIVE_EVM, SPL uses mint, ERC20 uses the contract */
   token: string
   decimals: number
   amount: string | number
   to: string
 }
 
-/** 判断 mint 属于哪个 Token 程序（Token-2022 需要不同的 programId） */
+/** Determine which Token program a mint belongs to (Token-2022 needs a different programId) */
 async function tokenProgramFor(conn: Connection, mint: PublicKey): Promise<PublicKey> {
   const info = await conn.getAccountInfo(mint)
   return info?.owner.equals(TOKEN_2022_PROGRAM_ID) ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID
@@ -38,7 +38,7 @@ export async function transferSolana(rpcUrl: string, from: SolanaWallet, p: Tran
     const toAta = getAssociatedTokenAddressSync(mint, to, true, program)
     const raw = parseUnits(String(p.amount), mintInfo.decimals)
     tx.add(
-      // 对方没有代币账户就顺手创建（幂等）
+      // Create the recipient's token account on the fly when missing (idempotent)
       createAssociatedTokenAccountIdempotentInstruction(from.publicKey, toAta, to, mint, program),
       createTransferCheckedInstruction(fromAta, mint, toAta, from.publicKey, raw, mintInfo.decimals, [], program),
     )
@@ -55,7 +55,7 @@ export async function transferSolana(rpcUrl: string, from: SolanaWallet, p: Tran
 export async function transferEvm(account: Account, p: TransferParams): Promise<string> {
   const chain = chainById(p.chainId)?.viem
   if (!chain) throw new Error(t('不支持的链'))
-  // 外部钱包（网页版 MetaMask 等）由它自己签名广播，见 lib/evm.ts walletClientFor
+  // External wallets (web MetaMask etc.) sign and broadcast themselves — see lib/evm.ts walletClientFor
   const wallet = await walletClientFor(account, p.chainId)
   let hash: Hex
   if (isNative(p.token)) {
@@ -68,7 +68,7 @@ export async function transferEvm(account: Account, p: TransferParams): Promise<
   return hash
 }
 
-/** 统一入口：按链选择签名方式 */
+/** Unified entry: pick the signing method by chain */
 export async function transfer(p: TransferParams, signers: { solana: SolanaWallet | null; evm: Account | null; solanaRpc: string }): Promise<string> {
   if (p.chainId === SOLANA_CHAIN_ID) {
     if (!signers.solana) throw new Error(t('缺少 Solana 密钥'))

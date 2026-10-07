@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-// 工作人员名字的宜家配色（黄字蓝描边）：
-// ① 服务端说是 admin / support → 名字带 staff-name class（大字号变体再带 staff-name-lg）
-// ② 普通用户原样显示，不带 class
-// ③ 接口失败 → 按普通用户显示，不猜
+// Staff names' IKEA colors (yellow text, blue outline):
+// 1. Server says admin / support → the name gets the staff-name class (the large variant additionally gets staff-name-lg)
+// 2. Regular users display as-is, no class
+// 3. API failure → display as a regular user, no guessing
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -38,7 +38,7 @@ const render = (els: ReturnType<typeof createElement>[]) => act(() => root.rende
 const byText = (txt: string) => [...host.querySelectorAll('*')].find((e) => e.textContent === txt && e.children.length === 0) ?? null
 
 describe('UserName', () => {
-  // 2026-09-27 goat：管理员和客服的名字不再上色，和普通用户一样
+  // 2026-09-27 goat: admin and support names are no longer colored — same as regular users
   it('管理员、客服、普通用户的名字都不带 staff-name，调用方的 class 保留', async () => {
     render([
       createElement(UserName, { key: 1, address: ADMIN, name: 'Goat' }),

@@ -1,4 +1,4 @@
-// 直播排行（2026-09-30）：PK 胜场（主播）和送礼（观众）的日榜、周榜，北京时间。不显示金额（送礼榜只排名次）。
+// Live rankings (2026-09-30): daily and weekly boards for PK wins (hosts) and gifting (viewers), Beijing time. No amounts shown (gifting board ranks only).
 import { useEffect, useState } from 'react'
 import Sheet from '@/components/Sheet'
 import Avatar from '@/components/Avatar'

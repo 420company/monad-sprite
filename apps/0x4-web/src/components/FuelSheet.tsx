@@ -1,5 +1,5 @@
-// 「我」页 → 燃料费（2026-09-27 goat）：自动补充燃料费开关 + BNB 预存金额（最少 10 美元）+ 各链燃料费状态
-// 预存就是用户自己钱包 BSC 上的 BNB：App 买币时不动这部分，只拿它给其它链补燃料费（lib/gas.ts）
+// "Me" page → Gas (2026-09-27 goat): auto gas top-up switch + BNB reserve amount (min $10) + per-chain gas status
+// The reserve is BNB on BSC in the user's own wallet: the app never touches it when buying coins, only uses it to top up gas on other chains (lib/gas.ts)
 import { useEffect, useState } from 'react'
 import Sheet from '@/components/Sheet'
 import Button from '@/components/Button'
@@ -18,7 +18,7 @@ import { Check, LoaderCircle, Minus, Plus, Search } from 'lucide-react'
 import { t } from '@/lib/i18n'
 import { errorText } from '@/lib/errors'
 
-// 自己添加的链上次报价的时间（这次打开 App 内）
+// Last quote time for user-added chains (within this app open)
 const probedAt = new Map<number, number>()
 const prefersReducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false } }
 
@@ -26,16 +26,16 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
   const { autoRefuel, gasReserveUsd, setAutoRefuel, fuelChains, removeFuelChain } = useSettings()
   const holdings = usePortfolio((s) => s.holdings)
   const scannedChains = usePortfolio((s) => s.scannedChains)
-  // 显示的链：默认五条 + 用户添加的（lib/fuelChains.ts；自动补充读同一份）
+  // Shown chains: the default five + user-added ones (lib/fuelChains.ts; auto top-up reads the same list)
   const watch = fuelWatchList(fuelChains)
   const [picking, setPicking] = useState(false)
   const [editing, setEditing] = useState(false)
   const [leaving, setLeaving] = useState<number | null>(null)
-  // 路线暂不可用的记号变了（报价失败 / 恢复）就重画
+  // Re-render when a route's "temporarily unavailable" mark changes (quote failed / recovered)
   const [, setRouteTick] = useState(0)
   useEffect(() => onRouteChange(() => setRouteTick((x) => x + 1)), [])
   useEffect(() => { if (!fuelChains.length) setEditing(false) }, [fuelChains.length])
-  // 移除：先淡出再删（减弱动态效果时直接删）
+  // Remove: fade out first, then delete (delete directly under reduce-motion)
   const removeChain = (id: number) => {
     if (prefersReducedMotion()) { removeFuelChain(id); return }
     setLeaving(id)
@@ -43,7 +43,7 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
   }
   const evmAccount = useWallet((s) => s.evmAccount)
   const { run, checkRoute, busyChain, bnbUsd } = useRefuel()
-  // 打开时给自己添加的链各报一次价（30 分钟内报过的不重复），暂时没有路线的行内显示「暂不可补」
+  // On open, quote each user-added chain once (skip ones quoted within 30 min); rows with no route yet show "temporarily untoppable" inline
   useEffect(() => {
     if (!open) return
     let alive = true
@@ -58,7 +58,7 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
     return () => { alive = false }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
   const [draft, setDraft] = useState(String(gasReserveUsd))
-  // 各链燃料费标准按服务器实测（每 3 小时更新），拿到后重新判断一次
+  // Per-chain gas standards follow the server's measurements (refreshed every 3h) — re-evaluate once received
   const [, setRulesTick] = useState(0)
   useEffect(() => { loadGasRules().then(() => setRulesTick((x) => x + 1)) }, [])
   useEffect(() => { if (open) setDraft(String(gasReserveUsd)) }, [open, gasReserveUsd])
@@ -71,8 +71,8 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
   }
   const short = autoRefuel ? Math.max(0, gasReserveUsd - bnbUsd) : 0
 
-  // 2026-09-29 goat：顶部文字太多、断句和对齐难看；图标换成三档油量表（components/FuelGauge）。
-  // 排版：说明只留一句；卡片里标签在左、数值 / 开关 / 按钮在右，统一 16px 内边距；每条链右边都有东西（按钮或状态），左右对齐
+  // 2026-09-29 goat: too much text at the top with ugly line breaks and alignment; icon swapped for the three-level gas gauge (components/FuelGauge).
+  // Layout: keep one line of explanation; labels on the left, values / switches / buttons on the right in cards, uniform 16px padding; every chain has something on the right (button or status) for left-right alignment
   return (
     <Sheet open={open} onClose={onClose} title={t('燃料费')}>
       <p className="text-[13px] leading-6 text-muted"><span className="block">{t('每条链用自己的币付燃料费。')}</span><span className="block text-pretty">{t('开启自动补充，哪条链不够就从 BNB 换一点过去。')}</span></p>
@@ -104,7 +104,7 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
         </div>
       </div>
 
-      {/* 2026-09-29 goat：「添加链」放在链列表顶部，做成操作区而不是列表里的一行，免得和链混在一起 */}
+      {/* 2026-09-29 goat: "Add chain" sits above the chain list as an action area, not as a row inside the list — so it doesn't blend in with chains */}
       <div className="mt-5 mb-2 flex items-center gap-2 px-1">
         <span className="flex-1 text-xs font-medium tracking-wide text-muted">{t('各链余额')}</span>
         {fuelChains.length > 0 && <button onClick={() => setEditing((v) => !v)} className="h-8 shrink-0 rounded-full px-3 text-xs font-medium text-muted active:bg-card2">{editing ? t('完成') : t('编辑')}</button>}
@@ -122,7 +122,7 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
           const extra = fuelChains.includes(id)
           const down = id !== BSC && isRouteDown(id)
           const name = fuelChainName(c.name)
-          // 刚添加的链余额还没扫到：先不下结论，显示「读取中」，不显示「不足」和补充按钮
+          // A just-added chain whose balance hasn't been scanned yet: hold judgment, show "loading" — not "low" or the top-up button
           const pending = extra && !scannedChains.includes(id)
           return (
             <div key={id} className={`flex min-h-16 items-center gap-3 py-3 ${leaving === id ? 'fuel-row-out' : extra ? 'fuel-row-in' : ''}`}>
@@ -130,7 +130,7 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
                 ? <button onClick={() => removeChain(id)} aria-label={t('移除 {chain}', { chain: name })} className="grid size-[26px] shrink-0 place-items-center rounded-full bg-down text-white"><Minus size={16} strokeWidth={2.6} /></button>
                 : <FuelGauge level={pending ? 'middle' : level} size={26} className={`text-muted ${pending ? 'opacity-40' : ''}`} />}
               <span className="min-w-0 flex-1">
-                {/* 2026-09-29 goat：状态字挨着链名，不和右边的补充按钮抢位置 */}
+                {/* 2026-09-29 goat: the status word sits next to the chain name, not competing with the top-up button on the right */}
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="truncate text-sm font-medium leading-5">{name}</span>
                   {!pending && <span className={`shrink-0 rounded-full px-1.5 text-[11px] font-medium leading-[18px] ${FUEL_TONE[level]}`}>{fuelShort(level)}</span>}
@@ -138,7 +138,7 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
                 <span className="block text-xs leading-5 text-muted tabular-nums">{pending ? `${c.native.symbol} · ${t('读取中')}` : `${c.native.symbol} · $${usd.toFixed(2)}`}</span>
                 {!ok && hasCoins && <span className="block text-xs leading-5 text-warning">{t('卖出前需要补充')}</span>}
               </span>
-              {/* 按钮只写「添加」（2026-09-29 goat）；金额在验证面板说明和成功提示里。先报价：没路线时不弹密码、不发交易 */}
+              {/* The button just says "Add" (2026-09-29 goat); the amount is stated in the verification panel and the success toast. Quote first: no password prompt, no tx when there's no route */}
               {!editing && !pending && id !== BSC && !ok && (down
                 ? <span className="shrink-0 text-xs text-muted">{t('暂不可补')}</span>
                 : <Button size="sm" variant="secondary" className="min-w-[4.25rem] shrink-0" loading={busyChain === id} disabled={!evmAccount}
@@ -154,20 +154,20 @@ export default function FuelSheet({ open, onClose }: { open: boolean; onClose: (
   )
 }
 
-/** 选链面板：只列实测能从 BNB 补燃料费的链；点一下加入 / 移出。加入前先报一次价，暂时没有路线就不加 */
+/** Chain picker panel: lists only chains measured able to receive gas from BNB; tap to add / remove. Quote once before adding — don't add if there's no route yet */
 function FuelChainPicker({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { fuelChains, addFuelChain, removeFuelChain } = useSettings()
   const { checkRoute } = useRefuel()
   const [q, setQ] = useState('')
   const [checking, setChecking] = useState<number | null>(null)
-  // 打开面板时记下已添加的链排在最前面；面板里点选时不重排，免得行跳来跳去
+  // Snapshot the added chains at panel open and pin them first; don't re-sort on taps inside the panel — rows shouldn't jump around
   const [pinned, setPinned] = useState<number[]>([])
   useEffect(() => { if (open) { setQ(''); setPinned(useSettings.getState().fuelChains) } }, [open])
   const key = q.trim().toLowerCase()
   const list = ADDABLE_FUEL_CHAINS.map((id) => chainById(id)).filter((c): c is NonNullable<typeof c> => !!c)
     .filter((c) => !key || fuelChainName(c.name).toLowerCase().includes(key) || c.native.symbol.toLowerCase().includes(key))
     .sort((a, b) => Number(pinned.includes(b.id)) - Number(pinned.includes(a.id)))
-  // 一页 10 条（2026-09-29 goat：列表太长），换搜索词回到第 1 页
+  // 10 per page (2026-09-29 goat: the list was too long); changing the search term returns to page 1
   const pager = usePager(list, { reset: `${open}:${key}`, size: 10 })
   const toggle = async (id: number, name: string) => {
     if (checking !== null) return
@@ -206,10 +206,10 @@ function FuelChainPicker({ open, onClose }: { open: boolean; onClose: () => void
   )
 }
 
-/** 链名旁边的状态标签颜色：充足绿、偏低黄、不足红 */
+/** Status tag color next to the chain name: green for sufficient, yellow for low-ish, red for insufficient */
 const FUEL_TONE: Record<FuelLevel, string> = { high: 'bg-up/15 text-up', middle: 'bg-warning/15 text-warning', low: 'bg-down/15 text-down' }
 
-/** 链名旁边的状态字：充足 / 偏低 / 不足 */
+/** Status word next to the chain name: sufficient / low-ish / insufficient */
 function fuelShort(level: FuelLevel): string {
   return level === 'high' ? t('充足') : level === 'middle' ? t('偏低') : t('不足')
 }

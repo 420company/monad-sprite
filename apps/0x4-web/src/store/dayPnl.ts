@@ -1,5 +1,5 @@
-// 首页今日盈亏（账本规则见 lib/dayPnl.ts）：首页每次刷新完余额记一次读数，合约部分向服务器要（用手动合约授权过的只读代理读）。
-// 账本按账户存在本机；0 点价向服务器要（服务器 0 点给最近 7 天有人持有的币记价），所以要先把自己持有哪些币（不含数量）登记给服务器。
+// Home page today-P&L (ledger rules in lib/dayPnl.ts): the home page records one reading after each balance refresh; the perp part is requested from the server (read via a manually authorized read-only perp proxy).
+// The ledger is stored locally per account; midnight prices come from the server (which prices at midnight the tokens anyone held in the last 7 days) — so first register which tokens you hold (no amounts) with the server.
 import { create } from 'zustand'
 import { api } from '@/lib/social'
 import { observe, startOfDayCst, type Ledger, type Obs, type PerpPart } from '@/lib/dayPnl'
@@ -14,7 +14,7 @@ const WATCH_EVERY = 10 * 60_000
 const PERP_EVERY = 60_000
 const MAX_TOKENS = 200
 
-/** 和服务器同一个写法：链 id:代币地址，EVM / 比特币小写，Solana 原样 */
+/** Same spelling as the server: chain-id:token-address; EVM / Bitcoin lowercased, Solana as-is */
 export const assetKey = (chainId: number, token: string) => `${chainId}:${chainId === SOLANA_CHAIN_ID ? token : token.toLowerCase()}`
 const chainOf = (key: string) => Number(key.slice(0, key.indexOf(':')))
 
@@ -25,10 +25,10 @@ function loadLedger(account: string): Ledger | null {
   } catch { return null }
 }
 function saveLedger(account: string, L: Ledger) {
-  try { localStorage.setItem(STORE_KEY + account, JSON.stringify(L)) } catch { /* 无痕模式：只在这次打开期间有效 */ }
+  try { localStorage.setItem(STORE_KEY + account, JSON.stringify(L)) } catch { /* Incognito mode: valid only for this session */ }
 }
 
-/** 服务器记的某天 0 点价（要登录，只有价格）；拿不到返回 null，这些币从今天第一次读到时起算 */
+/** The server's midnight price for a day (requires login, price only); null when unavailable — those tokens start counting from today's first reading */
 async function fetchOpen(day: number, keys: string[]): Promise<Record<string, number> | null> {
   if (!keys.length) return {}
   try {
@@ -40,10 +40,10 @@ async function fetchOpen(day: number, keys: string[]): Promise<Record<string, nu
 interface DayPnlState {
   account: string
   ledger: Ledger | null
-  /** null = 合约读不到（没授权只读代理、没入金、接口失败），界面不显示合约部分 */
+  /** null = perp data unreadable (no authorized read-only proxy, no deposit, API failure); the UI hides the perp part */
   perp: PerpPart | null
   perpAt: number
-  /** 已经记过的那次余额刷新（usePortfolio.lastUpdated） */
+  /** The balance refresh already recorded (usePortfolio.lastUpdated) */
   seen: number
   watchAt: number
   update: () => Promise<void>
@@ -81,13 +81,13 @@ export const useDayPnl = create<DayPnlState>((set, get) => ({
           const keys = [...Object.entries(prev.last).filter(([, e]) => e.q > 0 && !e.s).map(([k]) => k), ...Object.keys(prev.pending)]
           open = await fetchOpen(day, keys)
         }
-        // 等价格期间账户可能切换了：切换了就不记这次
+        // The account may have switched while waiting for prices: skip this recording if it did
         if (useWallet.getState().address !== account) return
         const L = observe(prev, { now, assets, fresh: (k) => scanned.has(chainOf(k)), open })
         saveLedger(account, L)
         set({ ledger: L, seen: pf.lastUpdated })
 
-        // 登记持有的币（稳定币不用记价），好让服务器 0 点给它们记价格
+        // Register held tokens (stablecoins need no pricing) so the server prices them at midnight
         if (ready && now - get().watchAt > WATCH_EVERY) {
           const tokens = list.filter((h) => h.amount > 0 && !isStable(h.symbol)).slice(0, MAX_TOKENS).map((h) => ({ chainId: h.chainId, token: h.mint }))
           set({ watchAt: now })

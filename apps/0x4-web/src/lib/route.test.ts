@@ -1,4 +1,4 @@
-// 干净网址（2026-10-02）：网页版的页面清单、托管转发规则、安全设置三处必须一致，旧链接要能换成新地址
+// Clean URLs (2026-10-02): the web version's page list, hosting redirect rules, and security settings must agree in all three places; old links must resolve to the new addresses
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { APP_PREFIXES } from './appPrefixes'

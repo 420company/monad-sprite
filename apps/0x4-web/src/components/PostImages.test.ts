@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 帖子图片在列表里的显示：用缩略图、老帖回退原图、网格张数、+N、点开大图、详情页用大图
+// Post images in lists: thumbnails, legacy posts fall back to originals, grid counts, +N, tap for full size, detail page uses full size
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -30,7 +30,7 @@ describe('PostImages', () => {
     expect(imgs()).toEqual(['/files/big_t.webp'])
     const cell = host.querySelector('button') as HTMLElement
     expect(parseFloat(cell.style.aspectRatio)).toBe(0.75)
-    expect(cell.style.width).toBe('210px') // 最高 280
+    expect(cell.style.width).toBe('210px') // Max 280
     act(() => cell.click())
     const viewer = document.body.querySelector('[role="dialog"]')!
     expect([...viewer.querySelectorAll('img')].map((i) => i.getAttribute('src'))).toContain('/files/big.webp')

@@ -1,5 +1,5 @@
-// 现货下单面板的「支付资产」下拉面板（2026-09-29 goat：点支付资产弹出的是手机的全高弹层，要改成电脑端贴着按钮的下拉面板）。
-// 列表数据和手机选币弹层同一份（components/TokenPicker 的 usePickerLists）：我的资产 → 收藏 → 常用 → 搜索结果；顶部搜索 + 主链筛选。
+// Spot order panel's "pay asset" dropdown (2026-09-29 goat: tapping pay-asset popped the phone's full-height sheet — change to a desktop dropdown hugging the button).
+// List data shared with the phone coin-picker sheet (components/TokenPicker's usePickerLists): my assets → favorites → frequent → search results; top search + main-chain filter.
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Search } from 'lucide-react'
 import TokenLogo from '@/components/TokenLogo'
@@ -35,7 +35,7 @@ export default function AssetPicker({ open, anchor, onClose, onSelect, onlyHoldi
       </label>
       <div className="tx-pop-chips" role="group" aria-label={t('按链筛选')}>
         <button type="button" aria-pressed={!chain} className={!chain ? 'on' : ''} onClick={() => setChain(undefined)}>{t('全部')}</button>
-        {/* 比特币放在主链后面（2026-09-30 比特币闪兑） */}
+        {/* Bitcoin after the main chains (2026-09-30 Bitcoin instant swap) */}
         {[...MAIN_CHAIN_IDS, BTC_CHAIN_ID].map((id) => { const c = chainById(id); return c ? <button key={id} type="button" aria-pressed={chain === id} className={chain === id ? 'on' : ''} onClick={() => setChain(id)} title={c.name}><img src={c.logo} alt="" />{c.name.replace(' Smart Chain', '').replace(' Mainnet', '')}</button> : null })}
       </div>
       <div className="tx-pop-list">

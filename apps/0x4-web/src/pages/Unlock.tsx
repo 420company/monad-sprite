@@ -1,4 +1,4 @@
-// 解锁逻辑保持不变，品牌和表单沿用欢迎页的视觉语言。
+// Unlock logic stays unchanged; branding and forms follow the welcome page's visual language.
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Fingerprint, LockKeyhole, ScanFace } from 'lucide-react'
@@ -13,7 +13,7 @@ import { BiometricCancelled, BiometricInvalidated, biometricStatus, biometryWord
 import { errorText } from '@/lib/errors'
 import { takeAfterUnlock } from '@/lib/afterUnlock'
 
-/** 解锁后去哪：扫码登录的 /pc-login、分享进来的直播 /watch/… 回到那里（lib/afterUnlock.ts；2026-10-04 走查：以前这里只认 /pc-login，看直播的人解锁后被丢到首页） */
+/** Where to go after unlock: /pc-login for QR logins, /watch/… for shared live streams — go back there (lib/afterUnlock.ts; 2026-10-04 walkthrough: this used to only know /pc-login, and people unlocking from a live stream were dumped on the home page) */
 const afterUnlock = takeAfterUnlock
 
 export default function Unlock() {
@@ -36,7 +36,7 @@ export default function Unlock() {
       nav(afterUnlock(), { replace: true })
     } catch (raw) {
       const e = toBiometricError(raw)
-      if (e instanceof BiometricCancelled) return // 用户自己取消，留在密码输入
+      if (e instanceof BiometricCancelled) return // User cancelled themselves — stay on password input
       if (e instanceof BiometricInvalidated) {
         setBio({ ...bio, enabled: false })
         setError(t('{method}已失效，请输入密码解锁，之后可在设置里重新开启', { method: biometryWord(bio.biometry) }).trim())
@@ -48,7 +48,7 @@ export default function Unlock() {
 
   useEffect(() => { biometricStatus().then(setBio) }, [])
 
-  // 进页面自动弹一次。被自动锁定时 App 可能还在后台，系统不允许那时弹，等回到前台再弹
+  // Auto-pops once on page entry. If auto-locked while the app is backgrounded, the OS won't allow popping then — wait until back in foreground
   useEffect(() => {
     if (!bio?.enabled || !bio.available || autoTried.current) return
     const run = () => {
@@ -69,17 +69,17 @@ export default function Unlock() {
       nav(afterUnlock(), { replace: true })
     } catch (e) {
       const message = errorText(e, t('解锁失败'))
-      // 只在输入框下方提示一次。以前还顺手弹一条提示条，提示条挪到屏幕正中后就成了两条同样的话；
-      // 震动原本是提示条顺带做的，这里单独补上
+      // Only hint once below the input. It used to also pop a toast, but after toasts moved to screen center that became two copies of the same message;
+      // Vibration used to piggyback on the notice strip; added separately here
       setError(message); hapticResult('error')
     } finally { setLoading(false) }
   }
 
-  // 本次打开 App 第一次到解锁页才完整播开场；切到后台被锁、再回来时直接在位只淡入（WelcomeIntro useIntroPlay）
+  // Only play the full intro the first time the unlock page is reached per app launch; when backgrounded-locked and back, start in place with just a fade (WelcomeIntro useIntroPlay)
   const intro = useIntroPlay(T_FAST)
 
   return (
-    // 解锁页和欢迎页用同一套像素开场（2026-09-25 goat：老用户每次打开看到的是这页），时间线用缩短版，密码框 0.3 秒就出现
+    // The unlock page shares the welcome page's pixel intro (2026-09-25 goat: returning users see this page every launch); the timeline is the shortened version, with the password box appearing at 0.3s
     <div className={`welcome-stage safe-top${intro.play ? '' : ' is-replay'}`} style={timelineFor(intro.tl)}>
       <FluidBackground />
       <div className="welcome-content">

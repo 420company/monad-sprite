@@ -1,5 +1,5 @@
-// 「它帮你买的币」（钻石手三档，2026-09-27）：翻倍出本 / 钻石手模式下，小精灵买入后交给主人的币。
-// 显示买入均价、现在是买入价的几倍、状态；卖出走闪兑（主人自己的钱包签名），「不再跟踪」腾出名额。
+// "Coins it bought for you" (diamond-hands tiers, 2026-09-27): in 2x-take-profit / diamond-hands mode, coins the sprite hands to the owner after buying.
+// Shows average buy price, current multiple of buy price, and status; selling goes through swap (owner's own wallet signs); "stop tracking" frees the slot.
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import TokenLogo from '@/components/TokenLogo'

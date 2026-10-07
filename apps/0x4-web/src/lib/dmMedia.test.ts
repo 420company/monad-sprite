@@ -1,5 +1,5 @@
-// 私信多图：每张各自 AES-GCM 加密上传 → 描述放进端到端加密的私信正文 → 对方解开正文、下载密文、逐张解密，内容逐字节一致。
-// 全程真实加解密（WebCrypto + x25519），只把上传 / 下载换成内存。旧版单图消息照常解析；旧版 App 至少认得第一张。
+// DM multi-image: each image AES-GCM-encrypted and uploaded separately → descriptors go into the end-to-end-encrypted DM body → the peer decrypts the body, downloads the ciphertexts, decrypts one by one — content byte-identical.
+// Real encryption throughout (WebCrypto + x25519); only upload / download are swapped for memory. Legacy single-image messages still parse; legacy apps at least recognize the first image.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveObjectURL } from 'node:buffer'
 
@@ -12,7 +12,7 @@ import { x25519 } from '@noble/curves/ed25519'
 import { albumText, clearDecryptCache, decryptThumbUrl, decryptToUrl, dmMediaItems, encryptMedia, mediaLabel, mediaText, parseDmMedia, type DmMedia } from './dmMedia'
 import { localDmFromKey } from './vault/dm'
 
-// 「服务器」：上传的密文存在这里，下载从这里拿
+// "Server": uploaded ciphertexts are stored here; downloads fetch from here
 const server = new Map<string, Blob>()
 let seq = 0
 const upload = async (data: Blob) => { const url = `/files/${(++seq).toString(16).padStart(24, '0')}.bin`; server.set(url, data); return { url } }
@@ -35,32 +35,32 @@ describe('私信多图加解密往返', () => {
     for (const f of files) items.push(await encryptMedia(f, 'image', { upload }))
     items.push(await encryptMedia(video, 'video', { upload }))
 
-    // 服务器上只有密文：和明文不同，也不含明文片段
+    // Only ciphertext on the server: differs from plaintext, contains no plaintext fragments
     for (const [i, it] of items.entries()) {
       const ct = new Uint8Array(await server.get(it.url)!.arrayBuffer())
       const plain = i < 3 ? payload(i) : payload(9, 5000)
-      expect(ct.length).toBe(plain.length + 16)   // AES-GCM 标签 16 字节
+      expect(ct.length).toBe(plain.length + 16)   // AES-GCM tag is 16 bytes
       expect(Buffer.from(ct).includes(Buffer.from(plain.slice(0, 64)))).toBe(false)
     }
-    expect(new Set(items.map((x) => x.key)).size).toBe(4)   // 每张各自一把密钥
+    expect(new Set(items.map((x) => x.key)).size).toBe(4)   // Each image gets its own key
 
-    // 端到端：正文用对方公钥加密，对方私钥解开
+    // End-to-end: the body is encrypted with the peer's public key, decrypted with their private key
     const bobPriv = x25519.utils.randomSecretKey()
     const alice = localDmFromKey(x25519.utils.randomSecretKey()), bob = localDmFromKey(bobPriv)
     const text = albumText(items)
     const wire = await alice.encrypt(text, await bob.publicKey())
-    expect(wire.ciphertext.length).toBeLessThan(60_000)     // 服务端单条密文上限
+    expect(wire.ciphertext.length).toBeLessThan(60_000)     // Server per-message ciphertext cap
     const got = parseDmMedia(await bob.decrypt(wire))!
     expect(got).not.toBeNull()
 
     const list = dmMediaItems(got)
     expect(list).toHaveLength(4)
     expect(list.map((x) => x.kind)).toEqual(['image', 'image', 'image', 'video'])
-    // 发送方自己的缓存清掉，走真的下载 + 解密
+    // Clear the sender's own cache — go through real download + decrypt
     clearDecryptCache()
     for (let i = 0; i < 3; i++) expect(await bytesOf(await decryptToUrl(list[i]))).toEqual(payload(i))
     expect(await bytesOf(await decryptToUrl(list[3]))).toEqual(payload(9, 5000))
-    // Node 里没有 canvas，出不了缩略图，缩略图回退解大图
+    // No canvas in Node — no thumbnails; thumbnail fallback decodes the full image
     expect(await bytesOf(await decryptThumbUrl(list[0]))).toEqual(payload(0))
   })
 
@@ -78,7 +78,7 @@ describe('私信多图加解密往返', () => {
     const album = parseDmMedia(albumText([a, b]))!
     expect(album.t).toBe('media')
     expect(album.url).toBe(a.url); expect(album.key).toBe(a.key); expect(album.iv).toBe(a.iv)
-    expect(album.items!.every((x) => x.items === undefined)).toBe(true)   // 不嵌套
+    expect(album.items!.every((x) => x.items === undefined)).toBe(true)   // No nesting
     expect(mediaLabel(album)).toBe('[图片] ×2')
 
     const single = parseDmMedia(albumText([a]))!

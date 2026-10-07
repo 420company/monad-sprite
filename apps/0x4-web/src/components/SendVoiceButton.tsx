@@ -1,5 +1,5 @@
-// 发送键兼语音键：短按发送，按住 HOLD_TO_RECORD_MS 进入录音，松开发送语音，手指移出按钮再松开取消。
-// 触摸和鼠标都走 pointer 事件；按下后 setPointerCapture，手指移出按钮也能收到抬起。
+// Send key doubling as voice key: tap to send; hold past HOLD_TO_RECORD_MS to record; release to send the voice message; sliding off the button before release cancels.
+// Touch and mouse both go through pointer events; setPointerCapture on press so the release is still received when the finger slides off the button.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Mic } from 'lucide-react'
@@ -9,15 +9,15 @@ import { tap } from '@/lib/native'
 import { checkVoice, HOLD_TO_RECORD_MS, pickVoiceMime, VOICE_MAX_SECONDS } from '@/lib/voice'
 
 type Phase = 'idle' | 'pressing' | 'starting' | 'recording'
-/** 按钮外扩多少像素内松开仍算「在按钮上」 */
+/** How many px beyond the button a release still counts as "on the button" */
 const SLOP = 24
 
 interface Props {
-  /** 有内容可发（输入框非空）；为 false 时短按什么都不做 */
+  /** There's content to send (input non-empty); a tap does nothing when false */
   canSend: boolean
   onSend: () => void
   onVoice: (blob: Blob, seconds: number) => void
-  /** 上传中等情况不允许录新语音 */
+  /** Recording new voice is disallowed while an upload is in progress */
   voiceDisabled?: boolean
   className?: string
   children: ReactNode
@@ -41,14 +41,14 @@ export default function SendVoiceButton({ canSend, onSend, onVoice, voiceDisable
   const recChunks = useRef<Blob[]>([])
   const stream = useRef<MediaStream | null>(null)
   const startedAt = useRef(0)
-  // 回调可能在录音途中变化（输入框内容等），用 ref 拿最新的
+  // Callbacks may change mid-recording (input content etc.) — grab the latest via ref
   const latest = useRef({ canSend, onSend, onVoice, voiceDisabled })
   latest.current = { canSend, onSend, onVoice, voiceDisabled }
 
   const releaseMic = () => { stream.current?.getTracks().forEach((tr) => tr.stop()); stream.current = null }
   const clearTimers = () => { window.clearTimeout(holdTimer.current); window.clearInterval(tickTimer.current) }
 
-  /** 结束录音；send=false 时丢弃 */
+  /** End the recording; discarded when send=false */
   const finish = (send: boolean) => {
     clearTimers()
     const r = rec.current
@@ -60,7 +60,7 @@ export default function SendVoiceButton({ canSend, onSend, onVoice, voiceDisable
     const stopMic = () => st?.getTracks().forEach((tr) => tr.stop())
     if (!r || r.state === 'inactive') { stopMic(); return }
     r.onstop = () => {
-      // 先放掉麦克风再处理，播放端才能回到正常的扬声器输出
+      // Release the mic before processing, so playback can return to normal speaker output
       stopMic()
       if (!send) return
       const blob = new Blob(chunks, { type: r.mimeType || 'audio/mp4' })
@@ -77,7 +77,7 @@ export default function SendVoiceButton({ canSend, onSend, onVoice, voiceDisable
     if (latest.current.voiceDisabled) { setPhase('idle'); toast.info(t('正在上传')); return }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { setPhase('idle'); toast.error(t('当前设备不支持录音')); return }
     setPhase('starting'); tap()
-    // 等待期间 phaseRef 会被 pointer 事件或卸载改掉，用函数读最新值（也避开 TS 的收窄）
+    // phaseRef may be mutated by pointer events or unmount during the wait — read the latest via a function (also sidesteps TS narrowing)
     const stillStarting = () => phaseRef.current === 'starting'
     let s: MediaStream
     try {
@@ -86,7 +86,7 @@ export default function SendVoiceButton({ canSend, onSend, onVoice, voiceDisable
       if (stillStarting()) { setPhase('idle'); setOutside(false); toast.error(t('没有麦克风权限')) }
       return
     }
-    // 第一次会弹系统权限框，手指多半已经离开；组件卸载了也一样，直接放掉麦克风
+    // The first time pops the OS permission dialog and the finger is usually gone by then; same when the component unmounts — just release the mic
     if (released.current || !stillStarting()) {
       s.getTracks().forEach((tr) => tr.stop())
       if (stillStarting()) {
@@ -126,7 +126,7 @@ export default function SendVoiceButton({ canSend, onSend, onVoice, voiceDisable
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return
     if (phaseRef.current !== 'idle') return
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* 个别环境不支持 */ }
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* Unsupported in some environments */ }
     released.current = false
     setOutside(false)
     setPhase('pressing')
@@ -136,7 +136,7 @@ export default function SendVoiceButton({ canSend, onSend, onVoice, voiceDisable
     const p = phaseRef.current
     if (p === 'idle') return
     const out = isOutside(e.clientX, e.clientY)
-    // 还没进录音就滑走：当作放弃这次点按
+    // Slid away before recording started: treat as abandoning this press
     if (p === 'pressing' && out) { clearTimers(); setPhase('idle'); return }
     if (p === 'starting' || p === 'recording') setOutside(out)
   }
@@ -160,14 +160,14 @@ export default function SendVoiceButton({ canSend, onSend, onVoice, voiceDisable
     else if (p === 'recording') finish(false)
   }
 
-  // 按住的前 250ms 不显示进度，免得每次短按都闪一下
+  // No progress shown during the first 250 ms of holding, so every tap doesn't flash
   useEffect(() => {
     if (phase !== 'pressing' || !ring.current?.animate) return
     const a = ring.current.animate([{ transform: 'scale(0)', opacity: 0.2 }, { transform: 'scale(1)', opacity: 0.55 }], { duration: HOLD_TO_RECORD_MS - 250, delay: 250, easing: 'linear', fill: 'forwards' })
     return () => a.cancel()
   }, [phase])
 
-  // 离开页面时丢弃正在录的语音并放掉麦克风
+  // Discard the in-progress recording and release the mic when leaving the page
   useEffect(() => () => {
     window.clearTimeout(holdTimer.current); window.clearInterval(tickTimer.current)
     phaseRef.current = 'idle'
@@ -191,7 +191,7 @@ export default function SendVoiceButton({ canSend, onSend, onVoice, voiceDisable
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onContextMenu={(e) => e.preventDefault()}
-        // 键盘（回车 / 空格）触发的 click 没有 pointer 事件，detail 为 0；指针点击已在 pointerup 里处理
+        // Keyboard-triggered clicks (Enter / Space) have no pointer events, detail is 0; pointer clicks are already handled in pointerup
         onClick={(e) => { if (e.detail === 0 && canSend) onSend() }}
         className={`${className} relative select-none overflow-visible ${live ? (outside ? '!bg-card2 !text-down' : '!bg-down !text-white') : ''} ${!canSend && !live ? 'opacity-50' : ''}`}
         style={{

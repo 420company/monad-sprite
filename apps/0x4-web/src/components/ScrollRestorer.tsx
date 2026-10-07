@@ -1,13 +1,13 @@
-// 全局滚动恢复：后退回到一个页面时，停在离开时的位置；新进入的页面从顶部开始。
-// 规则和纯逻辑在 lib/scrollRestore.ts。这里只负责：记录（监听滚动）、恢复（等内容长出来再滚过去）。
-// 页面里自己滚动的区域（不是整页滚）加 data-scroll-key="名字" 就会一起记住。
-// 聊天页（群聊 / 私信 / 直播间聊天）不加：它们按「贴底 + 往上翻加载更早」自己管滚动。
+// Global scroll restoration: going back lands where the page was left; newly entered pages start at the top.
+// Rules and pure logic live in lib/scrollRestore.ts. This only handles: recording (listening to scrolls) and restoring (scrolling once content has grown).
+// Scrollable regions inside a page (not whole-page scrolling) get remembered too when given data-scroll-key="name".
+// Chat pages (group chat / DMs / live-room chat) are excluded: they manage scrolling themselves with "stick to bottom + scroll up to load earlier".
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useLocation, useNavigationType } from 'react-router-dom'
 import { ScrollMemory, planScroll, restoreStep, RESTORE_TIMEOUT } from '@/lib/scrollRestore'
 
 const STORE_KEY = '0x4.scrollPos'
-/** 恢复到位后再盯这么久：图片 / 骨架替换引起的小幅跳动再纠正回来 */
+/** Keep watching this long after restoring: small jumps from image / skeleton swaps get corrected back */
 const SETTLE_MS = 400
 
 const memory = (() => {
@@ -18,7 +18,7 @@ const persistSoon = () => {
   if (persistTimer) return
   persistTimer = setTimeout(() => {
     persistTimer = null
-    try { sessionStorage.setItem(STORE_KEY, JSON.stringify(memory.toJSON())) } catch { /* 存不进去只影响重载后的恢复 */ }
+    try { sessionStorage.setItem(STORE_KEY, JSON.stringify(memory.toJSON())) } catch { /* Failing to persist only affects post-reload restoration */ }
   }, 300)
 }
 
@@ -32,14 +32,14 @@ export default function ScrollRestorer() {
   const loc = useLocation()
   const navType = useNavigationType()
   const current = useRef(loc.key)
-  /** 正在恢复时不记录（内容还没长出来时浏览器会把位置夹到 0，别把它当成用户滚的） */
+  /** Don't record while restoring (before content grows, the browser clamps the position to 0 — don't mistake that for user scrolling) */
   const restoring = useRef(false)
 
   useLayoutEffect(() => {
-    try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual' } catch { /* 忽略 */ }
+    try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual' } catch { /* Ignore */ }
   }, [])
 
-  // 记录：整页滚动 + 带 data-scroll-key 的区域。捕获阶段监听 document，区域里的滚动事件不冒泡也能收到
+  // Record: whole-page scrolling + regions with data-scroll-key. Listening on document at capture phase catches non-bubbling scroll events inside regions too
   useEffect(() => {
     const onScroll = (e: Event) => {
       if (restoring.current) return
@@ -54,19 +54,19 @@ export default function ScrollRestorer() {
     return () => document.removeEventListener('scroll', onScroll, { capture: true })
   }, [])
 
-  // 进到一条历史记录：按导航类型决定回顶部 / 恢复 / 不动。布局阶段就做，新页面第一帧不会先闪一下别的位置
+  // Entering a history entry: decide scroll-to-top / restore / leave-alone by navigation type. Done in the layout phase so the new page's first frame never flashes at a wrong position
   useLayoutEffect(() => {
     current.current = loc.key
     const plan = planScroll(navType, memory.get(loc.key))
     if (plan.mode === 'keep') return
     if (plan.mode === 'top') {
       window.scrollTo(0, 0)
-      // 同一个页面组件换了参数（帖子 A → 帖子 B）时滚动区是复用的，也要回到顶部
+      // When the same page component swaps params (post A → post B), the scroll region is reused — scroll back to top too
       document.querySelectorAll<HTMLElement>('[data-scroll-key]').forEach((el) => { el.scrollTop = 0 })
       return
     }
 
-    // 目标值先拷出来：恢复期间 memory 里那份可能被改
+    // Copy the target value first: the one in memory may change during restoration
     const targets: { area: string | null; top: number; done: boolean }[] = [
       { area: null, top: plan.entry.y, done: false },
       ...Object.entries(plan.entry.areas).map(([area, top]) => ({ area, top, done: false })),
@@ -84,9 +84,9 @@ export default function ScrollRestorer() {
       window.removeEventListener('touchstart', stop, true)
       window.removeEventListener('wheel', stop, true)
       window.removeEventListener('keydown', stop, true)
-      // 这里不回写位置：离开页面时触发的清理，此刻的 scrollY 已经是新页面的了
+      // Don't write back the position here: this cleanup fires while leaving the page, when scrollY already belongs to the new page
     }
-    // 用户自己开始滚 / 点了：立刻让位，不跟用户抢
+    // The user started scrolling / tapped: yield immediately, never fight the user
     window.addEventListener('touchstart', stop, true)
     window.addEventListener('wheel', stop, true)
     window.addEventListener('keydown', stop, true)

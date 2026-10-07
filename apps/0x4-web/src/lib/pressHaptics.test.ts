@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-// 按键轻震（2026-09-29 goat：点功能按键手机要轻微震一下）：
-// ① 原生 App 里点按钮 / 链接 / 开关 / 可点卡片震一次；点在按钮里的图标、文字上也算
-// ② 禁用的、输入框、包着输入框的 label、聊天背景这类普通区域不震
-// ③ 60 毫秒内只震一次（全局震动和组件自己调 tap() 落在同一次点按上不叠加）；刚点按过紧接的「提示」轻震不再补
-// ④ 成功 / 失败的通知震动照常；「按键震动」关掉后不震
+// Button haptics (2026-09-29 goat: tapping function buttons should give the phone a light buzz):
+// ① in the native app, tapping a button / link / switch / tappable card buzzes once; taps on icons or text inside buttons count too
+// ② disabled controls, inputs, labels wrapping inputs, and plain areas like the chat background don't buzz
+// ③ at most one buzz per 60 ms (the global buzz and a component's own tap() on the same press don't stack); the "hint" buzz right after a press isn't re-fired
+// ④ success / failure notification buzzes still fire; nothing buzzes once "button haptics" is off
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ impact: 0, notification: 0 }))
@@ -34,7 +34,7 @@ const $ = (sel: string) => document.querySelector(sel)!
 
 beforeEach(() => {
   vi.useFakeTimers()
-  later(10_000)   // 和上一个用例拉开距离，节流不串
+  later(10_000)   // Keep distance from the previous case so throttling doesn't bleed across
   h.impact = 0; h.notification = 0
   useSettings.setState({ pressHaptics: true })
   uninstall = installPressHaptics()
@@ -72,7 +72,7 @@ describe('按键轻震', () => {
 
   it('包着勾选框的 label 算开关；浏览器转发给勾选框的那次点击不重复震', () => {
     html('<label id="l"><input id="c" type="checkbox" />记住</label>')
-    ;($('#l') as HTMLLabelElement).click()   // jsdom 会像浏览器一样再给勾选框发一次 click
+    ;($('#l') as HTMLLabelElement).click()   // jsdom re-fires click on checkboxes just like browsers do
     expect(($('#c') as HTMLInputElement).checked).toBe(true)
     expect(h.impact).toBe(1)
   })

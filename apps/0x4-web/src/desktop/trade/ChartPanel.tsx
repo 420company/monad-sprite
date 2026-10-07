@@ -1,7 +1,7 @@
-// 交易终端的 K 线面板（现货、合约共用）：上面一条工具栏（周期 + 状态），下面图表铺满。
-// ★状态只显示一个（2026-09-29 goat：BTCB 那里「K 线加载失败，重试」和「暂无历史 K 线」同时出现）：
-//   有数据 → 画图（刷新失败时工具栏小字说明显示的是上次的数据，可重试）；
-//   没数据 → 加载中 / 加载失败（带重试）/ 这个交易对没有 K 线 / 暂无历史 K 线，四选一，只在图表区域中间说一次。
+// The trading terminal's chart panel (shared by spot and perps): a toolbar on top (period + status), the chart filling below.
+// ★ Only one status is shown (2026-09-29 goat: on BTCB "chart failed to load, retry" and "no historical candles" appeared at once):
+//   data → draw the chart (on refresh failure the toolbar's small print says it's showing last time's data, with a retry);
+//   no data → pick one of loading / load failed (with retry) / this pair has no candles / no historical candles — stated once, centered in the chart area.
 import type { ReactNode } from 'react'
 import { CandlestickChart, RefreshCw } from 'lucide-react'
 import type { Candle } from '@/lib/aster'
@@ -15,18 +15,18 @@ export type ChartStatus = 'loading' | 'ready' | 'error' | 'unsupported'
 export default function ChartPanel<I extends string>({ intervals, interval, onInterval, candles, chartKey, status, asOf, onRetry, formatPrice, plan, flow, bubbles, bubbleMin, children }: {
   intervals: readonly I[]; interval: I; onInterval: (i: I) => void
   candles: Candle[]; chartKey: string
-  /** ready 但 candles 为空 = 这个周期暂时没有成交 */
+  /** ready but candles empty = no trades yet in this period */
   status: ChartStatus
   asOf?: number
   onRetry: () => void
   formatPrice?: (n: number) => string
-  /** 合约页：画在图上的交易计划线 */
+  /** Perp page: trade-plan lines drawn on the chart */
   plan?: PlanProps
-  /** 合约页：买卖力量一栏、大单气泡（见 ProChart） */
+  /** Perp page: the buy/sell pressure column and large-order bubbles (see ProChart) */
   flow?: FlowPoint[] | null
   bubbles?: Bubble[]
   bubbleMin?: number
-  /** 工具栏右侧额外内容 */
+  /** Extra content on the toolbar's right */
   children?: ReactNode
 }) {
   const has = candles.length > 0

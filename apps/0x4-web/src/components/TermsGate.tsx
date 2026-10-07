@@ -1,7 +1,7 @@
-// 同意条款（2026-10-02 goat，上架要求）：第一次使用社交功能（= 在服务器上创建账号）之前，要先同意《服务条款》和《隐私政策》，
-// 条款里写明不许发布违法、色情、骚扰等内容。没同意：钱包照常用，社交功能不登录。全站只有一个，挂在 App 里。
-// 注销账号以后同意记录会清掉，想重新用社交功能要在这里再同意一次。
-// 2026-10-03 goat：文案缩短、排版改成三行「图标 + 小标题 + 一句话」，同意那句放在按钮上面。
+// Agree to the terms (2026-10-02 goat, store requirement): before first using social features (= creating an account on the server), agree to the Terms of Service and Privacy Policy;
+// the terms prohibit illegal, sexual, harassing, and similar content. Without agreement: the wallet works as usual, social stays logged out. Site-wide single instance, mounted in the app.
+// After account deletion the agreement record is cleared — re-agree here to use social features again.
+// 2026-10-03 goat: copy shortened; layout changed to three "icon + subheading + one-liner" rows, with the agreement line above the button.
 import { Flag, ShieldAlert, Wallet } from 'lucide-react'
 import Sheet from '@/components/Sheet'
 import Button from '@/components/Button'

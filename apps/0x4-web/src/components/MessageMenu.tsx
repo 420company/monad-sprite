@@ -1,17 +1,17 @@
-// 聊天气泡长按弹出的小菜单（回复 / 复制 / 删除），贴在气泡旁边；点空白处或按 Esc 关闭。
-// 用 toast-solid 打底，亮 / 暗主题都跟着 CSS 变量走。
+// Small menu popping on chat-bubble long-press (reply / copy / delete), hugging the bubble; tap empty space or Esc to close.
+// Built on toast-solid; light / dark themes both follow CSS variables.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface MenuItem { key: string; label: string; icon?: ReactNode; danger?: boolean; onSelect: () => void }
-/** 气泡在屏幕上的位置 */
+/** The bubble's on-screen position */
 export interface MenuAnchor { top: number; bottom: number; left: number; right: number }
 
 export default function MessageMenu({ anchor, items, note, onClose, label }: { anchor: MenuAnchor | null; items: MenuItem[]; note?: string; onClose: () => void; label: string }) {
   const box = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
 
-  // 先渲染出来量尺寸，再决定放在气泡下方还是上方，左右不出屏
+  // Render first to measure, then decide below vs above the bubble, never overflowing left/right
   useLayoutEffect(() => {
     if (!anchor || !box.current) { setPos(null); return }
     const { offsetWidth: w, offsetHeight: h } = box.current
@@ -50,8 +50,8 @@ export default function MessageMenu({ anchor, items, note, onClose, label }: { a
 }
 
 /**
- * 长按（500ms）或右键打开菜单，双击走 onDouble。手指移动超过 10px 视为滚动，取消长按。
- * 返回的处理器直接展开到气泡元素上。
+ * Long-press (500ms) or right-click opens the menu; double-tap goes to onDouble. Finger movement beyond 10px counts as scroll, cancelling the long-press.
+ * The returned handlers spread directly onto the bubble element.
  */
 export function useLongPress(onLong: (a: MenuAnchor) => void, onDouble?: () => void) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)

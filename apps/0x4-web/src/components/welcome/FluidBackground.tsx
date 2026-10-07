@@ -1,13 +1,13 @@
-// 欢迎页 / 解锁页专用的流体背景（2026-09-26 goat：只有 logo 和标语太单调，要液态流体）。
+// Fluid background exclusive to the welcome / unlock pages (2026-09-26 goat: logo + tagline alone was too plain — wanted liquid fluid).
 //
-// 一张 WebGL 画布铺满整页，片元着色器用「域扭曲噪声」（把噪声的坐标再用噪声去扭）画出油墨在水里
-// 慢慢翻涌、拉丝的样子；颜色沿用全局液态背景那组色系（蜜桃/玫瑰/紫/靛蓝/冰青），色相随时间缓慢转动。
-// 不跟随手指 / 鼠标（2026-09-26 goat：跟随太怪，改成固定路线）：两个看不见的「搅拌点」沿利萨如曲线慢慢绕，
-// 在着色器里直接由时间算出来，不用每帧上传任何数据。
+// One WebGL canvas fills the page; the fragment shader uses "domain-warped noise" (warping noise coordinates with more noise) to paint ink swirling in water
+// slowly churning and stretching; colors reuse the global liquid-background palette (peach / rose / violet / indigo / ice cyan), hue slowly rotating over time.
+// Doesn't follow finger / mouse (2026-09-26 goat: following felt weird — switched to fixed paths): two invisible "stir points" slowly orbit Lissajous curves,
+// computed directly from time inside the shader — no per-frame data uploads.
 //
-// 省电：按屏幕像素的一半分辨率画（柔和的流体放大看不出），页面隐藏时停帧，
-// 系统「减少动态效果」只画一帧静态。整层只有这一张画布，显存 = 画布像素 × 4，不会像大图层那样撑爆 iOS。
-// WebGL 拿不到（极少数机器 / 隐私模式）就什么都不画，退回全局柔光背景。
+// Power saving: renders at half screen resolution (soft fluid shows no artifacts when upscaled); frame updates stop when the page is hidden,
+// with OS "reduce motion" only one static frame is drawn. The whole layer is this single canvas — VRAM = canvas pixels × 4, so it never blows up iOS like huge layers do.
+// When WebGL is unavailable (rare machines / private mode), draw nothing and fall back to the global soft-glow background.
 import { useLayoutEffect, useRef } from "react"
 import { currentTheme } from '@/lib/theme'
 
@@ -63,7 +63,7 @@ function hsl(h: number, s: number, l: number): Rgb {
   const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x]
   return [r + m, g + m, b + m]
 }
-/** 五个颜色：底色、两个主流体色、一个对比色、高光色。色相随时间慢转（约 4 分钟一圈），深浅两套 */
+/** Five colors: base, two main fluid colors, one contrast color, one highlight. Hue rotates slowly (~4 min per revolution); light and dark sets */
 function paletteAt(sec: number, dark: boolean): Rgb[] {
   const rot = (sec * 1.5) % 360
   const h = (x: number) => (x + rot + 360) % 360
@@ -106,7 +106,7 @@ export default function FluidBackground() {
     const t0 = performance.now()
     const clock = () => (performance.now() - t0) / 1000
     const still = reducedMotion()
-    // 半分辨率画，最多 1.5 倍：流体本身是柔和渐变，放大看不出锯齿，像素数少四分之三
+    // Renders at half resolution, upscaled at most 1.5x: the fluid is inherently soft gradients — no visible jaggies when upscaled, and three quarters fewer pixels
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 3) * 0.5
       const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr))
@@ -134,8 +134,8 @@ export default function FluidBackground() {
       cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', onVis)
       ro.disconnect()
-      // 不主动 loseContext：React 严格模式下会同一张画布挂两次，丢掉的上下文第二次拿回来还是丢的（着色器编译全 null）。
-      // 画布随组件卸载被回收时 WebKit 会自己释放上下文
+      // Never loseContext on purpose: React StrictMode mounts the same canvas twice, and a lost context stays lost on the second acquire (all shader compiles return null).
+      // WebKit releases the context itself when the canvas is GC'd with the component unmount
     }
   }, [])
 

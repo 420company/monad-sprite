@@ -1,5 +1,5 @@
-// 网页版通知（2026-09-29 goat：电脑端点通知还是手机页面）：顶栏铃铛的下拉面板 + /notifications 电脑页共用的一行和分类。
-// 数据还是社交层 store 里那一份（loadNotifications / markNotifsRead），点一条和手机一样按 ref 跳到对应页面（lib/notifRef）。
+// Web notifications (2026-09-29 goat: desktop notification taps still opened phone pages): one shared row + category set for the top-bar bell dropdown and the /notifications desktop page.
+// Data still comes from the social store (loadNotifications / markNotifsRead); tapping one jumps by ref to the matching page, same as phone (lib/notifRef).
 import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AtSign, Ban, Bell, CheckCheck, CircleCheck, Gift, Lock, Mail, Megaphone, MessageSquare, UserPlus, Users, type LucideIcon } from 'lucide-react'
@@ -12,18 +12,18 @@ import { useSocial } from '@/store/social'
 import { t } from '@/lib/i18n'
 import { Empty, SocialLogin } from './ui'
 
-/** 通知类型图标：和手机通知页同一套线条图标 */
+/** Notification-type icons: same line-icon set as the phone notifications page */
 const ICON: Record<string, LucideIcon> = { friend: Users, follow: UserPlus, comment: MessageSquare, join_request: Mail, join_approved: CircleCheck, join_rejected: Ban, gift: Gift, mention: AtSign, dm: Lock, packet: Gift, system: Megaphone }
 
 export type NotifTab = 'all' | 'social' | 'system'
-/** 分类：系统 = 平台公告、审核结果；其余（关注、评论、@、私信、礼物、入群申请……）算互动 */
+/** Categories: system = platform announcements, review results; everything else (follows, comments, @, DMs, gifts, group join requests…) counts as interaction */
 const SYSTEM = new Set(['system', 'join_approved', 'join_rejected'])
 export const notifGroup = (type: string): Exclude<NotifTab, 'all'> => (SYSTEM.has(type) ? 'system' : 'social')
 export const filterNotifs = (list: Notification[], tab: NotifTab) => tab === 'all' ? list : list.filter((n) => notifGroup(n.type) === tab)
-/** 页签：label 是函数，渲染时才翻译（切换语言后跟着变） */
+/** Tabs: label is a function, translated at render time (follows language switches) */
 export const NOTIF_TABS: [NotifTab, () => string][] = [['all', () => t('全部')], ['social', () => t('互动')], ['system', () => t('系统')]]
 
-/** 一条通知：有人触发的显示对方头像 + 类型角标，系统通知显示类型图标；未读带底色和小圆点 */
+/** One notification: user-triggered ones show the peer avatar + type badge; system ones show the type icon; unread gets tint + dot */
 export function NotifRow({ n, onOpen }: { n: Notification; onOpen: (n: Notification) => void }) {
   const Icon = ICON[n.type] || Bell
   return (
@@ -42,7 +42,7 @@ export function NotifRow({ n, onOpen }: { n: Notification; onOpen: (n: Notificat
   )
 }
 
-/** 点一条：标已读，和系统推送同一套规则跳过去 */
+/** Tap one: mark read, jump with the same rules as system push */
 export function useOpenNotif(after?: () => void) {
   const nav = useNavigate()
   const markNotifsRead = useSocial((s) => s.markNotifsRead)
@@ -54,12 +54,12 @@ export function useOpenNotif(after?: () => void) {
   }
 }
 
-/** 社区没登录上时（通知来自社区服务）：登录中转圈，失败说原因 +「重新登录」 */
+/** When community isn't logged in (notifications come from the community service): spinner while logging in, reason + "sign in again" on failure */
 export function NotifOffline() {
   return <SocialLogin row={false} tall />
 }
 
-/** 顶栏铃铛的下拉面板（380 宽）：全部 / 互动 / 系统，最多先列 20 条，底部「查看全部」进电脑端通知页 */
+/** Top-bar bell dropdown (380px): all / interactions / system, 20 max initially, bottom "view all" opens the desktop notifications page */
 export function NotifPanel({ tab, setTab, onClose }: { tab: NotifTab; setTab: (t: NotifTab) => void; onClose: () => void }) {
   const { status, notifications, unreadNotifs, loadNotifications, markNotifsRead } = useSocial()
   const ready = status === 'ready'

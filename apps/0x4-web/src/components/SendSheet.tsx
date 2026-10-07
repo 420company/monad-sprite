@@ -1,4 +1,4 @@
-// 发送：从持仓里选任意资产（SOL / SPL / 各 EVM 链原生币 / ERC-20），按所在链校验地址、签名、给区块浏览器链接
+// Send: pick any asset from holdings (SOL / SPL / each EVM chain's native coin / ERC-20); validate the address per chain, sign, and link to the block explorer
 import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import Button from '@/components/Button'
@@ -20,9 +20,9 @@ import { useWallet } from '@/store/wallet'
 import { t } from '@/lib/i18n'
 
 const isEvmAddress = (a: string) => /^0x[0-9a-fA-F]{40}$/.test(a)
-/** 原生币要留一点付手续费；代币不用（手续费从原生币扣） */
+/** Keep a little native coin for fees; tokens don't need it (fees come out of the native coin) */
 const reserveFor = (h: Holding) => (h.chainId === SOLANA_CHAIN_ID ? 0.001 : 0.0005)
-// 燃料费币（Arc 的 USDC、Solana 的 SOL 也算）：发送「最多」时要留手续费。比特币的手续费在发送时另算，这里不留（行为和以前一样）
+// Gas coins (Arc's USDC, Solana's SOL count too): "send max" must reserve fees. Bitcoin's fee is computed separately at send time — nothing reserved here (same behavior as before)
 const isNativeHolding = (h: Holding) => h.chainId !== BTC_CHAIN_ID && isGasToken(h.chainId, h.mint)
 
 export default function SendSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
@@ -30,7 +30,7 @@ export default function SendSheet({ open, onClose, onDone }: { open: boolean; on
   const holdings = usePortfolio((s) => s.holdings)
   const btcHolding = usePortfolio((s) => s.btc)
   const rpcUrl = useSettings((s) => s.rpcUrl)
-  // 比特币持仓单独存，发送列表里并进来
+  // Bitcoin holdings are stored separately; merged into the send list
   const list = useMemo(() => [...holdings, ...(btcHolding ? [btcHolding] : [])].filter((h) => h.amount > 0).sort((a, b) => b.valueUsd - a.valueUsd), [holdings, btcHolding])
   const [picked, setPicked] = useState<Holding | null>(null)
   const [picking, setPicking] = useState(false)
@@ -94,13 +94,13 @@ export default function SendSheet({ open, onClose, onDone }: { open: boolean; on
               <ChevronDown size={18} className="text-muted" />
             </button>
           </div>
-          {/* 只在弹层打开时挂载：关了就卸载，下次打开是新的表单（不停在上一笔的结果页） */}
+          {/* Mounted only while the sheet is open: unmounts on close, so the next open is a fresh form (never stuck on the previous tx's result page) */}
           {bitcoin ? (open ? <BtcSendForm priceUsd={asset.priceUsd} /> : null) : <>
           <div>
             <Label>{t('接收地址')}</Label>
             <Input value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder={solana ? t('Solana 地址') : t('{chain} 地址（0x…）', { chain: chain?.name ?? 'EVM' })} spellCheck={false} />
             {to && !addrOk && <div className="mt-1 text-xs text-down">{solana ? t('不是合法的 Solana 地址') : t('不是合法的 0x 地址')}</div>}
-            {/* 2026-09-30 goat：和插件同一说法「请确认该地址属于 X 网络」 */}
+            {/* 2026-09-30 goat: same wording as the extension — "<confirm this address belongs to X network>" */}
             {addrOk && <div className="mt-1 text-xs text-muted">{t('请确认该地址属于 {chain} 网络', { chain: solana ? 'Solana' : chain?.name ?? '' })}</div>}
           </div>
           <div>

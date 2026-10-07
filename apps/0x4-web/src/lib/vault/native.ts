@@ -1,9 +1,9 @@
-// 原生密钥环的网页端客户端。
+// Web-side client of the native keyring.
 //
-// App 里跑的时候，私钥在 Swift 模块（native/Ox4Vault）内，这里只负责把「要签什么」
-// 递过去、把签名拿回来。网页版（app.420.meme）没有原生层，走 src/lib/wallet.ts 的原有实现。
+// Inside the app, private keys live in the Swift module (native/Ox4Vault); this side only delivers "what to sign"
+// and brings the signature back. The web build (app.420.meme) has no native layer — it uses the original src/lib/wallet.ts implementation.
 //
-// 原生插件源码：ios/App/App/VaultPlugin.swift
+// Native plugin source: ios/App/App/VaultPlugin.swift
 import { registerPlugin } from '@capacitor/core'
 import { isNative, platform } from '@/lib/native'
 
@@ -12,13 +12,13 @@ export interface VaultInfo {
   unlocked: boolean
   address: string
   evmAddress: string
-  /** 比特币收款地址（bc1q…）。老金库第一次解锁前是空串 */
+  /** Bitcoin receiving address (bc1q…). Empty string for legacy vaults before their first unlock */
   btcAddress?: string
-  /** 私信密钥可用（解锁过，或冷启动时从钥匙串装回来了）。钱包锁着也可能为 true */
+  /** DM key available (unlocked once, or restored from the keychain on cold start). May be true even while the wallet is locked */
   dmReady?: boolean
-  /** 金库有变化（新建、导入、老金库升级）时返回，网页层要写回存储 */
+  /** Returned when the vault changes (created, imported, legacy upgraded); the web layer must write it back to storage */
   vault?: string
-  /** 仅新建钱包时返回，供用户抄写一次 */
+  /** Returned only when a wallet is created, for the user to copy down once */
   mnemonic?: string
 }
 
@@ -37,11 +37,11 @@ interface VaultPlugin {
   signSolana(o: { message: string }): Promise<{ signature: string }>
   signEvmMessage(o: { message: string }): Promise<{ signature: string }>
   signEvmTypedData(o: { domainSeparator: string; structHash: string }): Promise<{ signature: string }>
-  /** 普通交易：给完整的未签名交易（十六进制），原生检查类型后自己算摘要（没有「签任意摘要」的入口了） */
+  /** Regular tx: pass the complete unsigned transaction (hex); native checks the type and hashes it itself (there is no "sign arbitrary digest" entry anymore) */
   signEvmTransaction(o: { tx: string }): Promise<{ signature: string }>
-  /** 全自动交易的两个委托：原生按模板组装、弹确认框后签（参数都是十进制字符串） */
+  /** The two fully-auto-trading authorizations: native assembles from a template, pops a confirmation, then signs (params are all decimal strings) */
   signAutoTrade(o: { perDay: string; start: string; until: string; salt: string }): Promise<{ buyErc20: string; sell: string }>
-  /** EIP-7702 授权：只能挂到原生写死的 MetaMask 无状态实现（链号、nonce 都是十进制字符串） */
+  /** EIP-7702 authorization: can only delegate to the hardcoded MetaMask stateless implementation in native (chain id and nonce are decimal strings) */
   signAuthorization7702(o: { chainId: string; nonce: string }): Promise<{ signature: string }>
   agentAddress(): Promise<{ address: string }>
   signAgentTypedData(o: { domainSeparator: string; structHash: string }): Promise<{ signature: string }>
@@ -51,11 +51,11 @@ interface VaultPlugin {
   exportMnemonic(o: { password: string }): Promise<{ mnemonic: string }>
   exportSolanaSecret(o: { password: string }): Promise<{ secret: string }>
   exportEvmKey(o: { password: string }): Promise<{ secret: string }>
-  /** 比特币：网页层给未签名交易和每个输入的金额 / 脚本，原生算 BIP143 签名哈希并签，返回带见证的完整交易 */
+  /** Bitcoin: the web layer provides the unsigned tx plus each input's amount / script; native computes the BIP143 sighash and signs, returning the complete witness-carrying transaction */
   signBtc(o: { tx: string; prevouts: { amount: string; script: string }[] }): Promise<{ tx: string }>
-  /** 导出比特币私钥（WIF），要再验一次密码 */
+  /** Export the Bitcoin private key (WIF) — requires password verification again */
   exportBtcWif(o: { password: string }): Promise<{ secret: string }>
-  /** 钥匙串条目，原生只允许 social-token */
+  /** Keychain entries — native only allows social-token */
   secureGet(o: { key: string }): Promise<{ value?: string }>
   secureSet(o: { key: string; value: string }): Promise<void>
   secureRemove(o: { key: string }): Promise<void>
@@ -63,10 +63,10 @@ interface VaultPlugin {
 
 export const Vault = registerPlugin<VaultPlugin>('Vault')
 
-/** 这个运行环境的私钥是否由原生保管。网页版为 false，走旧的 JS 实现 */
+/** Whether private keys in this runtime are held natively. False on web — the legacy JS implementation is used */
 export const nativeVault = isNative && platform === 'ios'
 
-/** 原生返回的错误码：密码错 / 已锁定 / 面容失效 */
+/** Native error codes: wrong password / locked / biometrics invalidated */
 export function vaultErrorCode(e: unknown): string | undefined {
   return (e as { code?: string }).code
 }

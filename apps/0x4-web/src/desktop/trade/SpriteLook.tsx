@@ -1,8 +1,8 @@
-// K 线工具栏「问小精灵」（2026-10-02 goat 第三批）：让自己的小精灵看一眼当前这张图，用它的口吻说两三句看到了什么。
-// · 只点评、不下单：这里不发任何交易请求，小精灵的买卖仍然只按它自己的信号来
-// · 点按钮就问（问完的回答留着，再打开还在；换了币或周期算新的一张图）；每只小精灵和聊天共用每小时 30 句
-// · 没登录 → 请连接钱包；没有小精灵 → 引到小精灵页；都在休眠 → 说明白
-// · 交给它的只有图上的公开行情和仓位的比例（见 lib/chartBrief.ts），没有数量、金额、密钥
+// Chart toolbar "Ask the sprite" (2026-10-02 goat 3rd batch): let your sprite glance at the current chart and say in its own voice what it sees, in two or three sentences.
+// · Commentary only, no orders: nothing trade-related is sent here; the sprite still trades only on its own signals
+// · Asking happens on button tap (the answer stays, still there on reopen; changing coin or timeframe counts as a new chart); each sprite shares 30 messages/hour with chat
+// · Not logged in → please connect a wallet; no sprite → point to the sprite page; all asleep → say so clearly
+// · It only gets the chart's public market data and the position's proportion (see lib/chartBrief.ts) — no quantities, amounts, or keys
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LoaderCircle, RefreshCw, Sparkles } from 'lucide-react'
@@ -21,9 +21,9 @@ const remembered = () => { try { return localStorage.getItem(PICK_KEY) || '' } c
 type Ask = { status: 'idle' } | { status: 'asking'; reply: LookReply | null } | { status: 'done'; reply: LookReply } | { status: 'error'; msg: string }
 
 export default function SpriteLook({ chartKey, getBrief }: {
-  /** 换了币或周期就是另一张图：上一张的回答不再显示 */
+  /** A changed coin or timeframe is a different chart: the previous answer no longer shows */
   chartKey: string
-  /** 点「问」的那一刻整理当前这张图；K 线还没加载出来返回 null */
+  /** Snapshot the current chart at the moment "Ask" is tapped; null when candles haven't loaded yet */
   getBrief: () => ChartBrief | null
 }) {
   const btn = useRef<HTMLButtonElement>(null)
@@ -31,7 +31,7 @@ export default function SpriteLook({ chartKey, getBrief }: {
   const { status, me } = useSocial()
   const lang = useLang((s) => s.lang)
   const signedIn = status === 'ready' && !!me
-  /** undefined = 还没读，null = 读取失败 */
+  /** undefined = not read yet, null = read failed */
   const [flies, setFlies] = useState<Fly[] | null | undefined>(undefined)
   const [pick, setPick] = useState(remembered)
   const [ask, setAsk] = useState<Ask>({ status: 'idle' })
@@ -45,10 +45,10 @@ export default function SpriteLook({ chartKey, getBrief }: {
     setFlies(undefined)
     api<{ list: Fly[] }>('/api/flies/mine/all').then((r) => setFlies(r.list)).catch(() => setFlies(null))
   }
-  // 打开面板时读一次自己的小精灵；换了账号重读
+  // Read my sprite once when the panel opens; re-read on account switch
   useEffect(() => { if (open && signedIn) loadFlies() }, [open, signedIn, me?.address]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setFlies(undefined); setAsk({ status: 'idle' }); askedFor.current = '' }, [me?.address])
-  // 换了一张图：上一张的回答收起来，正在问的那次作废
+  // Chart changed: tuck away the previous answer, void the in-flight ask
   useEffect(() => { abort.current?.abort(); setAsk({ status: 'idle' }); askedFor.current = '' }, [chartKey])
   useEffect(() => () => abort.current?.abort(), [])
 
@@ -68,14 +68,14 @@ export default function SpriteLook({ chartKey, getBrief }: {
       setAsk({ status: 'error', msg: errorText(e, t('它现在没有回应，稍后再试')) })
     }
   }
-  // 打开面板、小精灵读到了、这张图还没问过：直接问（点按钮就是想听它说）
+  // Panel opened, sprite loaded, this chart never asked: ask right away (tapping the button means wanting to hear it)
   useEffect(() => {
     if (open && fly && ask.status === 'idle' && askedFor.current !== `${chartKey}|${fly.id}`) void run(fly)
   }, [open, fly?.id, chartKey, ask.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const choose = (id: string) => {
     setPick(id)
-    try { localStorage.setItem(PICK_KEY, id) } catch { /* 记不住也能用 */ }
+    try { localStorage.setItem(PICK_KEY, id) } catch { /* Works even if it can't persist */ }
     const f = awake.find((x) => x.id === id)
     if (f) void run(f)
   }

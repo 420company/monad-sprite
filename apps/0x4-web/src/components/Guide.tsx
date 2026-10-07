@@ -1,4 +1,4 @@
-// 新手引导：首次进入时的三步说明，可在「我」里重看
+// Onboarding guide: a three-step intro on first entry; re-viewable from the "me" tab
 import { useState } from 'react'
 import { Flame, Gift, TrendingUp } from 'lucide-react'
 import Button from './Button'

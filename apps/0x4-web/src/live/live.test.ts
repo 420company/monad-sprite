@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 直播改造（2026-09-30）前端纯函数：PK 比分条比例、倒计时、游客 15 秒弹窗、徽章档位、分享链接
+// Live overhaul (2026-09-30) frontend pure functions: PK score-bar ratio, countdown, guest 15-second popup, badge tiers, share links
 import { describe, expect, it } from 'vitest'
 import { mmss, pkRatio } from './pk'
 import { GUEST_FREE_MS, guestGateOpen } from './guest'

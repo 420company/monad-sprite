@@ -1,5 +1,5 @@
-// confirmSignature：不靠 WebSocket 等 Solana 交易确认（2026-10-04：网页版走服务器 /rpc 转发没有 WebSocket，
-// web3.js 的 confirmTransaction 会一直等到过期再报「过期」，交易其实已经成功）
+// confirmSignature: don't rely on WebSocket for Solana tx confirmation (2026-10-04: the web build forwards via the server's /rpc with no WebSocket,
+// and web3.js's confirmTransaction would wait until expiry to report "expired" even though the tx had actually succeeded)
 import { describe, expect, it } from 'vitest'
 import { confirmSignature } from './rpc'
 

@@ -1,4 +1,4 @@
-// 关注 / 已关注
+// Follow / Following
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/social'
 import { toast } from './Toast'
@@ -18,7 +18,7 @@ export default function FollowButton({ address, size = 'sm', initial, onChange, 
     api<{ isFollowing: boolean }>(`/api/users/${address}/social`).then((r) => setFollowing(r.isFollowing)).catch(() => setFollowing(false))
   }, [address, initial, status])
 
-  // 网页版访客：照样显示「关注」，点了先连钱包（2026-10-04 走查：以前访客看不到关注按钮）
+  // Web visitors: still shows "Follow"; tapping connects the wallet first (2026-10-04 walkthrough: previously visitors couldn't see the follow button at all)
   const cls = size === 'xs' ? 'px-3 py-1 text-xs' : size === 'lg' ? 'px-5 py-2.5 text-sm w-full' : 'px-4 py-1.5 text-sm'
   if (!me && WEB_SURFACE) return <button type="button" onClick={() => { needAccount() }} className={`rounded-xl font-semibold ${cls} bg-social text-white`}>{label || t('关注')}</button>
   if (!me || me.address === address) return null

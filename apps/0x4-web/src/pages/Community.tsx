@@ -1,4 +1,4 @@
-// 社区：动态、群组（我的群 / 发现群）、消息（统一会话）、好友、排行
+// Community: posts, groups (my groups / discovered groups), messages (unified conversations), friends, rankings
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LoaderCircle, Lock, Plus, RefreshCw, Search, SquarePen, Users, Wifi, WifiOff } from 'lucide-react'
@@ -35,25 +35,25 @@ import { errorText } from '@/lib/errors'
 export default function Community() {
   const nav = useNavigate()
   const { status, me, onlineCount, wsStatus, myGroups, login, loadGroups, joinGroup } = useSocial()
-  // 网页版没连钱包（2026-09-29 goat）：公开动态和排行照样能看；发动态、私信、好友、群点了弹「连接 0x4 Wallet」
+  // Web without a wallet (2026-09-29 goat): public posts and rankings still viewable; posting, DMs, friends, and groups pop "Connect 0x4 Wallet"
   const guest = WEB_SURFACE && !useWallet(isWalletConnected)
-  // 网页版钱包连着、社区还没登录上（没同意条款 / 登录失败 / 正在登录，2026-10-07 goat TokenPocket 截图）：
-  // 以前整页写「社交服务未连接」，公开动态和排行也看不到。现在公开内容照常看（同访客），上面一行说原因并给「查看并同意 / 重新登录」
+  // Web with wallet connected but community not logged in (terms not agreed / login failed / logging in, 2026-10-07 goat's TokenPocket screenshot):
+  // It used to say "social service not connected" for the whole page, hiding public posts and rankings too. Now public content reads as normal (like a visitor), with one line at the top explaining why and offering "View and agree / Sign in again"
   const offline = WEB_SURFACE && !guest && status !== 'ready'
   const viewAsGuest = guest || offline
-  // 子标签、动态范围、找群的搜索词和展开状态记在会话里（lib/pageState）：点进帖子 / 群 / 个人主页再返回，还是离开时的样子
+  // Sub-tabs, post scope, group-search terms, and expansion state are remembered in the session (lib/pageState): tapping into a post / group / profile and back keeps the view as you left it
   const [q, setQ] = usePageState('community.groupQ', '', isString)
-  // 币详情页「建一个群」跳过来：直接打开建群，并按该币预填群名
+  // Arriving from the coin detail page's "Create a group": open group creation directly, pre-filling the group name with the coin
   const createFor = (useLocation().state as { createFor?: TokenPreset } | null)?.createFor ?? null
   const [creating, setCreating] = useState(!!createFor)
   const [editing, setEditing] = useState(false)
-  // clubs（群组）只在网页版有（CommunityTabs.tsx）；手机 App 里存了也按消息处理
+  // clubs (groups) only exist on web (CommunityTabs.tsx); stored ones in the phone app are still treated as messages
   const [savedTab, setTab] = usePageState<CommunityTab>('community.tab', 'feed', oneOf('feed', 'groups', 'clubs', 'friends', 'rank'))
-  // 从币详情「建一个群」跳过来：固定在消息（群）标签
+  // Arriving from the coin detail's "Create a group": pinned to the messages (groups) tab
   const tab: CommunityTab = createFor ? 'groups' : !WEB_SURFACE && savedTab === 'clubs' ? 'groups' : savedTab
   const groupish = tab === 'groups' || tab === 'clubs'
   const [scope, setScope] = usePageState<'global' | 'friends'>('community.scope', 'global', oneOf('global', 'friends'))
-  // 找群面板开没开也记在会话里：从搜索结果点进群再返回，面板和搜索词都还在
+  // Whether the find-groups panel is open is also remembered in the session: tapping into a group from search results and back keeps the panel and the search term
   const [findOpen, setFindOpen] = usePageState('community.findGroups', false, isBool)
   const [postKey, setPostKey] = useState(0)
   const [composing, setComposing] = useState(false)
@@ -66,9 +66,9 @@ export default function Community() {
   const [searchLoading, setSearchLoading] = useState(true)
   const [searchFailed, setSearchFailed] = useState(false)
   const [joining, setJoining] = useState<string | null>(null)
-  // 发现群最多 100 个（服务端上限），先画 20 个，滚到底再画下一批
+  // At most 100 discovered groups (server cap); draw 20 first, draw the next batch on scroll-to-bottom
   const query = q.trim()
-  // 群 + 私信 + 「0x4 官方」公告的未读
+  // Unread: groups + DMs + "0x4 Official" announcements
   const unread = useCommunityUnread()
 
   useEffect(() => {
@@ -76,12 +76,12 @@ export default function Community() {
     let alive = true
     setGroupsLoading(true); setGroupsFailed(false)
     const timeout = setTimeout(() => { if (alive) { setGroupsLoading(false); setGroupsFailed(true) } }, 15_000)
-    void useSocial.getState().loadDmList()   // 私信会话列表（服务器上的记录）顺带刷新
+    void useSocial.getState().loadDmList()   // The DM conversation list (the server's records) refreshes along the way
     loadGroups().then(() => { if (alive) setGroupsFailed(false) }).catch(() => { if (alive) setGroupsFailed(true) }).finally(() => { clearTimeout(timeout); if (alive) setGroupsLoading(false) })
     return () => { alive = false; clearTimeout(timeout) }
   }, [status, groupish, groupRetry, loadGroups])
 
-  // 搜索独立于会话订阅，取消旧请求，避免慢响应回写到新关键词。
+  // Search is independent of the session subscription — cancel old requests so slow responses don't write back onto new keywords.
   useEffect(() => {
     if (status !== 'ready' || !groupish) return
     let alive = true
@@ -97,11 +97,11 @@ export default function Community() {
     return () => { alive = false; clearTimeout(timer); clearTimeout(timeout); controller.abort() }
   }, [status, groupish, query, groupRetry])
 
-  // 不搜的时候只推荐没加入的群；搜索时（比如按群号）已加入的群也要显示，按钮换成「进入」（2026-09-27 goat：搜自己的群号搜不到）
-  // 输入过程中先留着上一次的结果（变淡），新结果到了再换，不整块闪成加载框
+  // When not searching, only recommend unjoined groups; when searching (e.g. by group number), joined groups show too, with the button switched to "Enter" (2026-09-27 goat: couldn't find my own group by its number)
+  // While typing, keep the previous results (dimmed); swap in the new ones when they arrive instead of flashing the whole block into a loader
   const shown = discovery && (discovery.query === query || searchLoading) ? discovery : null
   const others = (shown?.groups ?? []).filter(g => query.trim() || !myGroups.some(m => m.id === g.id))
-  // 一次显示 15 个，「显示更多」再往下拿 15 个（2026-09-29 goat：一页不要太长）
+  // Show 15 at a time, "show more" fetches 15 more (2026-09-29 goat: don't make one page too long)
   const loadMoreGroups = async () => {
     if (!discovery || moreLoading) return
     setMoreLoading(true)
@@ -131,11 +131,11 @@ export default function Community() {
         </div>}
       </header>
 
-      {/* 网页版（手机浏览器窄屏）多一个「流媒体」：网页版底部没有单独的直播标签（CommunityTabs.tsx） */}
+      {/* Web (narrow mobile browser) adds a "Streaming" tab: web has no separate live tab at the bottom (CommunityTabs.tsx) */}
       {WEB_SURFACE ? <CommunityTabs active={tab} onTab={setTab} unread={unread} /> : <div className="page-gutter grid grid-cols-4 gap-3 border-b border-line" role="group" aria-label={t('社区视图')}>
         {(['feed', 'groups', 'friends', 'rank'] as const).map(v => <button key={v} onClick={() => setTab(v)} aria-pressed={tab === v} className="view-tab relative">{t({ feed: '动态', groups: '消息', friends: '好友', rank: '排行' }[v])}{v === 'groups' && unread > 0 && <span aria-label={t('{n} 条未读', { n: unread })} className="absolute top-1 right-0 h-1.5 w-1.5 rounded-full bg-accent" />}</button>)}
       </div>}
-      {/* 公开内容（动态、排行）上面一行说原因；要登录才有的（好友、群、消息）整块说原因 + 按钮 */}
+      {/* Public content (feed, rankings) gets a one-line reason on top; login-gated content (friends, groups, messages) gets a full block with reason + button */}
       {offline && (tab === 'feed' || tab === 'rank') && <div className="page-gutter"><SocialLogin bar /></div>}
       {offline && tab !== 'feed' && tab !== 'rank' && <div className="page-gutter py-8"><SocialLogin row={false} /></div>}
       {!WEB_SURFACE && status !== 'ready' ? <section className="page-gutter empty-state" role="status">
@@ -157,7 +157,7 @@ export default function Community() {
       {tab === 'rank' && <Leaderboard />}
       {tab === 'friends' && !offline && (guest ? <WalletRequired compact /> : <Friends />)}
       {tab === 'clubs' && guest && <WalletRequired compact />}
-      {/* 群组（网页版手机宽度）：我的群在前、发现群在后，和宽屏「群组」页一样（10/03 goat） */}
+      {/* Groups (web at phone width): my groups first, discovered groups after — same as the wide-screen "Groups" page (10/03 goat) */}
       {tab === 'clubs' && !viewAsGuest && <section className="page-gutter" aria-label={t('群组')}>
         <div className="section-header pt-3">
           <h2 className="section-title">{t('我的群')}</h2>
@@ -179,7 +179,7 @@ export default function Community() {
       </section>}
       {tab === 'groups' && guest && <WalletRequired compact />}
       {tab === 'groups' && !viewAsGuest && <>
-      {/* 2026-09-28 goat：「找群」从列表底下挪到加号旁边，做成放大镜，点开是搜索面板；会话上面加一条「发现社区」，随机展示服务器上建好的群 */}
+      {/* 2026-09-28 goat: "Find groups" moves from the bottom of the list to beside the plus button as a magnifier that opens a search panel; a "Discover communities" strip goes above conversations, randomly showing groups already created on the server */}
       <div className="page-gutter section-header pt-3">
         <h2 className="section-title">{t('会话')}</h2>
         <div className="flex items-center">
@@ -200,7 +200,7 @@ export default function Community() {
       </>}
       </>}
 
-      {/* 推荐关注保留在动态 Tab，继续沿用原有的一次性显示规则。 */}
+      {/* Recommended follows stay on the posts tab, keeping the existing show-once rule. */}
       {tab === 'feed' && !viewAsGuest && <SuggestFollow />}
       <Sheet open={composing} onClose={() => setComposing(false)} title={t('发布动态')} dismissible={!postBusy}><PostComposer onBusyChange={setPostBusy} onPosted={() => { setPostKey(k => k + 1); setComposing(false) }} /></Sheet>
       <CreateGroupSheet open={creating} preset={createFor} onClose={() => { setCreating(false); if (createFor) { setTab('groups'); nav('/community', { replace: true, state: null }) } }} />
@@ -209,9 +209,9 @@ export default function Community() {
   )
 }
 
-/** 发现社区（2026-09-28 goat）：会话列表上面一条横向滑动的卡片，随机展示服务器上已经建好、自己还没加入的群，最多 10 个，「换一批」重新抽。
- *  要不要审核、有没有门槛都是群主的设置，这里只负责展示；点卡片进群页，群页按群的规则显示加入 / 申请 / 持币要求。
- *  放在会话列表上面、单独一条横向滑动，不占会话的位置，以后加入的群多了也不会和它挤在一起。 */
+/** Discover communities (2026-09-28 goat): a horizontally scrolling card above the conversation list, randomly showing up to 10 groups that exist on the server and that I haven't joined, with a shuffle button to redraw.
+ *  Whether a group needs review or has entry requirements is the owner's setting — this only displays; tapping a card opens the group page, which shows join / apply / token-gating per the group's rules.
+ *  It sits above the conversation list as its own horizontal strip, taking no conversation slots, so it never crowds out joined groups later. */
 function DiscoverStrip({ joined }: { joined: Group[] }) {
   const [all, setAll] = useState<Group[] | null>(null)
   const [round, setRound] = useState(0)
@@ -221,7 +221,7 @@ function DiscoverStrip({ joined }: { joined: Group[] }) {
     return () => { alive = false }
   }, [])
   const pool = useMemo(() => { const mine = new Set(joined.map((g) => g.id)); return (all || []).filter((g) => !mine.has(g.id)) }, [all, joined])
-  // 每次进页面、每点一次「换一批」重新洗牌；列表更新（比如刚加入一个群）不重洗，免得卡片跳来跳去
+  // Reshuffle on every page entry and every "shuffle" tap; don't reshuffle on list updates (e.g. just joined a group) so cards don't jump around
   const order = useMemo(() => { const a = pool.map((g) => g.id); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] } return a }, [round, all]) // eslint-disable-line react-hooks/exhaustive-deps
   const picks = order.map((id) => pool.find((g) => g.id === id)).filter((g): g is Group => !!g).slice(0, 10)
   if (!picks.length) return null
@@ -247,7 +247,7 @@ function DiscoverStrip({ joined }: { joined: Group[] }) {
   )
 }
 
-/** 群名里和搜索词相同的部分（不分大小写，空格隔开的每个词）标成强调色；按群号搜时不标 */
+/** Highlight the parts of a group name matching the search terms (case-insensitive, per space-separated word); no highlighting when searching by group number */
 function Highlight({ text, query }: { text: string; query?: string }) {
   const q = (query || '').trim()
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -289,7 +289,7 @@ export function CreateGroupSheet({ open, onClose, preset }: { open: boolean; onC
   const [desc, setDesc] = useState('')
   const [gated, setGated] = useState(false)
   const [approval, setApproval] = useState(false)
-  const [gate, setGate] = useState<GateDraft>(emptyDraft()) // 代币或 NFT 门槛
+  const [gate, setGate] = useState<GateDraft>(emptyDraft()) // Token or NFT threshold
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {

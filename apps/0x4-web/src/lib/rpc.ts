@@ -1,4 +1,4 @@
-// Solana 链上数据读取与交易发送
+// Solana on-chain data reads and transaction sending
 import {
   Connection,
   LAMPORTS_PER_SOL,
@@ -16,7 +16,7 @@ const TOKEN_2022_PROGRAM = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEp
 
 let cached: { url: string; conn: Connection } | null = null
 
-/** 按 RPC 地址缓存 Connection 实例 */
+/** Cache Connection instances by RPC address */
 export function getConnection(rpcUrl: string): Connection {
   if (!cached || cached.url !== rpcUrl) {
     cached = { url: rpcUrl, conn: new Connection(rpcUrl, { commitment: 'confirmed' }) }
@@ -26,7 +26,7 @@ export function getConnection(rpcUrl: string): Connection {
 
 export function isValidAddress(addr: string): boolean {
   try {
-    // 只校验是否为合法的 base58 公钥（允许 PDA 等非曲线地址）
+    // Only validate it's a legal base58 public key (PDAs and other off-curve addresses allowed)
     return new PublicKey(addr).toBase58() === addr
   } catch {
     return false
@@ -44,7 +44,7 @@ export interface RawTokenAccount {
   decimals: number
 }
 
-/** 读取所有 SPL 代币余额（含 Token-2022） */
+/** Read all SPL token balances (including Token-2022) */
 export async function getTokenAccounts(rpcUrl: string, owner: string): Promise<RawTokenAccount[]> {
   const conn = getConnection(rpcUrl)
   const pk = new PublicKey(owner)
@@ -66,13 +66,13 @@ export async function getTokenAccounts(rpcUrl: string, owner: string): Promise<R
   return out
 }
 
-/** 最近交易签名 */
+/** Recent transaction signatures */
 export async function getActivity(rpcUrl: string, owner: string, limit = 25): Promise<ActivityItem[]> {
   const sigs = await getConnection(rpcUrl).getSignaturesForAddress(new PublicKey(owner), { limit })
   return sigs.map((s) => ({ signature: s.signature, slot: s.slot, blockTime: s.blockTime, err: !!s.err, memo: s.memo }))
 }
 
-/** 发送 SOL 转账 */
+/** Send a SOL transfer */
 export async function sendSol(rpcUrl: string, from: SolanaWallet, to: string, amountSol: number): Promise<string> {
   const conn = getConnection(rpcUrl)
   const tx = new Transaction().add(
@@ -91,12 +91,12 @@ export async function sendSol(rpcUrl: string, from: SolanaWallet, to: string, am
   return sig
 }
 
-/** 签名并发送一笔版本化交易（Jupiter 返回的交易） */
+/** Sign and send a versioned transaction (the one Jupiter returned) */
 /**
- * 等 Solana 交易确认：轮询签名状态 + 区块高度，不用 WebSocket（2026-10-04 修）。
- * web3.js 的 confirmTransaction 只在 WebSocket 订阅成功之后才查一次状态；网页版和插件的节点走服务器 /rpc 转发，没有 WebSocket，
- * 交易明明成功了也要一直等到过期，然后报「过期」。现在：确认了就返回；链上失败抛「交易失败」；过了有效高度还查不到 = 没上链；
- * 节点偶尔出错照常重试，连续出错太多次才放弃（这时交易可能已经成功，提示去钱包记录里看）
+ * Waiting for Solana transaction confirmation: poll signature status + block height, no WebSocket (fixed 2026-10-04).
+ * web3.js's confirmTransaction only checks status once after the WebSocket subscription succeeds; the web and extension nodes go through the server's /rpc forward, which has no WebSocket,
+ * so a transaction that clearly succeeded would wait until expiry and then report "expired". Now: return once confirmed; throw "transaction failed" on on-chain failure; past the validity height with nothing found = never landed;
+ * occasional node errors are retried as usual; only give up after too many consecutive errors (the transaction may already have succeeded — the message tells the user to check their wallet history)
  */
 export async function confirmSignature(conn: Pick<Connection, 'getSignatureStatuses' | 'getBlockHeight'>, sig: string, lastValidBlockHeight: number, pollMs = 1500): Promise<void> {
   let errors = 0
@@ -106,7 +106,7 @@ export async function confirmSignature(conn: Pick<Connection, 'getSignatureStatu
       if (s?.err) throw new SolTxFailed(JSON.stringify(s.err))
       if (s && (s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized')) return
       if (!s && (await conn.getBlockHeight('confirmed')) > lastValidBlockHeight) {
-        // 过期以后再按历史查一次，免得刚好在这之间上链
+        // After expiry, check history once more — it might have landed exactly in between
         const again = (await conn.getSignatureStatuses([sig], { searchTransactionHistory: true })).value[0]
         if (again?.err) throw new SolTxFailed(JSON.stringify(again.err))
         if (again && again.confirmationStatus !== 'processed') return
@@ -124,8 +124,8 @@ class SolTxFailed extends Error {}
 
 export async function signAndSend(rpcUrl: string, signer: SolanaWallet, tx: VersionedTransaction, lastValidBlockHeight?: number): Promise<string> {
   const conn = getConnection(rpcUrl)
-  // 报价里的交易带的是报价那一刻的 blockhash，用户多看几十秒再点确认就会「block height exceeded」。
-  // 只要还没有别人的签名（LI.FI / Jupiter 给的都是未签名交易），签之前换成最新的 blockhash 就不会过期。
+  // The quoted transaction carries the blockhash from quote time — if the user stares at it for tens of seconds before confirming, it hits "block height exceeded".
+  // As long as nobody else has signed yet (LI.FI / Jupiter both hand over unsigned transactions), swapping in the freshest blockhash before signing keeps it from expiring.
   let height = lastValidBlockHeight
   if (tx.signatures.every((sg) => sg.every((b) => b === 0))) {
     const fresh = await conn.getLatestBlockhash()
@@ -133,8 +133,8 @@ export async function signAndSend(rpcUrl: string, signer: SolanaWallet, tx: Vers
     height = fresh.lastValidBlockHeight
   }
   await signer.signTransaction(tx)
-  // 先模拟一遍：没有 SOL 付手续费 / 余额不够 / 路线失效的交易，网络会直接丢掉，之后只会报「过期」看不出原因。
-  // 模拟能把真实原因拿到手；模拟本身失败（RPC 抽风）不拦发送。
+  // Simulate first: transactions with no SOL for fees / insufficient balance / dead routes get dropped outright by the network, and afterwards only "expired" is reported with no cause visible.
+  // Simulation gets the real reason in hand; a failed simulation itself (flaky RPC) doesn't block sending.
   try {
     const sim = await conn.simulateTransaction(tx, { sigVerify: false, replaceRecentBlockhash: true })
     if (sim.value.err) {
@@ -156,7 +156,7 @@ export async function signAndSend(rpcUrl: string, signer: SolanaWallet, tx: Vers
 export const explorerTx = (sig: string) => `https://solscan.io/tx/${sig}`
 export const explorerAddr = (addr: string) => `https://solscan.io/account/${addr}`
 
-/** 读取代币精度（decimals） */
+/** Read a token's decimals */
 export async function getMintDecimals(rpcUrl: string, mint: string): Promise<number> {
   const info = await getConnection(rpcUrl).getParsedAccountInfo(new PublicKey(mint))
   const data = info.value?.data

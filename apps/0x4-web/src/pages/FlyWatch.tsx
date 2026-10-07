@@ -1,7 +1,7 @@
-// 小精灵「现在」页（2026-09-27 goat：手机上看小精灵在 Cyber Eden 里干什么，和电脑端看到的一致）。嵌在 FlyDetail 的第一个分页。
-// 上半部分：它此刻在哪、在做什么（服务器按交易状态 + 作息算的生活状态，/api/flies/:id/life，30 秒刷新）。
-// 3D 画面：嵌入游戏（2026-09-30 起在 game.420.meme，420.meme/game 切换后跳过去）的观看模式（?watch=），首次要下载约 40MB 的模型和贴图，所以点了才加载。
-// ★网页版 /app 的 CSP 要放行这个地址（deploy/vercel/0x4-site.vercel.json frame-src）
+// Sprite "now" page (2026-09-27 goat: watch what the sprite is doing in Cyber Eden on the phone, same as desktop). Embedded as FlyDetail's first tab.
+// Upper half: where it is and what it's doing (server-computed life state from trading status + routine, /api/flies/:id/life, 30s refresh).
+// 3D view: the game's watch mode (?watch=) embedded (since 2026-09-30 at game.420.meme; 420.meme/game redirects after switching) — first load downloads ~40MB of models and textures, so it loads on tap.
+// ★ Web /app's CSP must allowlist this origin (deploy/vercel/0x4-site.vercel.json frame-src)
 import { useEffect, useState } from 'react'
 import { Box, MapPin } from 'lucide-react'
 import Button from '@/components/Button'
@@ -17,11 +17,11 @@ interface LifeView {
   decision: { side: string | null; symbol: string | null; execution: string | null; ts: number; spikes: number | null } | null
 }
 
-// 四个区域的名字（2026-09-27 goat）：教堂 / 时光隧道 / 房间 / 派对广场；小精灵只会待在教堂、房间、派对广场
+// The four zones' names (2026-09-27 goat): church / time tunnel / room / party plaza; sprites only hang out in the church, room, and party plaza
 const FLOOR: Record<string, [string, string]> = { F1: ['教堂', 'Cathedral'], F2: ['房间', 'Room'], F3: ['派对广场', 'Party Plaza'] }
 const hm = (ms: number) => new Date(ms).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
 
-/** 「现在」页：它此刻在 Cyber Eden 里做什么 + 3D 画面 + 最近一次交易决策（2026-09-27 起嵌在小精灵详情页的第一个分页里） */
+/** The "now" page: what it's doing in Cyber Eden right now + 3D view + latest trade decision (embedded as the sprite detail page's first tab since 2026-09-27) */
 export function WatchPanel({ id }: { id: string }) {
   const lang = useLang((s) => s.lang)
   const [v, setV] = useState<LifeView | null>(null)
@@ -53,20 +53,22 @@ export function WatchPanel({ id }: { id: string }) {
       </div>
     </section>
 
-    {/* 3D 画面：首次约 40MB，点了才加载 */}
+    {/* 3D view: ~40MB first load, loads on tap */}
     <section className="mt-3 overflow-hidden rounded-2xl border border-line/70 bg-black">
       {show3d ? (
         <div className="relative w-full" style={{ height: 'min(62vh, 520px)' }}>
           {!loaded3d && <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70" role="status">{t('正在进入赛博伊甸园…')}</div>}
-          {/* 只在网页版内嵌（跨域 + 沙箱：游戏页读不到钱包页面，也不能把整页跳走）；App 里不内嵌，见下面的按钮 */}
+          {/* Embedded on web only (cross-origin + sandbox: the game page can't read the wallet page or navigate the top page); not embedded in the app — see the button below */}
           <iframe title={t('赛博伊甸园实时画面')} src={`${GAME_URL}?watch=${encodeURIComponent(v.id)}&lang=${en ? 'en' : 'zh'}`} onLoad={() => setLoaded3d(true)} className="absolute inset-0 h-full w-full border-0" allow="fullscreen" sandbox="allow-scripts allow-same-origin" />
         </div>
       ) : (
         <div className="flex flex-col items-center gap-3 px-5 py-8 text-center text-white">
           <Box size={28} className="text-white/80" aria-hidden="true" />
           <div className="text-base font-semibold">{t('在赛博伊甸园里看它')}</div>
-          {/* App 里在独立的全屏网页里打开（openInAppView），不嵌进钱包的页面：内嵌的页面能调用 App 的原生接口（含签名），
-              游戏页一旦被注入就能碰到钱包（2026-09-28 审查 #2）。独立网页不挂原生接口，又不像系统浏览器那样弹出来（2026-09-29 goat） */}
+          {/* Opened in a standalone fullscreen webview in the app (openInAppView), not embedded in the wallet's page:
+   an embedded page could call the app's native interfaces (incl. signing) — once injected, the game page
+   could touch the wallet (2026-09-28 review #2). The standalone webview mounts no native interfaces, and
+   unlike the system browser it doesn't pop out (2026-09-29 goat) */}
           <Button size="sm" onClick={() => (isNative ? void openInAppView(`${GAME_URL}?watch=${encodeURIComponent(v.id)}&lang=${en ? 'en' : 'zh'}`, t('返回')).catch(() => {}) : setShow3d(true))}>{t('进入观察模式')}</Button>
         </div>
       )}

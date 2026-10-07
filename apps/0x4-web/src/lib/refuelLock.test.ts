@@ -1,8 +1,8 @@
-// 自动补燃料费跨标签互斥（Codex 复审 P1）：有原子锁时同一时刻只有一个执行；没有锁的浏览器一律不自动补
+// Cross-tab mutual exclusion for auto gas top-up (Codex review P1): with an atomic lock only one executes at a time; browsers without locks never auto-top-up
 import { describe, expect, it } from 'vitest'
 import { canLockRefuel, withRefuelLock } from './refuelLock'
 
-/** 模拟浏览器的 Web Locks：同名锁被占用时 ifAvailable 立刻给 null */
+/** Simulates the browser's Web Locks: ifAvailable returns null immediately when a same-named lock is held */
 function fakeNav() {
   const held = new Set<string>()
   return {
@@ -23,12 +23,12 @@ describe('withRefuelLock', () => {
     let release!: () => void
     const slow = () => new Promise<void>((r) => { runs++; release = r })
     const a = withRefuelLock(slow, nav)
-    const b = await withRefuelLock(async () => { runs++ }, nav)   // 第一个还没补完
+    const b = await withRefuelLock(async () => { runs++ }, nav)   // The first one hasn't finished topping up
     expect(b).toBe(false)
     release()
     expect(await a).toBe(true)
     expect(runs).toBe(1)
-    // 对照：锁释放后再来一次可以执行
+    // Control: after the lock is released, another run can execute
     expect(await withRefuelLock(async () => { runs++ }, nav)).toBe(true)
     expect(runs).toBe(2)
   })

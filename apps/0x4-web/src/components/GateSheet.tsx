@@ -1,5 +1,5 @@
-// 进群门槛编辑：持有指定代币（数量）或指定 NFT（合约 / 集合）才能进群
-// 建群时和群内（管理员）都用同一个编辑器；保存后新成员立即受限，老成员可用「复核成员持仓」清退
+// Group entry-gate editor: joining requires holding a specified token (amount) or NFT (contract / collection)
+// The same editor is used at group creation and inside the group (admins); new members are restricted immediately after saving; existing members can be removed via "re-verify member holdings"
 import { useEffect, useRef, useState } from 'react'
 import { BadgeCheck, ChevronDown, Image as ImageIcon } from 'lucide-react'
 import Button from './Button'
@@ -14,14 +14,14 @@ import { t } from '@/lib/i18n'
 import { errorText } from '@/lib/errors'
 
 /**
- * NFT 门槛的链和系列名由服务端识别（GET /api/nft/collection），玩家只贴地址。
- * nftOk = 当前地址 + 链已经识别过（或是编辑已有门槛时存下来的），没识别到不能提交。
- * nftImage 只用来显示小卡片，不提交。
+ * The NFT gate's chain and collection name are identified server-side (GET /api/nft/collection); the user only pastes the address.
+ * nftOk = the current address + chain is already identified (or was stored when editing an existing gate); submission is blocked until identified.
+ * nftImage is only for the small card display, never submitted.
  */
 export interface GateDraft { kind: 'token' | 'nft'; token: ChainToken | null; nftChainId: number; contract: string; name: string; min: string; nftOk: boolean; nftImage?: string }
 export const emptyDraft = (token: ChainToken | null = null): GateDraft => ({ kind: 'token', token, nftChainId: SOLANA_CHAIN_ID, contract: '', name: '', min: '', nftOk: false })
 
-/** 把编辑器状态转成接口需要的门槛；填写不完整（含 NFT 还没识别到）返回 null */
+/** Convert editor state into the gate the API needs; returns null when incomplete (including unidentified NFT) */
 export function draftToGate(d: GateDraft): GroupGate | null {
   if (d.kind === 'token') return d.token ? { kind: 'token', chainId: d.token.chainId, token: isNative(d.token.address) ? 'native' : d.token.address, symbol: d.token.symbol, min: Number(d.min) || 0 } : null
   const c = d.contract.trim()
@@ -31,14 +31,14 @@ export function draftToGate(d: GateDraft): GroupGate | null {
 
 export function gateToDraft(g: GroupGate | null): GateDraft {
   if (!g) return emptyDraft()
-  // 已有门槛直接显示存下的链和名字，不强制重新识别；地址改了才重新识别
+  // Existing gates show the stored chain and name directly, no forced re-identification; re-identify only when the address changes
   if (g.kind === 'nft') return { kind: 'nft', token: null, nftChainId: g.chainId, contract: g.token, name: g.symbol || '', min: String(g.min || 1), nftOk: true }
   return { kind: 'token', token: { chainId: g.chainId, address: g.token, symbol: g.symbol || '', name: g.symbol || '', decimals: 0 }, nftChainId: SOLANA_CHAIN_ID, contract: '', name: '', min: String(g.min || ''), nftOk: false }
 }
 
 const EVM_NFT_CHAINS = NFT_CHAIN_IDS.filter((id) => id !== SOLANA_CHAIN_ID)
 
-/** 识别出来的系列：小图 + 名字 + 链，只读 */
+/** The identified collection: thumbnail + name + chain, read-only */
 function CollectionCard({ name, image, chainId, verified }: { name: string; image?: string; chainId: number; verified?: boolean }) {
   const [broken, setBroken] = useState(false)
   return (
@@ -57,9 +57,9 @@ function CollectionCard({ name, image, chainId, verified }: { name: string; imag
 function NftGateFields({ value, set }: { value: GateDraft; set: (p: Partial<GateDraft>) => void }) {
   const [state, setState] = useState<LookupState>({ status: 'idle' })
   const [candidates, setCandidates] = useState<NftCollectionInfo[]>([])
-  // 用户手动换过链：这时没识别到也要留着下拉，好换回去
+  // The user manually switched chains: keep the dropdown even when nothing is identified, so they can switch back
   const [pinned, setPinned] = useState(false)
-  // 识别结果是异步回来的，要合并到那一刻的最新草稿上，不能用发请求时的旧值
+  // Identification results come back async — merge them into the latest draft at that moment, not the stale values from when the request was sent
   const setRef = useRef(set)
   setRef.current = set
   const lookupRef = useRef<ReturnType<typeof createCollectionLookup> | null>(null)
@@ -69,7 +69,7 @@ function NftGateFields({ value, set }: { value: GateDraft; set: (p: Partial<Gate
       if (s.status === 'found') {
         const r = s.result
         if (r.candidates && r.candidates.length > 1) setCandidates(r.candidates)
-        // 服务端门槛按 ERC-721 的 balanceOf(owner) 校验，ERC-1155 查不出持仓，建了也没人进得来
+        // The server verifies gates with ERC-721's balanceOf(owner); ERC-1155 holdings can't be checked, so a gate built on it would let nobody in
         setRef.current({ nftChainId: r.chainId, name: r.name, nftImage: r.image, nftOk: r.standard !== 'erc1155' })
       } else setRef.current({ nftOk: false, nftImage: undefined })
     })
@@ -102,7 +102,7 @@ function NftGateFields({ value, set }: { value: GateDraft; set: (p: Partial<Gate
         {showCard && state.status !== 'loading' && <CollectionCard name={value.name || 'NFT'} image={value.nftImage} chainId={value.nftChainId} verified={state.status === 'found' && state.result.verified} />}
         {is1155 && <p className="mt-1 text-xs text-down">{t('这是 ERC-1155 系列，进群门槛目前只支持 ERC-721')}</p>}
       </div>
-      {/* 自动识别后才出链选择；Solana 只有一条链，不用选 */}
+      {/* The chain selector appears only after auto-identification; Solana has a single chain, no selection needed */}
       {isEvm && (showCard || (pinned && state.status === 'missing')) && (
         <div>
           <Label htmlFor="gate-nft-chain">{t('所在链')}</Label>
@@ -122,7 +122,7 @@ function NftGateFields({ value, set }: { value: GateDraft; set: (p: Partial<Gate
 
 export function GateEditor({ value, onChange }: { value: GateDraft; onChange: (d: GateDraft) => void }) {
   const [picking, setPicking] = useState(false)
-  // 用最新的 value 合并：NFT 识别结果是异步回来的
+  // Merge with the latest value: NFT identification results come back async
   const valueRef = useRef(value)
   valueRef.current = value
   const set = (p: Partial<GateDraft>) => { const next = { ...valueRef.current, ...p }; valueRef.current = next; onChange(next) }
@@ -147,7 +147,7 @@ export function GateEditor({ value, onChange }: { value: GateDraft; onChange: (d
   )
 }
 
-/** 群内管理员设置门槛的弹层 */
+/** Sheet for group admins to set gates inside the group */
 export default function GateSheet({ open, onClose, groupId, gate, onSaved }: { open: boolean; onClose: () => void; groupId: string; gate: GroupGate | null; onSaved: () => void }) {
   const [draft, setDraft] = useState<GateDraft>(gateToDraft(gate))
   const [busy, setBusy] = useState(false)

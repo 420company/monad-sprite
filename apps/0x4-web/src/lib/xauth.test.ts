@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-// 授权窗口回来时的处理：必须只在「自己是被打开的窗口」且「地址里带结果」时才关窗，
-// 否则会把用户正常访问的页面关掉。
+// Auth-window return handling: close the window only when "I am the opened window" AND "the URL carries a result" —
+// otherwise it would close a page the user is browsing normally.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { handleXAuthPopup, onXAuthResult } from './xauth'
 

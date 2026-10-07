@@ -1,10 +1,10 @@
-/* 网页版三个交易页面：行情（/discover）、现货 + 币详情（/spot、/token/…）、合约（/perp）。
-   设计规范 docs/WEB_DESIGN.md（2026-09-29 goat 第三轮反馈后重做），参考 Hyperliquid / Lighter / Backpack（终端）、Polymarket / Zora（列表）、Jupiter（兑换面板）。
-   · 只用外框的 --w-* token：实色面板 + 1px 细线，终端面板圆角 10、间距 6，内容页圆角 14、间距 16；不用毛玻璃、不加投影
-   · 全部 Geist（外框已全局设置），币名 / 价格 / 标题都不用像素字；数字一律等宽数字
-   · 规则都以 .tx- 开头，只作用于这三页和它们弹出的下拉面板 / 模态框，不碰手机 App 和其他网页版页面 */
+/* The three web trading pages: markets (/discover), spot + token detail (/spot, /token/…), perps (/perp).
+   Design spec docs/WEB_DESIGN.md (rebuilt after goat's 2026-09-29 third-round feedback), referencing Hyperliquid / Lighter / Backpack (terminals), Polymarket / Zora (lists), Jupiter (swap panel).
+   · Only the shell's --w-* tokens: solid panels + 1px hairlines, terminal panels radius 10 / gap 6, content pages radius 14 / gap 16; no frosted glass, no shadows
+   · All Geist (already set globally by the shell); token names / prices / titles never use pixel fonts; numbers always tabular
+   · All rules prefixed .tx- apply only to these three pages and their dropdown panels / modals, never to the mobile app or other web pages */
 
-/* ---------- 基础 ---------- */
+/* ---------- Basics ---------- */
 .tx-term, .tx-mkt, .tx-pop, .tx-modal { --tx-bottom-h: clamp(210px, 26vh, 272px); --tx-warn: #f0b35a; font-family: var(--w-font); color: var(--w-fg); }
 .tx-num, :is(.tx-term, .tx-mkt, .tx-pop, .tx-modal) :is(td, dd, input[type="number"]) { font-variant-numeric: tabular-nums; }
 :is(.tx-term, .tx-mkt, .tx-pop, .tx-modal) .up { color: var(--w-up); }
@@ -16,12 +16,12 @@
 
 .tx-panel { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--w-panel); border: 1px solid var(--w-line); border-radius: 10px; overflow: hidden; }
 
-/* 按钮：36 常规 / 28 紧凑 / 44 下单主按钮；圆角 8 */
+/* Buttons: 36 regular / 28 compact / 44 primary order button; radius 8 */
 .tx-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 8px; font: 500 14px/1 var(--w-font); color: var(--w-fg); background: var(--w-raised); border: 1px solid var(--w-line-2); white-space: nowrap; transition: background-color .15s, border-color .15s, filter .15s; }
 .tx-btn:hover:not(:disabled) { background: var(--w-hover); }
 .tx-btn:disabled { opacity: .45; cursor: not-allowed; }
-/* 小按钮（2026-10-02 goat：一个页面三种按钮太乱）：和合约下单栏顶上「逐仓 / 杠杆」选择框同一个样子——
-   32 高、圆角 8、12.5 号字、细边框，悬停边框加亮；页面上只剩「这一种次要按钮 + 一个主按钮（珍珠 / 做多绿 / 做空红）」 */
+/* Small buttons (2026-10-02 goat: three button styles on one page is too messy): same look as the "isolated / leverage" selector atop the perp order bar —
+   32 tall, radius 8, 12.5px text, hairline border, brightened border on hover; each page keeps only "this one secondary button + one primary button (pearl / long green / short red)" */
 .tx-btn-sm { height: 32px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; border-color: var(--w-line); }
 .tx-btn-sm:hover:not(:disabled) { border-color: var(--w-line-2); }
 .tx-btn-lg { height: 44px; width: 100%; font-size: 14px; font-weight: 600; }
@@ -40,7 +40,7 @@
 .tx-link:hover { text-decoration: underline; text-underline-offset: 2px; }
 .tx-link.warn { color: var(--tx-warn); }
 
-/* 页签：13px，选中白字 + 2px 下划线，未选灰，底部 1px 线 */
+/* Tabs: 13px, selected = white text + 2px underline, unselected gray, 1px line at the bottom */
 .tx-tabs { display: flex; align-items: stretch; gap: 18px; height: 36px; flex: none; padding: 0 12px; border-bottom: 1px solid var(--w-line); }
 .tx-tab { position: relative; display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1 var(--w-font); color: var(--w-mute); white-space: nowrap; transition: color .15s; }
 .tx-tab:hover { color: var(--w-fg); }
@@ -51,14 +51,14 @@
 .tx-tabs-fill .tx-tab { flex: 1; justify-content: center; }
 .tx-tabs-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
-/* 分段选择（胶囊组） */
+/* Segmented control (capsule group) */
 .tx-seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--w-raised); border: 1px solid var(--w-line); }
 .tx-seg button { height: 28px; padding: 0 12px; border-radius: 6px; font: 500 12.5px/1 var(--w-font); color: var(--w-mute); transition: color .15s, background-color .15s; }
 .tx-seg button:hover:not(:disabled) { color: var(--w-fg); }
 .tx-seg button.on { color: var(--w-fg); background: var(--w-hover); }
 .tx-seg button:disabled { opacity: .4; cursor: not-allowed; }
 
-/* 空状态：一句话 + 一个操作，居中在所属面板里 */
+/* Empty state: one line of text + one action, centered in its panel */
 .tx-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 100%; padding: 16px; text-align: center; font-size: 13px; color: var(--w-mute); }
 .tx-empty svg { color: var(--w-faint); }
 .tx-empty.is-tight { min-height: 0; padding: 22px 12px; }
@@ -68,7 +68,7 @@
 .tx-spin-ic { animation: tx-rot .8s linear infinite; }
 @keyframes tx-rot { to { transform: rotate(360deg); } }
 
-/* 表格：表头 11px 吸顶，行高 32（终端）/ 44（行情），行悬停，数字列右对齐 */
+/* Tables: 11px sticky header, row height 32 (terminal) / 44 (markets), row hover, numeric columns right-aligned */
 .tx-table-wrap { flex: 1; min-height: 0; overflow: auto; }
 .tx-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; white-space: nowrap; }
 .tx-table th { position: sticky; top: 0; z-index: 1; height: 30px; padding: 0 12px; font: 500 11px/1 var(--w-font); color: var(--w-mute); text-align: left; background: var(--w-panel); border-bottom: 1px solid var(--w-line); }
@@ -82,7 +82,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-dir.up { background: rgb(47 212 154 / .12); }
 .tx-dir.down { background: rgb(255 92 108 / .12); }
 
-/* 输入框：高 40，--w-raised 底，1px --w-line-2，聚焦描边 --w-accent，右侧放单位 */
+/* Inputs: 40 tall, --w-raised base, 1px --w-line-2, --w-accent outline on focus, unit on the right */
 .tx-field { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 12px; border-radius: 8px; background: var(--w-raised); border: 1px solid var(--w-line-2); transition: border-color .15s; }
 .tx-field:focus-within { border-color: var(--w-accent); }
 .tx-field.is-bad { border-color: var(--w-down); }
@@ -99,7 +99,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-note { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.45; background: var(--w-raised); }
 .tx-note > span { flex: 1; min-width: 0; }
 .tx-fine { font-size: 11.5px; line-height: 1.5; color: var(--w-faint); text-align: center; }
-/* 网页快捷交易状态（下单按钮下面一行）：开着时文字亮一点 */
+/* Web quick-trade status (the line under the order button): brighter text when enabled */
 .tx-quick { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--w-faint); }
 .tx-quick > span { flex: 1; min-width: 0; }
 .tx-quick > .tx-btn { flex: none; }
@@ -108,17 +108,17 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--w-accent); }
 .tx-check:hover { color: var(--w-fg); }
 
-/* 键值行（下单面板里的汇总） */
+/* Key-value rows (the summary in the order panel) */
 .tx-kv { display: flex; flex-direction: column; gap: 6px; margin: 0; font-size: 12px; }
 .tx-kv div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .tx-kv dt { color: var(--w-mute); flex: none; }
 .tx-kv dd { margin: 0; min-width: 0; display: inline-flex; align-items: center; gap: 4px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 币种图标（合约） */
+/* Token icons (perps) */
 .tx-coin { flex: none; border-radius: 50%; object-fit: cover; background: var(--w-raised); }
 .tx-coin-txt { display: inline-grid; place-items: center; font-weight: 700; }
 
-/* ---------- 下拉面板 / 模态框 ---------- */
+/* ---------- Dropdown panels / modals ---------- */
 .tx-pop { z-index: 70; display: flex; flex-direction: column; background: var(--w-panel); border: 1px solid var(--w-line-2); border-radius: 10px; box-shadow: 0 24px 60px rgb(0 0 0 / .55); overflow: hidden; animation: tx-pop-in .14s ease-out both; }
 @keyframes tx-pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .tx-pop-search { display: flex; align-items: center; gap: 8px; height: 40px; margin: 10px 10px 6px; padding: 0 12px; flex: none; border-radius: 8px; background: var(--w-raised); border: 1px solid var(--w-line-2); color: var(--w-mute); }
@@ -157,12 +157,12 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
   .tx-sk, .tx-spin, .tx-spin-ic { animation: none; }
 }
 
-/* ---------- 交易终端外壳（现货、合约）：填满 .desk-term 的内容区，一屏高、整页不滚，面板各自滚 ---------- */
-/* 外框的内容区是 flex:1 的项目，子元素的 height:100% 算不出来；这里直接按「一屏 - 顶栏 - 状态栏 - 内容区上下留白 6×2」算，
-   和外框 .desk-term .desk-main 的高度同一公式（外框最低 620，这里跟着留 608） */
+/* ---------- Trading terminal shell (spot, perps): fills .desk-term's content area, one screen tall, whole page doesn't scroll, panels scroll individually ---------- */
+/* The shell's content area is a flex:1 item, so child height:100% can't resolve; computed directly as "one screen − top bar − status bar − content top/bottom padding 6×2",
+   same formula as the shell's .desk-term .desk-main height (shell min 620, this keeps 608) */
 .tx-term { height: max(608px, calc(100dvh - var(--w-bar-h) - var(--w-status-h) - 12px)); min-height: 0; display: grid; gap: 6px; }
 
-/* 头部条（代币头 / 合约头） */
+/* Header bar (token header / perp header) */
 .tx-head { flex-direction: row; align-items: center; gap: 0; padding: 0 6px 0 12px; overflow: hidden; }
 .tx-head-id { display: flex; align-items: center; gap: 10px; flex: none; padding-right: 16px; }
 .tx-head-sym { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -171,7 +171,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-head-px { display: flex; flex-direction: column; gap: 3px; flex: none; padding: 0 18px; border-left: 1px solid var(--w-line); border-right: 1px solid var(--w-line); }
 .tx-head-px b { font: 600 20px/1 var(--w-font); font-variant-numeric: tabular-nums; }
 .tx-head-px small { font-size: 11.5px; font-variant-numeric: tabular-nums; }
-/* 统计项放不下时整项折到看不见的第二行（不裁半截）：一行高 32，多出来的换行后被 overflow 藏掉 */
+/* When stat items don't fit, whole items fold onto an invisible second row (never half-clipped): one row is 32 tall, overflow hides whatever wraps */
 .tx-stats { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; column-gap: 22px; row-gap: 20px; height: 34px; min-width: 0; flex: 1; margin: 0; padding: 0 18px; overflow: hidden; }
 .tx-stats > div { flex: none; display: flex; flex-direction: column; gap: 4px; height: 34px; justify-content: center; }
 .tx-stats dt { font-size: 11px; line-height: 13px; color: var(--w-mute); white-space: nowrap; }
@@ -181,13 +181,13 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-chainbadge { display: inline-flex; align-items: center; gap: 4px; }
 .tx-chainbadge img { width: 12px; height: 12px; border-radius: 50%; }
 
-/* K 线面板 */
+/* Candlestick chart panel */
 .tx-chart-bar { display: flex; align-items: center; gap: 12px; height: 36px; flex: none; padding: 0 8px 0 6px; border-bottom: 1px solid var(--w-line); }
 .tx-ivals { display: flex; flex: none; gap: 2px; }
 .tx-ivals button { height: 26px; padding: 0 9px; border-radius: 6px; font: 500 12.5px/1 var(--w-font); color: var(--w-mute); transition: color .15s, background-color .15s; }
 .tx-ivals button:hover { color: var(--w-fg); }
 .tx-ivals button.on { color: var(--w-fg); background: var(--w-hover); }
-/* 工具栏里的显示开关（买卖力量 / 大单）：开着的前面有个亮点 */
+/* Display toggles in the toolbar (buy/sell pressure / large orders): a lit dot in front when on */
 .tx-chart-tools { display: flex; flex: none; gap: 4px; padding-left: 10px; border-left: 1px solid var(--w-line); }
 .tx-chart-tools button { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 6px; font: 500 12.5px/1 var(--w-font); color: var(--w-mute); transition: color .15s, background-color .15s; }
 .tx-chart-tools button::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--w-tint-4); transition: background-color .15s; }
@@ -195,7 +195,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-chart-tools button.on { color: var(--w-fg); }
 .tx-chart-tools button.on::before { background: var(--w-accent); }
 .tx-chart-tools small { font-size: 11px; font-weight: 400; color: var(--w-faint); font-variant-numeric: tabular-nums; }
-/* 问小精灵（desktop/trade/SpriteLook.tsx）：工具栏按钮 + 贴着按钮的小面板 */
+/* Ask the sprite (desktop/trade/SpriteLook.tsx): toolbar button + small panel hugging the button */
 .tx-ask-btn { display: inline-flex; align-items: center; gap: 5px; flex: none; height: 26px; padding: 0 10px; border-radius: 6px; font: 500 12.5px/1 var(--w-font); color: var(--w-accent); border: 1px solid color-mix(in srgb, var(--w-accent) 38%, transparent); transition: background-color .15s, border-color .15s; }
 .tx-ask-btn:hover, .tx-ask-btn.on { background: color-mix(in srgb, var(--w-accent) 12%, transparent); border-color: var(--w-accent); }
 .tx-ask-pop { padding: 12px; gap: 10px; }
@@ -221,11 +221,11 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-ohlc span b { margin-left: 3px; font-weight: 500; color: var(--w-fg); }
 .tx-ohlc > b { font-weight: 500; }
 .tx-ohlc-big small { margin-left: 3px; color: var(--w-faint); }
-/* 买卖力量那一栏左上角的一行字（位置由图表量出来） */
+/* The caption in the top-left of the buy/sell pressure column (position measured off the chart) */
 .tx-flow-legend { top: auto; }
 .tx-flow-name { color: var(--w-faint); }
 
-/* 下单面板（右栏） */
+/* Order panel (right column) */
 .tx-order { overflow-y: auto; overscroll-behavior: contain; }
 .tx-order-in { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
 .tx-side { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border-radius: 8px; background: var(--w-raised); border: 1px solid var(--w-line); }
@@ -237,19 +237,19 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-sec-label b { color: var(--w-fg); font-weight: 500; font-variant-numeric: tabular-nums; }
 .tx-divider { height: 1px; flex: none; background: var(--w-line); margin: 2px 0; }
 
-/* 百分比快捷 */
+/* Percentage quick-selects */
 .tx-pcts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .tx-pcts button { height: 26px; border-radius: 6px; font: 500 12px/1 var(--w-font); color: var(--w-mute); background: var(--w-raised); border: 1px solid var(--w-line); transition: color .15s, border-color .15s; }
 .tx-pcts button:hover:not(:disabled) { color: var(--w-fg); border-color: var(--w-line-2); }
 .tx-pcts button.on { color: var(--w-fg); border-color: var(--w-accent); }
 .tx-pcts button:disabled { opacity: .4; cursor: not-allowed; }
 
-/* 底部页签面板 */
+/* Bottom tab panel */
 .tx-bottom .tx-tabs { padding-right: 8px; }
 .tx-bottom-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
 
-/* ================= 合约（/perp） ================= */
-/* 左 K 线、中盘口、右下单（整列）；上合约头，下仓位页签（一屏内可见） */
+/* ================= Perps (/perp) ================= */
+/* Left candles, middle order book, right order entry (full column); perp header on top, position tabs below (all visible in one screen) */
 .tx-perp {
   grid-template-columns: minmax(0, 1fr) 300px 320px;
   grid-template-rows: 56px minmax(0, 1fr) var(--tx-bottom-h);
@@ -263,14 +263,14 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 @media (max-width: 1600px) { .tx-perp { grid-template-columns: minmax(0, 1fr) 272px 300px; } }
 @media (max-width: 1280px) { .tx-perp { grid-template-columns: minmax(0, 1fr) 248px 290px; } }
 
-/* 合约选择器按钮 */
+/* Contract selector button */
 .tx-market-btn { display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px 0 4px; border-radius: 8px; transition: background-color .15s; }
 .tx-market-btn:hover, .tx-market-btn[aria-expanded="true"] { background: var(--w-raised); }
 .tx-market-btn > svg { color: var(--w-mute); transition: transform .15s; }
 .tx-market-btn[aria-expanded="true"] > svg { transform: rotate(180deg); }
 .tx-market-btn .tx-head-sym b { display: inline-flex; align-items: center; gap: 6px; }
 
-/* 合约选择下拉：搜索 + 热门 / 涨幅 / 跌幅 / 自选 + 表 */
+/* Contract selector dropdown: search + hot / gainers / losers / favorites + table */
 .tx-mk-pop .tx-tabs { padding: 0 12px; }
 .tx-mk-head, .tx-mk-row { display: grid; grid-template-columns: 28px minmax(0, 1.5fr) minmax(0, 1fr) 70px 76px; align-items: center; gap: 8px; padding: 0 12px; }
 .tx-mk-head { height: 28px; flex: none; font-size: 11px; color: var(--w-mute); border-bottom: 1px solid var(--w-line); }
@@ -286,7 +286,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-mk-star:hover { color: var(--w-fg); }
 .tx-mk-star.is-on { color: #f5c542; }
 
-/* 盘口 / 最新成交 */
+/* Order book / recent trades */
 .tx-book-cols, .tx-book-row, .tx-tape-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 6px; padding: 0 10px; }
 .tx-book-cols { height: 26px; flex: none; font-size: 11px; color: var(--w-mute); }
 .tx-book-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
@@ -312,7 +312,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-book-sk { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; }
 .tx-book-note { flex: none; padding: 5px 10px; font-size: 11px; color: var(--tx-warn); border-top: 1px solid var(--w-line); }
 
-/* 合约下单 */
+/* Perp order entry */
 .tx-perp-top { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .tx-perp-top > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 8px; font: 500 12.5px/1 var(--w-font); color: var(--w-fg); background: var(--w-raised); border: 1px solid var(--w-line); transition: border-color .15s, background-color .15s; }
 .tx-perp-top > button:hover:not(:disabled), .tx-perp-top > button[aria-expanded="true"] { border-color: var(--w-line-2); background: var(--w-hover); }
@@ -336,7 +336,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-checks { display: flex; flex-direction: column; gap: 8px; }
 .tx-tpsl { display: flex; flex-direction: column; gap: 6px; }
 .tx-tpsl > div { display: flex; flex-direction: column; }
-/* 止盈 / 止损输入框里的「在图上选价格」按钮；两个输入框下面一行小字是到这两个价的预计盈亏 */
+/* The "pick price on chart" button inside the TP / SL inputs; the small line under the two inputs shows the estimated P&L at those prices */
 .tx-pick { display: inline-grid; place-items: center; width: 26px; height: 26px; flex: none; margin-right: -4px; border-radius: 6px; color: var(--w-mute); background: var(--w-hover); transition: color .15s, background-color .15s; }
 .tx-pick:hover { color: var(--w-fg); background: var(--w-tint-3); }
 .tx-pick.is-on { color: var(--w-on-accent); background: var(--w-accent); }
@@ -355,7 +355,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-lev-steps button { height: 24px; padding: 0 6px; border-radius: 5px; font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--w-mute); }
 .tx-lev-steps button:hover, .tx-lev-steps button.on { color: var(--w-fg); background: var(--w-raised); }
 
-/* ================= 现货 / 币详情（/spot、/token/…） ================= */
+/* ================= Spot / token detail (/spot, /token/…) ================= */
 .tx-spot {
   grid-template-columns: 260px minmax(0, 1fr) 340px;
   grid-template-rows: 56px minmax(0, 1fr) var(--tx-bottom-h);
@@ -370,10 +370,10 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-spot > .tx-state { grid-column: 2 / 4; grid-row: 1 / 4; }
 @media (max-width: 1360px) { .tx-spot { grid-template-columns: 232px minmax(0, 1fr) 320px; } .tx-spot.is-folded { grid-template-columns: 40px minmax(0, 1fr) 320px; } }
 
-/* 行情页点币弹出的交易窗口（2026-10-05 goat「把行情和购买整理到一个页面里」「不要挡住左边的导航条」）。★类名别用 tx-quick：那是合约页「快捷交易」那一行（上面），撞过一次名
+/* Trading window that pops from tapping a token on the markets page (2026-10-05 goat: "put markets and buying on one page", "don't cover the left nav"). ★ Don't use the tx-quick class name: that's the "quick trade" row on the perp page (above) — collided once
   
-   只盖内容区，上下左右的位置由 TokenTerminal.tsx 的 contentArea() 按顶栏 / 竖导航 / 状态栏实际位置算好写在 style 上 */
-/* 遮罩铺满整屏，层级在顶栏（40）、空间外观的竖导航（41）、底部状态栏（30）下面：这几样照样露在外面也能点 */
+   Covers only the content area; its top/bottom/left/right come from TokenTerminal.tsx's contentArea(), computed from the actual top bar / vertical nav / status bar positions and written into style */
+/* The scrim covers the full screen, layered below the top bar (40), the space skin's vertical nav (41) and the bottom status bar (30): those stay exposed and clickable */
 .tx-tokpop-scrim { position: fixed; inset: 0; z-index: 28; background: var(--w-shade); animation: tx-fade .18s ease both; }
 .tx-tokpop { position: fixed; z-index: 29; display: flex; align-items: stretch; padding: 8px; border: 1px solid var(--w-line-2); border-radius: 18px; overflow: hidden;
   background: var(--w-bg); color: var(--w-fg); box-shadow: 0 30px 90px rgb(0 0 0 / .55); animation: tx-modal-in .2s cubic-bezier(.2, .8, .2, 1) both;
@@ -381,12 +381,12 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 @keyframes tx-fade { from { opacity: 0; } to { opacity: 1; } }
 .tx-tokpop > .tx-term.is-tokpop { flex: 1; height: auto; min-height: 0; grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: "head order" "chart order" "bottom order"; }
 .tx-tokpop > .tx-term.is-tokpop > .tx-state { grid-column: 1 / 3; grid-row: 1 / 4; }
-/* 右上角：在现货页打开 / 关闭。叠在代币头那一条的右端，代币头自己的按钮让出位置 */
+/* Top-right: open / close on the spot page. Overlaid at the right end of the token header bar; the token header's own buttons yield space */
 .tx-tokpop-bar { position: absolute; top: 18px; right: 360px; z-index: 2; display: flex; gap: 2px; }
 .tx-tokpop .tx-head { padding-right: 84px; }
 @media (max-width: 1360px) { .tx-tokpop > .tx-term.is-tokpop { grid-template-columns: minmax(0, 1fr) 320px; } .tx-tokpop-bar { right: 340px; } }
 
-/* 左侧市场列表（可收起） */
+/* Left market list (collapsible) */
 .tx-rail-top { display: flex; align-items: center; gap: 6px; padding: 8px 8px 6px; flex: none; }
 .tx-rail-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 7px; background: var(--w-raised); border: 1px solid var(--w-line); color: var(--w-mute); }
 .tx-rail-search:focus-within { border-color: var(--w-accent); }
@@ -404,11 +404,11 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-rail-px { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .tx-rail-px small { font-size: 11px; }
 .tx-rail-empty { padding: 20px 12px; font-size: 12px; line-height: 1.5; text-align: center; color: var(--w-mute); }
-/* 搜索结果的官方 / 非官方角标和同名折叠行（2026-09-30） */
+/* Official / unofficial badges in search results and same-name collapsed rows (2026-09-30) */
 .tx-tag { display: inline-flex; align-items: center; height: 15px; margin-left: 5px; padding: 0 4px; border-radius: 4px; font: 600 9.5px/1 var(--w-font); font-style: normal; vertical-align: 1px; }
 .tx-tag.is-official { color: var(--w-accent); background: rgb(205 189 255 / .12); }
 .tx-tag.is-fake { color: #ffb86b; background: rgb(255 184 107 / .12); }
-/* 交易池 3 天内刚创建（2026-09-30）：暖黄色，和「非官方」的橙色区分；悬停看说明 */
+/* Pool created within 3 days (2026-09-30): warm yellow, distinct from the "unofficial" orange; hover for the explanation */
 .tx-tag.is-new { color: #ffd166; background: rgb(255 209 102 / .13); cursor: help; }
 .tx-rail-more { width: 100%; padding: 10px 12px; font-size: 11.5px; line-height: 1.4; text-align: left; color: var(--w-mute); border-top: 1px solid var(--w-line); }
 .tx-rail-more:hover { color: var(--w-text, #fff); background: var(--w-hover); }
@@ -417,7 +417,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-rail-mini a { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; }
 .tx-rail-mini a:hover, .tx-rail-mini a.on { background: var(--w-hover); }
 
-/* 现货下单（Jupiter 式：支付框 → 获得框） */
+/* Spot order entry (Jupiter-style: pay box → receive box) */
 .tx-spot-form { display: flex; flex-direction: column; gap: 8px; }
 .tx-fieldset { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .tx-fieldset:disabled { opacity: .6; }
@@ -452,13 +452,13 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-done p { font-size: 12.5px; line-height: 1.5; color: var(--w-mute); }
 .tx-done .tx-btn { margin-top: 10px; }
 
-/* 代币信息 / 持仓 键值网格（底部页签） */
+/* Token info / positions key-value grid (bottom tabs) */
 .tx-info { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px 20px; margin: 0; padding: 14px 16px; }
 .tx-info dt { font-size: 11px; color: var(--w-mute); }
 .tx-info dd { margin: 5px 0 0; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .tx-info-wide { grid-column: 1 / -1; }
 .tx-info-span2 { grid-column: span 2; }
-/* 合约地址红色高亮，一眼能认出来（2026-09-30 goat） */
+/* Contract address highlighted in red, recognizable at a glance (2026-09-30 goat) */
 .tx-ca-red { color: #ff5c6c; font-weight: 600; }
 .tx-ratio { height: 4px; margin-top: 6px; border-radius: 2px; background: var(--w-down); overflow: hidden; }
 .tx-ratio span { display: block; height: 100%; background: var(--w-up); }
@@ -480,7 +480,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-post-foot { font-size: 11px; color: var(--w-faint); }
 .tx-post-img { flex: none; width: 52px; height: 52px; border-radius: 6px; object-fit: cover; background: var(--w-raised); }
 
-/* ================= 行情（/discover）：三块榜单卡 + 整宽代币表 ================= */
+/* ================= Markets (/discover): three leaderboard cards + full-width token table ================= */
 .tx-mkt { display: flex; flex-direction: column; gap: 16px; padding-top: 4px; min-width: 0; }
 .tx-mkt-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
 .tx-mkt-head h1 { font: 600 28px/1.1 var(--w-font); letter-spacing: -.01em; }
@@ -536,7 +536,7 @@ button.tx-cell-coin:hover b { color: var(--w-accent); }
 .tx-mrow > * { min-width: 0; }
 a.tx-mrow { transition: background-color .12s; }
 a.tx-mrow:hover { background: var(--w-raised); }
-a.tx-mrow:hover .tx-trade { color: var(--w-bg); background: var(--w-fg); border-color: transparent; }   /* 反色：两种主题都看得清 */
+a.tx-mrow:hover .tx-trade { color: var(--w-bg); background: var(--w-fg); border-color: transparent; }   /* Inverted: legible in both themes */
 .tx-mrow:last-child { border-bottom: 0; }
 .tx-mhead { position: sticky; top: var(--w-bar-h); z-index: 5; min-height: 36px; font-size: 11px; font-weight: 500; color: var(--w-mute); background: var(--w-panel); }
 .tx-mhead button { display: inline-flex; align-items: center; gap: 3px; width: 100%; height: 36px; font: inherit; color: inherit; white-space: nowrap; }
@@ -562,12 +562,12 @@ a.tx-mrow:hover .tx-trade { color: var(--w-bg); background: var(--w-fg); border-
   .tx-boards { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* 合约页还没拿到行情时：整块一个面板 */
+/* While the perp page has no market data yet: one whole panel */
 .tx-perp-empty { grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
 
-/* ---------- K 线上的交易计划线（2026-10-02 goat 第一批；结构见 desktop/trade/PlanOverlay.tsx） ----------
-   盖在图表上面的一层，自己不接鼠标（图表照常拖动、缩放、出十字线），只有标签、能拖的线、选价模式接。
-   颜色跟主题走：止盈 / 买 / 多 = 涨色，止损 / 卖 / 空 = 跌色，强平 = 警示色，预览里的入场价 = 强调色。 */
+/* ---------- Trade-plan lines on the chart (2026-10-02 goat, first batch; structure in desktop/trade/PlanOverlay.tsx) ----------
+   A layer over the chart that doesn't take the mouse (chart drags, zooms and crosshairs work as usual) — only labels, draggable lines and price-pick mode take it.
+   Colors follow the theme: TP / buy / long = up color, SL / sell / short = down color, liquidation = warning color, entry price in previews = accent color. */
 html[data-surface="web"][data-theme="light"] :is(.tx-term, .tx-mkt, .tx-pop, .tx-modal) { --tx-warn: #b26a00; }
 .tx-plan { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; font-size: 11.5px; line-height: 1; font-variant-numeric: tabular-nums; user-select: none; }
 .tx-plan-line { position: absolute; inset: 0; --plan-c: var(--w-accent); --plan-on: var(--w-on-accent); }
@@ -596,7 +596,7 @@ html[data-surface="web"][data-theme="light"] :is(.tx-term, .tx-mkt, .tx-pop, .tx
 .tx-plan-btn.is-go:hover:not(:disabled) { color: var(--plan-on); background: var(--plan-c); filter: brightness(1.08); }
 .tx-plan-btn kbd { margin-left: 2px; padding: 1px 4px; border-radius: 3px; font: 500 10px/1 var(--w-font); color: var(--w-mute); background: var(--w-tint-2); }
 .tx-plan-tag { position: absolute; right: 0; transform: translateY(-50%); box-sizing: border-box; width: var(--plan-axis, 0px); height: 18px; padding: 0 4px; display: flex; align-items: center; overflow: hidden; font-size: 11px; font-weight: 500; white-space: nowrap; color: var(--plan-on); background: var(--plan-c); border-radius: 2px 0 0 2px; }
-/* 选价模式：整块图接鼠标 */
+/* Price-pick mode: the whole chart takes the mouse */
 .tx-plan-pick { position: absolute; left: 0; right: 0; top: 0; pointer-events: auto; cursor: crosshair; }
 .tx-plan-tip { position: absolute; left: 50%; top: 30px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; height: 30px; padding: 0 6px 0 12px; border-radius: 8px; font-size: 12.5px; white-space: nowrap; color: var(--w-fg); background: var(--w-panel); border: 1px solid var(--w-line-2); cursor: default; }
 .tx-plan-pick .tx-plan-line.is-ghost { pointer-events: none; }

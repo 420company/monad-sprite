@@ -1,4 +1,4 @@
-// 媒体缓存：按最近使用淘汰（LRU）、超大文件不缓存、服务器文件过期后照样从缓存拿、清空
+// Media cache: LRU eviction, oversized files not cached, server-expired files still served from cache, clear
 import { describe, expect, it } from 'vitest'
 import { MediaCache, memoryMediaBackend } from './mediaCache'
 
@@ -12,16 +12,16 @@ describe('媒体缓存', () => {
     await c.put('a', blob(240))
     await c.put('b', blob(240))
     await c.put('c', blob(240))
-    await c.put('d', blob(240))            // 960，没超
+    await c.put('d', blob(240))            // 960, under the limit
     expect([...be.map.keys()].sort()).toEqual(['a', 'b', 'c', 'd'])
-    expect(await c.get('a')).not.toBeNull() // a 刚用过
-    await c.put('e', blob(240))            // 1200 → 删最久没用的 b
+    expect(await c.get('a')).not.toBeNull() // a was just used
+    await c.put('e', blob(240))            // 1200 → evict least-recently-used b
     expect([...be.map.keys()].sort()).toEqual(['a', 'c', 'd', 'e'])
-    await c.put('f', blob(240))            // 再删 c
+    await c.put('f', blob(240))            // then evict c
     expect([...be.map.keys()].sort()).toEqual(['a', 'd', 'e', 'f'])
     const total = [...be.map.values()].reduce((s, e) => s + e.size, 0)
     expect(total).toBeLessThanOrEqual(1000)
-    // 超过上限四分之一的单个文件不缓存
+    // Single files over a quarter of the cap are not cached
     await c.put('big', blob(251))
     expect(be.map.has('big')).toBe(false)
     expect(await c.get('nope')).toBeNull()
@@ -35,13 +35,13 @@ describe('媒体缓存', () => {
     const first = await c.fetch('https://api/uploads/x.webp', fetcher)
     expect([...new Uint8Array(await first.arrayBuffer())]).toEqual([7, 8, 9])
     expect(hits).toBe(1)
-    alive = false                           // 服务器删了文件
+    alive = false                           // Server deleted the file
     const again = await c.fetch('https://api/uploads/x.webp', fetcher)
     expect([...new Uint8Array(await again.arrayBuffer())]).toEqual([7, 8, 9])
-    expect(hits).toBe(1)                    // 没再请求服务器
-    // 没缓存过的过期文件：报错
+    expect(hits).toBe(1)                    // Server not requested again
+    // Never-cached expired file: error
     await expect(c.fetch('https://api/uploads/y.webp', fetcher)).rejects.toThrow('404')
-    // 零点清空后缓存没了
+    // Cache gone after the midnight clear
     await c.clear()
     expect(be.map.size).toBe(0)
     await expect(c.fetch('https://api/uploads/x.webp', fetcher)).rejects.toThrow('404')

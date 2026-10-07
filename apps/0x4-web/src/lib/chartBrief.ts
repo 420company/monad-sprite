@@ -1,13 +1,13 @@
-// 小精灵看图点评（2026-10-02 goat 第三批）：把当前这张图上已经有的数字整理成一份摘要，交给服务器让小精灵去说（server/src/flyLook.ts）。
-// 这里只做整理，不新造数字：K 线、买卖力量、大单都是交易所的真实数据；仓位只带比例（浮盈百分之几、离强平百分之几、
-// 止盈止损设了没有），不带数量和金额——账户金额不进小精灵的提示词。
+// Sprite chart commentary (2026-10-02 goat, batch 3): organize the numbers already on the current chart into a brief, hand it to the server for the sprite to narrate (server/src/flyLook.ts).
+// Only organizing here — no new numbers invented: candles, buy/sell pressure, and whale trades are all real exchange data; positions carry only ratios (PnL %, distance to liquidation %,
+// whether TP/SL is set) — never amounts or values; account balances never enter the sprite's prompt.
 import type { Candle } from './aster'
 import type { BigTrade, FlowPoint } from './perpFlow'
 
 export type BriefInterval = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
 const INTERVALS: readonly string[] = ['1m', '5m', '15m', '1h', '4h', '1d']
 
-/** 和 server/src/flyLook.ts 的 ChartBrief 一一对应 */
+/** One-to-one with server/src/flyLook.ts's ChartBrief */
 export interface ChartBrief {
   market: 'perp' | 'spot'
   symbol: string
@@ -31,12 +31,12 @@ export interface BriefInput {
   interval: string
   candles: Candle[]
   flow?: FlowPoint[] | null
-  /** 大单和从什么时候起有记录（毫秒）；bigSince = 0 表示还没回补到，这一项就不带 */
+  /** Whale trades and the records-since timestamp (ms); bigSince = 0 means backfill isn't done — the field is omitted then */
   big?: BigTrade[]
   bigSince?: number
   now?: number
   position?: { isLong: boolean; leverage: number; roe: number; liquidationPx: number | null } | null
-  /** 这个仓位已经挂着的止盈 / 止损触发价 */
+  /** This position's already-placed take-profit / stop-loss trigger prices */
   tpPx?: number
   slPx?: number
 }
@@ -44,7 +44,7 @@ export interface BriefInput {
 const mean = (a: number[]) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0
 const round = (n: number, d = 6) => Number(n.toFixed(d))
 
-/** K 线不到 5 根（还没加载出来）或周期不认识：返回 null，界面上说「等 K 线加载出来再试」 */
+/** Fewer than 5 candles (not loaded yet) or unknown interval: return null; the UI says "wait for the candles to load, then retry" */
 export function buildBrief(i: BriefInput): ChartBrief | null {
   const c = i.candles
   const n = c.length

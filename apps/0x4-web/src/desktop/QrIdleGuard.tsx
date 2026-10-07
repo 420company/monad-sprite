@@ -1,6 +1,6 @@
-// 扫码登录的公共电脑（「仅本次登录」）：长时间没人在用就自动退出（2026-10-01 goat）。规则和计时见 qrIdle.ts。
-// 30 分钟没有活动弹窗「是否停止当前服务？」：点「继续使用」续上，点「停止并退出」或 2 分钟没人理就退出、回到登录页。
-// 手机上选了「信任此设备」的电脑不弹（登录保留 30 天）。
+// Shared computers signed in via QR ("this session only"): auto-logout after long idleness (2026-10-01 goat). Rules and timing in qrIdle.ts.
+// After 30 idle minutes, pop the idle-timeout prompt: "keep using" renews, "stop and exit" or 2 unanswered minutes logs out and returns to the login page.
+// Computers marked "trusted device" on the phone never pop (login lasts 30 days).
 import { useEffect, useState } from 'react'
 import { Clock } from 'lucide-react'
 import { t } from '@/lib/i18n'

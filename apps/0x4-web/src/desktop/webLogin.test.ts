@@ -1,20 +1,20 @@
 // @vitest-environment jsdom
-// 2026-09-29 goat 用真 Chrome + 真插件实测：插件一直弹「登录」、点了确认好像没用又弹；社区「社交服务未连接」；合约页「你拒绝了这个请求」。
-// 端到端复现（extension/e2e/web-app.mjs）找到的根因，这里逐条守着：
-//   ① 插件每次 connect / 解锁都推 accountsChanged（地址没变），以前一律摘掉钱包再挂上 → 社交层登出又登录，两趟登录两个窗口
-//   ② 两趟登录并发：前一趟的 nonce 被后一趟作废回 401，被当成「令牌过期」清掉后一趟刚拿到的令牌再登 → 又弹
-//   ③ 用户点「拒绝」后 2 秒自动重试 → 又弹；切回标签页也会立刻重试 → 又弹
-//   ④ 登录一个窗口、EVM 关联又一个窗口
-//   ⑤ 刷新页面 / 插件锁了又解锁：令牌只在内存里，要重新签
-//   ⑥ 多个签名同时发给插件，窗口叠一堆，超过每站 5 个被自动拒；合约页只读查询没授权时自动去授权（弹窗）
-//      （只读查询 2026-09-29 审查后改由插件 perpRead 代办，网页不再拿代理签名）
+// 2026-09-29 goat tested with real Chrome + real extension: the extension kept popping "log in", confirming seemed to do nothing and it popped again; community showed "social service not connected"; perp page showed "you rejected this request".
+// Root causes found via e2e reproduction (extension/e2e/web-app.mjs), each guarded here:
+//   (1) The extension pushes accountsChanged on every connect/unlock (address unchanged); we used to always detach and re-attach the wallet -> social layer logged out and back in, two login flows = two windows
+//   (2) Two concurrent logins: the earlier flow's nonce was invalidated by the later one and returned 401, which was treated as "token expired" - the later flow's fresh token got cleared and login restarted -> popped again
+//   (3) Auto-retry 2s after the user hit "Reject" -> popped again; switching back to the tab also retried immediately -> popped again
+//   (4) One window for login, another for EVM association
+//   (5) Page refresh / extension locked then unlocked: token lived only in memory, had to re-sign
+//   (6) Multiple signature requests sent to the extension at once piled up windows; more than 5 per site got auto-rejected; read-only perp queries auto-authorized when unauthorized (popup)
+//      (after the 2026-09-29 review, read-only queries are delegated to the extension's perpRead; the web app no longer fetches a proxy signature)
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Keypair } from '@solana/web3.js'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { Ox4Provider, Ox4Event } from '@/lib/vault/extension'
 
 vi.mock('@/lib/surface', () => ({ WEB_SURFACE: true }))
-// 这些用例测的是登录本身；「先同意条款」（2026-10-02，lib/safety.ts）另有 safety.test.ts 测，这里一律当已同意
+// These cases test login itself; "agree to terms first" (2026-10-02, lib/safety.ts) is covered by safety.test.ts, assumed agreed here
 vi.mock('@/lib/safety', async (orig) => ({ ...(await orig<typeof import('@/lib/safety')>()), termsAccepted: () => true }))
 
 const { connectOx4, needSocialLogin, restoreOx4 } = await import('./walletGate')
@@ -33,15 +33,15 @@ function fakeOx4() {
   const handlers: Partial<Record<Ox4Event, ((x?: unknown) => void)[]>> = {}
   const accounts = { address: kp.publicKey.toBase58(), evmAddress: evm.address, btcAddress: '' }
   let loginAnswer: 'ok' | 'reject' = 'ok'
-  /** 插件锁没锁（2026-10-06 起插件锁了网页不登出，测试要能模拟锁着） */
+  /** Whether the extension is locked (since 2026-10-06, locking no longer logs the web app out; tests must be able to simulate locked) */
   const lock = { unlocked: true }
   const emit = (n: Ox4Event, data?: unknown) => (handlers[n] || []).forEach((cb) => cb(data))
   const p = {
     isOx4: true,
     status: async () => ({ version: '1', connected: true, unlocked: lock.unlocked, ...accounts }),
-    // 和真插件一样：connect 返回前推一次 accountsChanged（地址没变）；锁着时 connect 弹的窗口里先解锁
+    // Like the real extension: push accountsChanged once before connect returns (address unchanged); when locked, unlock first inside the connect window
     connect: async () => { calls.push({ m: 'connect' }); lock.unlocked = true; emit('accountsChanged', accounts); return accounts },
-    // 2026-09-30 起网页版用 0x 地址登录：插件用 EVM 私钥签服务器给的 SIWE
+    // Since 2026-09-30 the web app logs in with the 0x address: the extension signs the server-issued SIWE with the EVM key
     signLogin: async ({ message, evmLink }: { message: string; evmLink?: string }) => {
       calls.push({ m: 'signLogin', a: { message, evmLink } })
       if (loginAnswer === 'reject') throw { code: 4001, message: '你拒绝了这个请求' }
@@ -51,7 +51,7 @@ function fakeOx4() {
     signEvmTypedData: async () => { calls.push({ m: 'signEvmTypedData' }); return { signature: '0x' + '11'.repeat(65) } },
     agentAddress: async () => ({ address: '0x000000000000000000000000000000000000a9e7' }),
     signAgentTypedData: async ({ typedData }: { typedData: string }) => { calls.push({ m: 'signAgentTypedData', a: typedData }); return { signature: '0x' + '22'.repeat(65) } },
-    // 合约只读查询：真插件自己签名、自己请求交易所，这里用（被测试替换过的）fetch 模拟插件那一侧的请求，只把状态码和 JSON 交回
+    // Perp read-only queries: the real extension signs and requests the exchange itself; here the (test-stubbed) fetch simulates the extension-side request, handing back only status code and JSON
     perpRead: async ({ endpoint, params }: { endpoint: string; params?: Record<string, string> }) => {
       calls.push({ m: 'perpRead', a: { endpoint, params } })
       const r = await fetch(`https://fapi.asterdex.com/fapi/v3/${endpoint}?from=plugin`)
@@ -64,7 +64,7 @@ function fakeOx4() {
   return { p, calls, accounts, emit, lock, setLogin: (a: 'ok' | 'reject') => { loginAnswer = a } }
 }
 
-/** 本机假服务器：nonce 每次新发一个、只认最新那个（和真服务器一样），记下每个接口被调了几次 */
+/** Local fake server: issues a fresh nonce each time, only honors the latest one (like the real server), and counts calls per endpoint */
 function fakeServer(address: () => string) {
   const hits: string[] = []
   let nonce = 0
@@ -102,7 +102,7 @@ beforeEach(() => {
 })
 afterEach(() => { delete (window as unknown as { ox4?: unknown }).ox4; vi.unstubAllGlobals(); vi.useRealTimers() })
 
-/** App.tsx 的那条 effect：钱包挂上就登录、摘掉就登出（网页版） */
+/** The effect in App.tsx: log in when the wallet attaches, log out when it detaches (web) */
 function wireApp() {
   return useWallet.subscribe((cur, prev) => {
     if (cur.wallet === prev.wallet) return
@@ -122,7 +122,7 @@ describe('网页版登录只弹一次', () => {
     expect(f.calls.filter((c) => c.m === 'signLogin')).toHaveLength(1)
     expect(srv.count('GET /api/auth/nonce')).toBe(1)
     expect(srv.count('POST /api/auth/verify')).toBe(1)
-    // 2026-09-30 起：网页版用插件的 0x 地址登录（nonce 请求带 0x 地址），登录本身就证明了 0x 地址，不再附带 EVM 关联消息
+    // Since 2026-09-30: web logs in with the extension's 0x address (nonce request carries the 0x address); the login itself proves the 0x address, so no EVM association message is attached
     const login = f.calls.find((c) => c.m === 'signLogin')!.a as { evmLink?: string }
     expect(login.evmLink).toBeUndefined()
     expect(f.calls.some((c) => c.m === 'signEvmMessage')).toBe(false)
@@ -134,7 +134,7 @@ describe('网页版登录只弹一次', () => {
     expect(useSocial.getState().me?.evmVerified).toBe(true)
   })
 
-  // 2026-09-30：0x 登录可能登进手机 App 的账号，那边登记的私信钥匙和插件的不是同一把 → 不覆盖（覆盖了 App 就读不了新私信），标记 dmKeyElsewhere
+  // 2026-09-30: a 0x login may land in the mobile app's account, whose registered DM key differs from the extension's -> don't overwrite (overwriting would break new-DM reading in the app), flag dmKeyElsewhere
   it('登进的账号登记着另一把私信钥匙：不改账号的钥匙（不发 PUT /api/me），提示去手机上看私信；钥匙相同时照常', async () => {
     const f = fakeOx4()
     ;(window as unknown as { ox4: Ox4Provider }).ox4 = f.p
@@ -152,7 +152,7 @@ describe('网页版登录只弹一次', () => {
     expect(srv.count('PUT /api/me')).toBe(0)
     expect(useSocial.getState().dmKeyElsewhere).toBe(true)
     expect(useSocial.getState().me?.encPub).toBe('APP-KEY')
-    // 阳性对照：钥匙相同（插件和 App 是同一套助记词）→ 不提示
+    // Positive control: keys identical (extension and app share the same seed phrase) -> no prompt
     useSocial.getState().logout(true); useWallet.getState().detachExtension(); resetOx4Queue()
     vi.mocked(fetch).mockImplementation(real)
     const off2 = wireApp()
@@ -168,9 +168,9 @@ describe('网页版登录只弹一次', () => {
     fakeServer(() => useWallet.getState().address || '')
     await connectOx4()
     const before = useWallet.getState().wallet
-    f.emit('accountsChanged', { ...f.accounts })   // 没变
+    f.emit('accountsChanged', { ...f.accounts })   // unchanged
     expect(useWallet.getState().wallet).toBe(before)
-    f.emit('accountsChanged', { ...f.accounts, address: Keypair.generate().publicKey.toBase58() })   // 变了
+    f.emit('accountsChanged', { ...f.accounts, address: Keypair.generate().publicKey.toBase58() })   // changed
     expect(useWallet.getState().wallet).not.toBe(before)
   })
 
@@ -180,7 +180,7 @@ describe('网页版登录只弹一次', () => {
     fakeServer(() => f.accounts.address)
     const off = wireApp()
     await connectOx4()
-    // 登录还在路上时：摘掉、马上又挂上
+    // While login is still in flight: detach, then re-attach immediately
     useWallet.getState().detachExtension()
     await connectOx4()
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('ready'))
@@ -204,13 +204,13 @@ describe('网页版登录只弹一次', () => {
     await vi.advanceTimersByTimeAsync(5_000)
     vi.useRealTimers()
     expect(f.calls.filter((c) => c.m === 'signLogin')).toHaveLength(1)
-    // 页面自己在后台发的写请求（没有用户操作）：拦下，但不弹登录
+    // Background write requests the page fires itself (no user action): block them, but don't pop a login
     f.setLogin('ok')
     const bg = await api('/api/dms/ack', { method: 'POST', body: '{}' }).catch((x) => x)
     expect((bg as Error).name).toBe('WalletRequired')
     await new Promise((r) => setTimeout(r, 30))
     expect(f.calls.filter((c) => c.m === 'signLogin')).toHaveLength(1)
-    // 用户点了发帖（浏览器「用户激活」还在）：先请求登录，这次请求不发
+    // User tapped post (browser "user activation" still present): request login first, don't fire this request
     vi.stubGlobal('navigator', Object.assign(Object.create(navigator), { userActivation: { isActive: true } }))
     const e = await api('/api/posts', { method: 'POST', body: '{}' }).catch((x) => x)
     expect((e as Error).name).toBe('WalletRequired')
@@ -227,14 +227,14 @@ describe('网页版登录只弹一次', () => {
     const off = wireApp()
     await connectOx4()
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('ready'))
-    // 「刷新页面」：内存里的令牌和钱包都没了
+    // "Page refresh": in-memory token and wallet are gone
     useWallet.getState().detachExtension()
     setToken(null)
     await connectOx4()
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('ready'))
     expect(f.calls.filter((c) => c.m === 'signLogin')).toHaveLength(1)
     expect(srv.count('GET /api/me')).toBeGreaterThanOrEqual(1)
-    // 服务器说令牌作废了：清掉，这次要重新签（连接是用户操作）
+    // Server says the token is revoked: clear it, re-sign this time (connecting counts as a user action)
     useWallet.getState().detachExtension()
     setToken(null)
     srv.revokeAll()
@@ -246,27 +246,27 @@ describe('网页版登录只弹一次', () => {
     off()
   })
 
-  // 2026-09-29 安全审查：网页版令牌存在浏览器本地存储里（同源脚本拿得到），插件锁定 / 断开时一起删；
-  // 登录签网页版模板（服务器据此给令牌带网页标记，不能批准扫码登录）；之前存的、没有网页标记的令牌不再用
+  // 2026-09-29 security review: web tokens live in browser local storage (reachable by same-origin scripts), so delete them when the extension locks/disconnects;
+  // Log in by signing the web template (the server marks the token as web-only from this, and it can't approve QR-code logins); previously stored tokens without the web mark are no longer used
   it('插件锁定：登录和令牌都留着，解锁后不再签（2026-10-06 起）；插件断开才删令牌；取网页版登录模板（nonce 带 surface=web）；旧格式存的令牌不用', async () => {
     const f = fakeOx4()
     ;(window as unknown as { ox4: Ox4Provider }).ox4 = f.p
     const srv = fakeServer(() => f.accounts.address)
     const off = wireApp()
-    // 旧格式（没有 v: 3：2026-09-29 以前存的、或 2026-09-30 以前用插件 Solana 地址登录存的）：不拿来用，直接签名登录（不先用它问 /api/me）
+    // Old format (no v: 3: stored before 2026-09-29, or stored by extension-Solana-address logins before 2026-09-30): don't use it, sign in directly (don't query /api/me with it first)
     localStorage.setItem('0x4.webSession', JSON.stringify({ address: f.accounts.address, token: 'OLD' }))
     localStorage.setItem('0x4.webSession', JSON.stringify({ address: f.accounts.address, token: 'OLD', v: 2 }))
     await connectOx4()
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('ready'))
     expect(srv.count('GET /api/me')).toBe(0)
-    // 网页版要网页版登录模板（nonce 带 surface=web，服务器按签的模板决定令牌是网页版）；verify 请求体不再带 surface（服务器也不看）
+    // Web needs the web login template (nonce carries surface=web; the server marks the token web from the signed template); the verify body no longer carries surface (the server ignores it anyway)
     const calls = vi.mocked(fetch).mock.calls as unknown as [string, RequestInit][]
     const nonceUrl = new URL(calls.find(([u]) => String(u).includes('/api/auth/nonce'))![0], 'https://x')
     expect(nonceUrl.searchParams.get('surface')).toBe('web')
     const verify = calls.find(([u]) => String(u).includes('/api/auth/verify'))!
     expect(JSON.parse(String(verify[1].body)).surface).toBeUndefined()
     expect(JSON.parse(localStorage.getItem('0x4.webSession')!)).toMatchObject({ address: f.accounts.address, v: 3 })
-    // 插件锁定：登录、令牌、钱包都留着（2026-10-06 goat「睡一觉起来要重新登录」）；解锁后也不再签登录
+    // Extension locked: keep login, token and wallet (2026-10-06 goat: "woke up and had to log in again"); no re-sign after unlock either
     f.lock.unlocked = false
     f.emit('lock')
     expect(localStorage.getItem('0x4.webSession')).not.toBeNull()
@@ -277,13 +277,13 @@ describe('网页版登录只弹一次', () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(useSocial.getState().status).toBe('ready')
     expect(f.calls.filter((c) => c.m === 'signLogin')).toHaveLength(1)
-    // 插件里断开这个网站：同样删掉
+    // Disconnecting this site in the extension: delete them too
     f.emit('disconnect')
     expect(localStorage.getItem('0x4.webSession')).toBeNull()
     off()
   })
 
-  // 2026-09-29 复审建议 8：网页版令牌当时 24 小时（10/06 起 7 天），以前只在打开页面时续一次，标签页开着超过 24 小时就被登出
+  // 2026-09-29 review suggestion 8: web tokens were 24h then (7 days since 10/06); they used to renew only once on page open, so a tab open past 24h got logged out
   it('标签页一直开着：每 6 小时续一次令牌、切回标签页（距上次超过 10 分钟）也续；续期被拒（到续期上限）才提示登录过期；全程不弹签名', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
@@ -294,18 +294,18 @@ describe('网页版登录只弹一次', () => {
     await connectOx4()
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('ready'))
     const refreshes = () => srv.count('POST /api/auth/refresh')
-    expect(refreshes()).toBe(0)   // 刚签名登录拿到的新令牌不用马上续
-    // 切回标签页：距上次（登录）不到 10 分钟，不续
+    expect(refreshes()).toBe(0)   // A freshly signed-in token doesn't need an immediate renewal
+    // Switching back to the tab: less than 10 minutes since last (login), don't renew
     document.dispatchEvent(new Event('visibilitychange'))
     await vi.advanceTimersByTimeAsync(5 * 3600_000)
     expect(refreshes()).toBe(0)
     await vi.advanceTimersByTimeAsync(3600_000 + 16 * 60_000)
-    expect(refreshes()).toBe(1)   // 6 小时到了续一次
-    // 开着 30 小时（超过令牌的 24 小时）：一直在续，状态一直是 ready
+    expect(refreshes()).toBe(1)   // Renew once the 6-hour mark hits
+    // Open for 30 hours (past the token's 24h): kept renewing, stayed ready
     await vi.advanceTimersByTimeAsync(24 * 3600_000)
     expect(refreshes()).toBe(5)
     expect(useSocial.getState().status).toBe('ready')
-    // 切回标签页：距上次续期超过 10 分钟就续一次，不到就不续
+    // Switching back to the tab: renew only if more than 10 minutes since the last renewal
     await vi.advanceTimersByTimeAsync(11 * 60_000)
     document.dispatchEvent(new Event('visibilitychange'))
     await vi.waitFor(() => expect(refreshes()).toBe(6))
@@ -313,7 +313,7 @@ describe('网页版登录只弹一次', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(refreshes()).toBe(6)
     expect(f.calls.filter((c) => c.m === 'signLogin')).toHaveLength(1)
-    // 到了 7 天上限服务器拒绝续期（401）：停在「登录已过期」，不自己弹签名，之后也不再续
+    // At the 7-day cap the server refuses renewal (401): stop at "login expired", don't auto-pop a signature, and don't renew afterwards
     srv.revokeAll()
     await vi.advanceTimersByTimeAsync(6 * 3600_000 + 16 * 60_000)
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('error'))
@@ -344,8 +344,8 @@ describe('网页版登录只弹一次', () => {
   })
 })
 
-// 2026-09-29 审查：loginWithWallet 以前一拿到令牌就设成全局令牌，之后才看钱包是不是还是原来那个。
-// A 的登录还没换到令牌就在插件里换成 B：B 先登录好，A 的令牌后回来，全局令牌被换成 A 的——界面显示 B，接口按 A 的身份发（发帖、私信、转账记录都记到 A）。
+// 2026-09-29 review: loginWithWallet used to set the token globally the moment it arrived, only then checking whether the wallet was still the same one.
+// Before A's login finished exchanging the token, the extension switched to B: B logged in first, A's token arrived later, and the global token got swapped to A's - UI shows B while API calls go out as A (posts, DMs, transfer records all recorded under A).
 describe('换号时的登录竞态', () => {
   it('A 的登录回复晚于 B 登录完成才回来：全局令牌仍是 B 的，界面和接口身份一致', async () => {
     const kpA = Keypair.generate(), kpB = Keypair.generate()
@@ -368,7 +368,7 @@ describe('换号时的登录竞态', () => {
       off: () => {},
     } as unknown as Ox4Provider
     ;(window as unknown as { ox4: Ox4Provider }).ox4 = p
-    // 假服务器：令牌 = T:<地址>，/api/me 按令牌回是谁
+    // Fake server: token = T:<address>, /api/me answers identity from the token
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       const u = new URL(String(url), 'http://x')
       const j = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status })
@@ -376,26 +376,26 @@ describe('换号时的登录竞态', () => {
       if (u.pathname === '/api/auth/nonce') { const a = u.searchParams.get('address')!; return j({ nonce: 'n', issuedAt: 't', message: `login ${a}` }) }
       if (u.pathname === '/api/auth/verify') {
         const b = JSON.parse(String(init?.body))
-        // 网页版 0x 登录：请求里是 0x 地址，服务器按证明登进对应账号（这里 A / B 的 0x 各自对应 A / B 的 Solana 账号）
+        // Web 0x login: the request carries the 0x address; the server logs into the matching account from the proof (here A/B's 0x each maps to A/B's Solana account)
         const acct = b.address === evmA.address ? kpA.publicKey.toBase58() : kpB.publicKey.toBase58()
-        if (acct === kpA.publicKey.toBase58()) await heldA   // A 签完了，但换令牌的回复在网络上慢了
+        if (acct === kpA.publicKey.toBase58()) await heldA   // A finished signing, but the token-exchange response is slow on the network
         return j({ token: `T:${acct}`, user: { address: acct, nickname: 'x', encPub: 'PUB' } })
       }
       if (u.pathname === '/api/me') return who ? j({ address: who, nickname: 'x', encPub: 'PUB' }) : j({ error: '未登录' }, 401)
       return j(u.pathname.endsWith('s') || u.pathname.includes('groups') ? [] : {})
     }))
     const off = wireApp()
-    await connectOx4()                          // 挂上 A，A 签了登录，换令牌的回复还在路上
+    await connectOx4()                          // A attached, A signed the login, the token-exchange response still in flight
     await new Promise((r) => setTimeout(r, 20))
     current = kpB
-    for (const cb of handlers.accountsChanged || []) cb(accOf(kpB))   // 插件里换成 B
+    for (const cb of handlers.accountsChanged || []) cb(accOf(kpB))   // Switched to B in the extension
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('ready'))
     expect(useSocial.getState().me?.address).toBe(kpB.publicKey.toBase58())
     expect(getToken()).toBe(`T:${kpB.publicKey.toBase58()}`)
-    releaseA()                                  // A 的回复这才到
+    releaseA()                                  // A's response only arrives now
     await new Promise((r) => setTimeout(r, 50))
     expect(useWallet.getState().address).toBe(kpB.publicKey.toBase58())
-    expect(getToken()).toBe(`T:${kpB.publicKey.toBase58()}`)   // 修复前这里变成 T:A
+    expect(getToken()).toBe(`T:${kpB.publicKey.toBase58()}`)   // Before the fix this became T:A
     expect(useSocial.getState().me?.address).toBe(kpB.publicKey.toBase58())
     off()
   })
@@ -419,18 +419,18 @@ describe('插件确认窗口排队', () => {
     const a = acc.signMessage!({ message: 'a' })
     const b = acc.signMessage!({ message: 'b' })
     await new Promise((r) => setTimeout(r, 10))
-    expect(order).toEqual(['start a'])   // b 在排队，插件同时只有一个窗口
+    expect(order).toEqual(['start a'])   // b is queued; the extension shows only one window at a time
     release()
     await Promise.all([a, b])
     expect(order).toEqual(['start a', 'end a', 'start b', 'end b'])
-    // 拒绝：排在它后面的（同一批）取消，不再弹
+    // Reject: those queued behind it (same batch) are cancelled, no more popups
     order.length = 0
     const r = acc.signMessage!({ message: 'r' }).catch((e) => e.code)
     const c = acc.signMessage!({ message: 'c' }).catch((e) => e.code)
     expect(await r).toBe(4001)
     expect(await c).toBe(4001)
     expect(order).toEqual(['start r'])
-    // 之后新发起的照常
+    // New requests started afterwards behave normally
     await acc.signMessage!({ message: 'd' })
     expect(order).toEqual(['start r', 'start d', 'end d'])
   })
@@ -452,15 +452,15 @@ describe('合约页只读查询不弹窗', () => {
       return new Response('{"code":-1000,"msg":"No agent found"}', { status: 400 })
     }))
     await expect(loadAccount(account)).rejects.toThrow('NO_AGENT')
-    expect(f.calls.some((c) => c.m === 'signEvmTypedData')).toBe(false)   // 没弹授权
+    expect(f.calls.some((c) => c.m === 'signEvmTypedData')).toBe(false)   // No authorization popup
     expect(aster).toEqual(['GET /fapi/v3/account'])
-    // 8 秒后页面再刷新：一分钟内刚确认过没授权，不再签名去问交易所
+    // Page refreshes 8s later: unauthorized was just confirmed within the last minute, so don't sign and ask the exchange again
     await expect(loadAccount(account)).rejects.toThrow('NO_AGENT')
     expect(aster).toEqual(['GET /fapi/v3/account'])
-    // 查账户交给插件代办（perpRead，不弹窗、不排队）：网页不拿代理签名（2026-09-29 审查：那种签名能拿去调写接口）
+    // Account lookups are delegated to the extension (perpRead, no popup, no queueing): the web app doesn't fetch a proxy signature (2026-09-29 review: that kind of signature could be reused against write endpoints)
     expect(f.calls.filter((c) => c.m === 'perpRead')).toHaveLength(1)
     expect(f.calls.some((c) => c.m === 'signAgentTypedData')).toBe(false)
-    // 用户下单：先授权（主钱包一个窗口），再签单子，不先签一个注定失败的单子
+    // User places an order: authorize first (one window for the main wallet), then sign the order - never sign an order that's doomed to fail first
     f.calls.length = 0
     const market = { index: 0, coin: 'BTC', symbol: 'BTCUSDT', szDecimals: 3, pxDecimals: 1, maxLeverage: 100, markPx: 60000, prevDayPx: 60000, change24h: 0, funding: 0, volume24h: 0, openInterest: 0, onlyIsolated: false }
     await placeOrder(account, { market, isBuy: true, size: 0.001 }).catch(() => {})
@@ -469,8 +469,8 @@ describe('合约页只读查询不弹窗', () => {
   })
 })
 
-// 2026-10-06 goat「网页没关，睡一觉起来钱包那些就要重新登录」：插件默认 15 分钟自动锁，以前一锁网页就删令牌、摘钱包。
-// 现在插件锁着也照样挂上钱包、用存的令牌登录；不为登录弹插件窗口；解锁后补登记私信公钥
+// 2026-10-06 goat: "web page left open, woke up and everything wallet-related needed re-login": the extension auto-locks after 15 minutes by default; previously a lock deleted the token and detached the wallet.
+// Now the wallet attaches even while the extension is locked and logs in with the stored token; no extension window is popped for login; the DM public key is registered after unlock
 describe('插件锁着打开网页', () => {
   const save = (address: string, token: string) => localStorage.setItem('0x4.webSession', JSON.stringify({ address, token, v: 3 }))
   const userClick = (on: boolean) => Object.defineProperty(navigator, 'userActivation', { value: { isActive: on }, configurable: true })
@@ -492,7 +492,7 @@ describe('插件锁着打开网页', () => {
     expect(f.calls.map((c) => c.m)).not.toContain('signLogin')
     expect(f.calls.map((c) => c.m)).not.toContain('dmPublicKey')
     expect(srv.count('GET /api/auth/nonce')).toBe(0)
-    // 用户在插件弹窗里解锁：插件推 accountsChanged（地址没变）→ 去掉锁、补问一次私信公钥
+    // User unlocks in the extension popup: the extension pushes accountsChanged (address unchanged) -> clear the lock, request the DM public key once more
     f.lock.unlocked = true
     f.emit('accountsChanged', f.accounts)
     expect(useWallet.getState().keysUnlocked).toBe(true)
@@ -513,7 +513,7 @@ describe('插件锁着打开网页', () => {
     expect(f.calls.map((c) => c.m)).not.toContain('connect')
     expect(f.calls.map((c) => c.m)).not.toContain('signLogin')
     expect(srv.count('GET /api/auth/nonce')).toBe(0)
-    // 用户点了要登录的东西
+    // User tapped something that requires login
     userClick(true)
     expect(needSocialLogin()).toBe(true)
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('ready'))

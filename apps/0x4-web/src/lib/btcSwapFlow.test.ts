@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// 比特币闪兑的周边规则（2026-09-30）：
-//   · 2026-09-30 goat 在跨链服务后台给比特币链配好了收费地址：从比特币发起的报价也带平台费参数，和 EVM 发起的一样
-//   · 用 BTC 付款时不检查、不去补「比特币燃料费」（矿工费从这笔 BTC 里出）
+// Bitcoin flash-swap edge rules (2026-09-30):
+//   · 2026-09-30 goat configured the fee address for the Bitcoin chain in the cross-chain service backend: Bitcoin-originated quotes also carry the platform-fee param, same as EVM-originated ones
+//   · paying with BTC skips the check and never tops up "Bitcoin gas" (miner fees come out of the BTC itself)
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getLifiQuote } from './lifi'
 import { checkGas } from './gas'

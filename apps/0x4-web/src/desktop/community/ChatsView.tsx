@@ -1,7 +1,7 @@
-// 社区 → 消息（/messages）和 群组（/groups）（2026-10-01 社区合并）。
-//   消息：我的会话（群 + 私信 + 0x4 官方，和手机「消息」同一个 ChatList），点一个进聊天窗（/g/:id、/dm/:address、/official）；
-//   群组：我的群 / 发现群（搜群名或群号），可以建群、加入、申请。没连钱包也能看公开群。
-//   2026-10-03 goat：「我的群」放前面并默认打开；没加入任何群时给一句提示和「探索更多群组」按钮（切到发现群）。
+// Community → messages (/messages) and groups (/groups) (2026-10-01 community merge).
+//   Messages: my conversations (groups + DMs + 0x4 official, same ChatList as phone "messages"); tap one for the chat window (/g/:id, /dm/:address, /official);
+//   Groups: my groups / discover groups (search by name or id); create, join, request. Public groups viewable without a wallet.
+//   2026-10-03 goat: "my groups" first and open by default; with no groups joined, show a hint plus an "explore more groups" button (switches to discover).
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Lock, MessageCircle, Plus, RefreshCw, Search, UserRound, Users } from 'lucide-react'
@@ -21,14 +21,14 @@ import { SocialLogin } from '../ui'
 import CommunityShell, { CmHead } from './CommunityShell'
 import Friends from '@/components/Friends'
 
-/** 会话列表要社区登录后才有；登录上以后拉一次群和私信 */
+/** The conversation list needs community login; fetch groups and DMs once logged in */
 function useChatsReady() {
   const wallet = useWallet(isWalletConnected)
   const status = useSocial((s) => s.status)
   const qr = useSocial((s) => s.qrMode)
   const loadGroups = useSocial((s) => s.loadGroups)
-  // 连着钱包，或者用手机 App 扫码登录着，都算登录（2026-10-04 走查：以前只认钱包，扫码登录的人看不到自己的群和消息；
-  // 扫码登录能用群，私信要钱包加密，点进私信时服务器回 WALLET_REQUIRED 会弹出连接钱包）
+  // Wallet-connected or phone-app QR-logged-in both count as logged in (2026-10-04 review: previously wallet-only, so QR users couldn't see their groups or messages;
+  // QR login covers groups; DMs need wallet encryption — entering a DM when the server replies WALLET_REQUIRED pops the wallet connect)
   const connected = wallet || (qr && status === 'ready')
   const ready = connected && status === 'ready'
   const [loading, setLoading] = useState(true)
@@ -62,7 +62,7 @@ function MessagesBody() {
   )
 }
 
-/** 公开群列表（/api/groups?q=，不登录也能读） */
+/** Public group list (/api/groups?q=, readable without login) */
 function usePublicGroups(query: string) {
   const [st, set] = useState<{ list: Group[] | null; failed: boolean }>({ list: null, failed: false })
   const [retry, setRetry] = useState(0)
@@ -79,7 +79,7 @@ function usePublicGroups(query: string) {
   return { ...st, retry: () => setRetry((n) => n + 1) }
 }
 
-/** 好友（2026-10-04 走查：电脑端以前没有好友列表，也搜不了人；手机版社区有「好友」标签）。直接用手机那块 Friends：好友、好友申请、搜人、推荐 */
+/** Friends (2026-10-04 review: desktop had no friend list or people search; phone community has a "friends" tab). Reuse the phone Friends block directly: friends, requests, search, suggestions */
 export function FriendsView() {
   return <CommunityShell><FriendsBody /></CommunityShell>
 }
@@ -103,7 +103,7 @@ function GroupsBody() {
   const myGroups = useSocial((x) => x.myGroups)
   const [tab, setTab] = usePageState<'mine' | 'find'>('community.groups', 'mine', oneOf('mine', 'find'))
   const [q, setQ] = useState('')
-  // 币详情「建一个群」带着预设过来（state.createFor）：直接打开建群并预填群名（2026-10-04 走查：以前跳到动态页，什么也不发生）
+  // Coin detail's "create a group" arrives with a preset (state.createFor): open group creation with the name prefilled (2026-10-04 review: previously landed on the feed and nothing happened)
   const createFor = (useLocation().state as { createFor?: TokenPreset } | null)?.createFor ?? null
   const [creating, setCreating] = useState(!!createFor)
   const found = usePublicGroups(q.trim())
@@ -132,7 +132,7 @@ function GroupsBody() {
   )
 }
 
-/** 一行群：头像、名字（官方标）、人数、门槛 / 审核；右边加入 / 进入 */
+/** One group row: avatar, name (official badge), member count, threshold / review; join / enter on the right */
 function GroupRow({ g, connected }: { g: Group; connected: boolean }) {
   const nav = useNavigate()
   const myGroups = useSocial((s) => s.myGroups)

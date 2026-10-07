@@ -1,6 +1,6 @@
-// 「0x4 官方」公告页（社区 → 消息最上面那个会话点进来，推送 ref = announcement:<id> 也到这里）。
-// 只读：按时间顺序（旧的在上、新的在下，和聊天一样）显示管理员在后台发的全员公告，不能回复；
-// 底部一行「有问题请联系客服」去联系客服页。进来即全部标记已读，停在页面上时新来的也立刻标已读。
+// "0x4 Official" announcements page (Community → entered from the top conversation in messages; push ref = announcement:<id> also lands here).
+// Read-only: shows admins' broadcast announcements from the backend in chronological order (old on top, new at bottom, like chat) — no replies;
+// A bottom row "questions? contact support" goes to the support page. Everything is marked read on entry; new arrivals are marked read immediately while staying on the page.
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, ExternalLink, Headset, LoaderCircle, Megaphone, RefreshCw } from 'lucide-react'
@@ -25,19 +25,19 @@ export default function Official() {
   const { list, loaded, failed, hasMore, loadingMore, unread } = useAnnouncements()
   const firstPaint = useRef(true)
 
-  // 进来先拉一次最新的（推送点进来时可能还没拉过）
+  // Pull the latest once on entry (a push entry may not have pulled yet)
   useEffect(() => { if (status === 'ready') void useAnnouncements.getState().load() }, [status])
-  // 在这个页面上 = 都看过了：进来标一次，停留时新来的也标
+  // Being on this page = all seen: mark once on entry, mark new arrivals while staying
   useEffect(() => { if (status === 'ready' && loaded && unread > 0) void useAnnouncements.getState().markAllRead() }, [status, loaded, unread])
-  // 第一次有内容时滚到最底下（最新一条和「联系客服」都露出来；底部导航栏的高度由 Layout 的下内边距让出来）
+  // Scroll to the very bottom the first time there's content (latest item and "contact support" both visible; the bottom tab bar's height is yielded by Layout's bottom padding)
   useLayoutEffect(() => {
     if (!list.length || !firstPaint.current) return
     firstPaint.current = false
-    // 等 ScrollRestorer 处理完新页面的「回到顶部」再滚
+    // Wait for ScrollRestorer to finish the new page's "scroll to top" before scrolling
     requestAnimationFrame(() => window.scrollTo({ top: document.documentElement.scrollHeight }))
   }, [list.length])
 
-  const ordered = [...list].reverse()   // store 里新的在前，页面上旧的在上
+  const ordered = [...list].reverse()   // Newest-first in the store, oldest-on-top on the page
 
   return (
     <div className="flex min-h-full flex-col pb-6">
@@ -72,17 +72,17 @@ export default function Official() {
   )
 }
 
-/** 一条公告：时间、标题、正文、配图（点开全屏）、链接按钮。后台「全员公告」页的预览照这个样子画 */
+/** One announcement: time, title, body, image (tap for fullscreen), link button. The backend "broadcast" page's preview is drawn to match this */
 export function AnnouncementCard({ a }: { a: Pick<Announcement, 'title' | 'body' | 'image' | 'link' | 'createdAt'> }) {
   const nav = useNavigate()
   const open = () => {
     if (!a.link) return
-    // App 内路由直接跳；https 用系统内置浏览器打开
+    // In-app routes jump directly; https opens in the system in-app browser
     if (a.link.startsWith('/')) nav(a.link)
     else openExternal(a.link).catch(() => toast.error(t('打开失败')))
   }
   let host = ''
-  if (a.link && !a.link.startsWith('/')) { try { host = new URL(a.link).hostname } catch { /* 服务端校验过，不会走到这 */ } }
+  if (a.link && !a.link.startsWith('/')) { try { host = new URL(a.link).hostname } catch { /* Server-validated, never reaches here */ } }
   return (
     <article className="announcement-card" data-announcement="">
       <div className="mb-2 text-center text-[11px] text-muted"><time dateTime={new Date(a.createdAt).toISOString()}>{timeAgo(a.createdAt)}</time></div>

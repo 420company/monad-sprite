@@ -1,5 +1,5 @@
-// 礼物动画本地预览页（开发用，不打包进 App）：/dev/giftfx-preview.html
-// 图标直接读 server/assets/gifts/（线上是服务器启动时复制到 /files/ 下的同名文件）。
+// Local preview page for gift animations (dev-only, not shipped in the app): /dev/giftfx-preview.html
+// Icons are read directly from server/assets/gifts/ (in production they're the same files copied under /files/ at server startup).
 import { useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { GiftFxStage, giftSound, type GiftFxGift, type GiftFxHandle } from '@/components/giftFx'

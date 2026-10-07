@@ -1,8 +1,8 @@
-// 行情页的迷你走势线（2026-09-29 goat：行情页「说不出来哪不对」——上一版拿数据稀的币画大图很难看）。
-// 规则：只画真实数据、只在代价小的地方画。这里只读服务器 K 线通道里「已经缓存」的 1 小时线
-// （/api/candles?prefetch=1：服务器只查缓存，不向数据商发请求、不花额度；别人刚看过的币才有），拿不到就不画，绝不编。
-// · 每分钟最多问 SPARK_PER_MIN 次（服务器按 IP 每分钟 60 次，给币详情页留足额度）；结果在本机记 5 分钟（没有也记，免得反复问）
-// · 服务器说 K 线通道没开（enabled:false）：这次打开网页里不再问
+// Market page mini sparklines (2026-09-29 goat: the market page felt "off somehow" — the previous version drew big charts for data-sparse tokens and they looked awful).
+// Rules: only real data, only where it's cheap. Here we only read "already cached" 1h candles from the server candle channel
+// (/api/candles?prefetch=1: the server only checks its cache — no vendor requests, no quota spent; only tokens others just viewed exist). Nothing fetched → nothing drawn, never fabricated.
+// · At most SPARK_PER_MIN requests per minute (the server allows 60/min per IP — leave quota for the token detail page); results cached on-device for 5 minutes (misses cached too, to avoid repeat asks)
+// · When the server says the candle channel is off (enabled:false): stop asking for this web session
 import { useEffect, useState } from 'react'
 import { API_BASE } from '@/lib/env'
 import { candleConfig } from '@/lib/candleConfig'
@@ -44,14 +44,14 @@ function request(x: MarketToken) {
   })
 }
 
-/** 给列表前 max 个有交易对的币拿走势线；返回 键 → 收盘价序列（只含真的拿到了的） */
+/** Fetch sparklines for the first max tokens in the list that have pairs; returns key → close-price series (only ones actually obtained) */
 export function useSparks(list: MarketToken[], max = 12): Map<string, number[]> {
   const [, tick] = useState(0)
   useEffect(() => { const f = () => tick((n) => n + 1); listeners.add(f); return () => { listeners.delete(f) } }, [])
   const want = list.filter((x) => x.pairAddress).slice(0, max)
   const sig = want.map(keyOf).join('|')
   useEffect(() => {
-    // 后台只读服务器通道：后台「数据源」里服务器通道不可用时不问
+    // Background reads the server channel only: skip when the backend "Data sources" marks the server channel unavailable
     if (candleConfig().serverReady === false) return
     want.forEach(request)
   }, [sig]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -61,7 +61,7 @@ export function useSparks(list: MarketToken[], max = 12): Map<string, number[]> 
 }
 export const sparkKey = keyOf
 
-/** 走势线：首尾比较定颜色；没有数据时什么都不画（由调用方留空） */
+/** Sparkline: color from first-vs-last comparison; draw nothing without data (the caller leaves the space) */
 export function Spark({ pts, width = 88, height = 28 }: { pts: number[]; width?: number; height?: number }) {
   const min = Math.min(...pts), max = Math.max(...pts)
   const span = max - min || 1

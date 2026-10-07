@@ -1,13 +1,13 @@
-// 能量礼物的动画层 + 飘屏消息（网页版、会议、手机 App 共用）。
-// 服务器确认扣好能量后才会广播 roomgift，这里收到才播：本机永远不先播、被拒的永远不播（goat：不能「送出去又收回」）。
-// 手机 App 也挂这一层：只播别人送的礼物动画，不出现任何价格和按钮。
+// Animation layer + floating-screen messages for energy gifts (shared by web, meetings, and the mobile app).
+// The server only broadcasts roomgift after confirming the energy deduction; playback starts on receipt here: never play locally first, never play on rejection (goat: no "sent then taken back").
+// The mobile app mounts this layer too: it only plays others' gift animations, showing no prices or buttons.
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { GiftFxStage, giftSound, type GiftFxHandle } from '@/components/giftFx'
 import { energyFile, ENERGY_GIFTS, onEnergyMessage, useEnergy } from '@/lib/energy'
 import { useLang } from '@/lib/i18n'
 import { useSocial } from '@/store/social'
 
-/** 服务器广播的一条送礼（server/src/giftEnergy.ts send 成功后的 roomgift） */
+/** One gifted broadcast from the server (roomgift after server/src/giftEnergy.ts's send succeeds) */
 export interface RoomGift {
   roomId: string; room: string; id: string; from: string; nickname: string | null; avatar: string | null; to: string
   gift: { id: string; nameZh: string; nameEn: string; icon: string | null; anim: string | null; fx: string | null; sound: string | null; price?: number }
@@ -27,8 +27,8 @@ export const GiftFxLayer = forwardRef<GiftFxLayerHandle, { className?: string }>
 })
 
 /**
- * 订阅一个房间的送礼广播。roomId：直播间 id，或会议的 `meet:<会议码>`。
- * join = true 时顺带订阅这个频道（会议页用；直播间页面自己已经订阅了 roomjoin）
+ * Subscribe to a room's gifting broadcasts. roomId: the live room id, or a meeting's `meet:<code>`.
+ * With join = true, also subscribe to this channel (used by the meeting page; the live room page already subscribed to roomjoin itself)
  */
 export function useRoomGifts(roomId: string | null, onGift: (g: RoomGift) => void, join = false) {
   const socket = useSocial((s) => s.socket)
@@ -44,8 +44,8 @@ export function useRoomGifts(roomId: string | null, onGift: (g: RoomGift) => voi
 }
 
 /**
- * 网页版全局：能量余额实时同步（服务器推 energy_balance，这个钱包所有设备、所有标签页一起变）。
- * 登录后先读一次；手机 App 不挂（不显示余额）。
+ * Web global: realtime energy-balance sync (the server pushes energy_balance; all devices and tabs of this wallet change together).
+ * Read once after login; the mobile app doesn't mount it (no balance shown).
  */
 export function useEnergySync() {
   const socket = useSocial((s) => s.socket)

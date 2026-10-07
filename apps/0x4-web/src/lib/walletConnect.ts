@@ -1,10 +1,10 @@
-// 连接外部钱包，只为一件事：让它签一条消息，证明「这个地址也是我的」，
-// 之后它里面的 NFT 才能拿来当头像。
+// Connecting an external wallet serves one purpose only: have it sign a message proving "this address is also mine",
+// so its NFTs can later be used as avatars.
 //
-// 边界（很重要）：
-//   - 这个模块只请求签名，永远不发交易，也不碰对方私钥。
-//   - 只在用户点「关联钱包」时才被动态加载，主包里没有它。
-//   - 登录、交易、转账一概不走这里，0x4 自己的钱包还是自管私钥那套。
+// Boundaries (important):
+//   - This module only requests signatures; it never sends transactions and never touches the other side's private keys.
+//   - It's dynamically loaded only when the user taps "Link wallet" — the main bundle doesn't include it.
+//   - Login, trading and transfers never go through here; 0x4's own wallets stay on the self-custodied private-key flow.
 import UniversalProvider from '@walletconnect/universal-provider'
 import { walletChallenge, linkWallet } from '@/lib/linkedWallets'
 import { isNative, openExternal } from '@/lib/native'
@@ -14,7 +14,7 @@ import { t } from '@/lib/i18n'
 import { WEB_SURFACE } from '@/lib/surface'
 import { APP_DOMAIN, currentWebDomain } from '@/lib/siwx'
 
-/** 用户自己关掉了连接窗口 / 在钱包里点了拒绝 */
+/** The user closed the connect window themselves / tapped reject in the wallet */
 export class Cancelled extends Error {
   constructor() { super('CANCELLED') }
 }
@@ -29,10 +29,10 @@ async function getProvider() {
     metadata: {
       name: '0x4',
       description: '关联钱包以使用其中的 NFT 作为头像',
-      // ★必须和服务器关联钱包消息（EIP-4361 / SIWS）里的 domain 一致（server/src/siwx.ts，2026-09-30）：
-      // MetaMask 手机版拿这个 url（或 WalletConnect Verify 核实过的网页来源）当「发起请求的网站」和消息 domain 比对，对不上就标红警告。
-      // 手机 App = app.420.meme（9/27 以后装的 App 就是这个值，服务器按 App 令牌出 app.420.meme 的题）；
-      // 电脑网页版 = 网页版当前所在的域名（取题时带给服务器，服务器按它出题，和 Verify 核实的真实网页来源也一致；2026-09-30 起可能是 420.meme）
+      // ★ Must match the domain in the server's link-wallet messages (EIP-4361 / SIWS) (server/src/siwx.ts, 2026-09-30):
+      // MetaMask mobile treats this url (or the WalletConnect Verify-verified web origin) as the "requesting site" and compares it against the message domain — a mismatch gets a red warning.
+      // Mobile app = app.420.meme (apps installed after 9/27 carry this; the server issues app.420.meme challenges based on the app token);
+      // Desktop web = the web app's current domain (sent to the server when fetching the challenge; the server issues per it, matching the Verify-verified real web origin; since 2026-09-30 it may be 420.meme)
       url: `https://${WEB_SURFACE ? currentWebDomain() : APP_DOMAIN}`,
       icons: ['https://app.420.meme/icons/icon.svg'],
     },
@@ -41,16 +41,16 @@ async function getProvider() {
 }
 
 export interface ConnectHandle {
-  /** wc: 开头的连接串，用来出二维码或跳转钱包 App */
+  /** A wc:-prefixed connection URI, used to render a QR code or deep-link into a wallet app */
   uri: string
-  /** 等用户在钱包里确认连接、再签名；完成后地址已关联 */
+  /** Wait for the user to confirm the connection in the wallet, then sign; the address is linked once done */
   done: Promise<void>
   cancel: () => void
 }
 
 /**
- * 发起连接并签名关联。
- * 返回连接串给界面出二维码（电脑）或跳转钱包（手机），done 完成即表示关联成功。
+ * Start the connection and sign the association.
+ * Returns the connection URI for the UI to render a QR code (desktop) or deep-link to a wallet (mobile); done means the association succeeded.
  */
 export async function beginLinkWallet(): Promise<ConnectHandle> {
   const p = await getProvider()
@@ -60,16 +60,16 @@ export async function beginLinkWallet(): Promise<ConnectHandle> {
 
   const session = p.connect({
     optionalNamespaces: {
-      // EVM：主流 NFT 都在这几条链上。只要 personal_sign，不要交易权限
+      // EVM: mainstream NFTs live on these chains. Only personal_sign is needed — never transaction permission
       eip155: {
         methods: ['personal_sign'],
-        // 多带几条 NFT 常见链（ApeChain / Zora / Abstract / Berachain），
-        // 钱包当前停在哪条链上都能连上；我们只要签名，不关心链本身
+        // Include a few more NFT-common chains (ApeChain / Zora / Abstract / Berachain),
+        // so the wallet connects no matter which chain it's currently on; we only need the signature, the chain itself doesn't matter
         chains: ['eip155:1', 'eip155:8453', 'eip155:42161', 'eip155:137', 'eip155:10', 'eip155:56',
           'eip155:33139', 'eip155:7777777', 'eip155:2741', 'eip155:80094'],
         events: ['accountsChanged', 'chainChanged'],
       },
-      // Solana 主网
+      // Solana mainnet
       solana: {
         methods: ['solana_signMessage'],
         chains: ['solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'],
@@ -83,7 +83,7 @@ export async function beginLinkWallet(): Promise<ConnectHandle> {
     if (!s) throw new Cancelled()
     const evm = (s.namespaces.eip155?.accounts || [])[0]
     const sol = (s.namespaces.solana?.accounts || [])[0]
-    // 账号格式是 "eip155:1:0xabc…" / "solana:<chain>:<address>"
+    // Account format is "eip155:1:0xabc…" / "solana:<chain>:<address>"
     const address = evm ? evm.split(':')[2] : sol ? sol.split(':')[2] : ''
     if (!address) throw new Error(t('这个钱包没有返回地址'))
     const chainType: 'evm' | 'solana' = evm ? 'evm' : 'solana'
@@ -103,13 +103,13 @@ export async function beginLinkWallet(): Promise<ConnectHandle> {
   return { uri: await uriReady!, done, cancel: () => { void p.disconnect().catch(() => {}) } }
 }
 
-/** personal_sign 要的是十六进制的消息 */
+/** personal_sign wants the message in hex */
 function hexOf(text: string): string {
   const bytes = new TextEncoder().encode(text)
   return '0x' + [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** Solana 的签名返回 base58，钱包给的是 { signature } 结构 */
+/** Solana signatures come back base58; the wallet returns a { signature } structure */
 async function signSolana(p: Awaited<ReturnType<typeof UniversalProvider.init>>, account: string, message: string): Promise<string> {
   const address = account.split(':')[2]
   const chain = account.split(':').slice(0, 2).join(':')
@@ -120,9 +120,9 @@ async function signSolana(p: Awaited<ReturnType<typeof UniversalProvider.init>>,
   return r.signature
 }
 
-/** 手机上直接把连接串交给钱包 App；拿不准装了哪个就让用户自己选 */
+/** On phones, hand the connection URI straight to the wallet app; when unsure which is installed, let the user pick */
 export function openInWallet(uri: string): void {
   const link = `wc://wc?uri=${encodeURIComponent(uri)}`
-  if (isNative) void openExternal(link, { holdUnlock: true }).catch(() => {})   // 钱包签完会跳回来，期间不锁
+  if (isNative) void openExternal(link, { holdUnlock: true }).catch(() => {})   // The wallet jumps back after signing; no lock during that time
   else window.location.href = link
 }

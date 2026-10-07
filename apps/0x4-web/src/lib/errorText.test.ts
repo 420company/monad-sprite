@@ -1,9 +1,9 @@
-// 界面显示报错的统一过滤（2026-09-29 goat：补燃料费时关掉验证面板，弹出一整屏交易原始数据）
+// Unified filtering of UI-displayed errors (2026-09-29 goat: when topping up gas fees, the verification panel was dismissed and a whole screen of raw transaction data popped up)
 import { describe, expect, it } from 'vitest'
 import { errorText, isUserCancel, toastErrorText } from './errors'
 import { UnlockCancelled } from './vault/gate'
 
-// 签名库真实报错的样子：原因包在 Details 里，后面跟着整段交易参数
+// What a real signing-library error looks like: the reason is wrapped in Details, followed by the whole block of transaction parameters
 const viemLike = (details: string) => Object.assign(new Error(`An unknown error occurred while executing the contract function.
 
 Request Arguments:
@@ -26,11 +26,11 @@ describe('报错过滤', () => {
     const { Ox4Error } = await import('./vault/extension')
     expect(isUserCancel(new Ox4Error(4001, '你拒绝了这个请求'))).toBe(true)
     expect(errorText(new Ox4Error(4001, '你拒绝了这个请求'), '读取失败')).toBe('')
-    // 正式包压缩后类名变成一个字母：看 name / code 也要认得
+    // After the release build is minified, class names shrink to one letter: name / code must be recognized too
     class e extends Error { name = 'UnlockCancelled' }
     expect(isUserCancel(new e('x'))).toBe(true)
     expect(isUserCancel(Object.assign(new Error('你拒绝了这个请求'), { code: 4001 }))).toBe(true)
-    // 阳性对照：插件锁定（4900）是普通错误
+    // Positive control: extension locked (4900) is an ordinary error
     expect(isUserCancel(new Ox4Error(4900, '钱包已锁定'))).toBe(false)
   })
   it('夹着交易原始数据的报错换成一句能看懂的话，不出现十六进制', () => {

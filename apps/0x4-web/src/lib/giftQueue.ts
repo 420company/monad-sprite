@@ -1,10 +1,10 @@
-// 送礼队列（网页版 src/lib/energy.ts 和电脑端会议 meet/ 共用；不依赖界面、接口封装和翻译，只依赖 giftTip.ts）。
-// 每个「房间 × 收礼人 × 设备」一条：一张一张签、一张一张交，上一张确认了下一张的累计 = 已确认 + 价格；
-// 服务器说累计对不上就按它给的已确认重签，通道 / 比例 / 截止时间变了就重新准备；某一下被拒，后面排着的全部取消（不连环弹窗）。
+// Gift queue (shared by web src/lib/energy.ts and desktop meetings in meet/; depends on neither UI, API wrappers, nor i18n — only giftTip.ts).
+// One queue per "room × recipient × device": sign one ticket at a time, submit one at a time — after one is confirmed, the next ticket's cumulative = confirmed + price;
+// when the server says the cumulative doesn't match, re-sign with its confirmed figure; re-prepare when the channel / ratio / deadline changes; when one tap is rejected, cancel everything queued behind it (no cascading dialogs).
 import type { Hex } from 'viem'
 import { ENERGY, tipTypedData, type GiftDomain, type GiftTip } from './giftTip'
 
-/** 服务器 /api/energy/prepare 的返回 */
+/** Response of the server's /api/energy/prepare */
 export interface GiftPrep {
   room: string; streamer: Hex; streamerAccount: string; channel: Hex; base: string; platformId: string; feeBps: number; deadline: string; user: Hex
   available: string; domain: GiftDomain; primaryType: 'Tip'
@@ -12,25 +12,25 @@ export interface GiftPrep {
 export type GiftSendResult = { ok: true; available: string; cumulative: string } | { ok: false; reason: string; error: string; base?: string }
 export interface GiftQueueDeps {
   prepare(): Promise<GiftPrep>
-  /** 签小票：0x4 Wallet 走 signGiftTip（开了打赏授权就不弹窗），其他钱包走 eth_signTypedData_v4（每次弹窗） */
+  /** Sign a ticket: 0x4 Wallet uses signGiftTip (no popup once tipping authorization is granted); other wallets use eth_signTypedData_v4 (popup every time) */
   sign(typedData: ReturnType<typeof tipTypedData>): Promise<Hex>
   send(body: { gift: string; tip: Record<string, string | number>; sig: Hex }): Promise<GiftSendResult>
 }
-/** 这几种被拒：重新准备（拿新的已确认累计 / 通道 / 比例 / 截止时间）后重签一次 */
+/** These rejection kinds: re-prepare (fresh confirmed cumulative / channel / ratio / deadline), then sign once more */
 const RETRY = new Set(['stale', 'bad_channel', 'bad_fee', 'expiring', 'bad_deadline'])
 export type TapResult = { ok: true; available: string } | { ok: false; reason: string; error: string }
 
 /**
- * 一个房间、一个收礼人、一台设备的送礼队列。tap() 立刻返回一个 Promise（成功 = 服务器确认了），
- * 队列一张一张签、一张一张交：上一张确认了，下一张的累计 = 已确认 + 价格。
- * 某一张被拒（能量不足等）：后面还没签的全部取消（不会接着一张张弹「能量不足」）。
+ * The gift queue for one room, one recipient, one device. tap() returns a Promise immediately (resolved = server confirmed);
+ * tickets are signed and submitted one at a time: once one is confirmed, the next ticket's cumulative = confirmed + price.
+ * When one ticket is rejected (insufficient energy, etc.): cancel all unsigned ones behind it (no repeated "insufficient energy" popups).
  */
 export class GiftQueue {
   private prep: GiftPrep | null = null
   private confirmed = 0n
   private queue: { gift: { id: string; price: number }; resolve: (r: TapResult) => void }[] = []
   private running = false
-  /** 还在队列里（没确认）的能量，面板用来提前置灰 */
+  /** Energy still in the queue (unconfirmed) — the panel uses it to gray out early */
   queuedEnergy = 0
   constructor(private deps: GiftQueueDeps, private onChange?: () => void) {}
 
@@ -42,7 +42,7 @@ export class GiftQueue {
       void this.pump()
     })
   }
-  /** 取消还没签的（离开房间、换收礼人） */
+  /** Cancel the unsigned ones (leaving the room, switching recipient) */
   cancel(): void {
     const rest = this.queue.splice(0)
     for (const x of rest) { this.queuedEnergy -= x.gift.price; x.resolve({ ok: false, reason: 'cancelled', error: '' }) }
@@ -69,11 +69,11 @@ export class GiftQueue {
       const sig = await this.deps.sign(typed)
       const r = await this.deps.send({ gift: gift.id, tip: typed.message, sig })
       if (r.ok) { this.confirmed = tip.cumulative; return { ok: true, available: r.available } }
-      // ★防重复扣（2026-10-01 走查发现）：这一张其实已经被服务器收了（比如走实时连接送出、回执没等到，又从备用路重发了一次），
-      // 服务器回「累计对不上」且它认的已确认累计 ≥ 这张的累计 → 这一下已经送成了，算成功，绝不能按新的已确认再签一张多扣一次。
-      // 这条通道只有这一个队列在写（通道 = 房间 × 设备 × 收礼人 × 比例），已确认累计只会被这个队列推高
+      // ★ Double-charge guard (found in the 2026-10-01 review): this ticket was actually already received by the server (e.g. sent over the realtime connection, receipt never arrived, then resent via the fallback path),
+      // and the server replies "cumulative mismatch" with a recognized confirmed cumulative ≥ this ticket's cumulative → this tap already succeeded: count it as success, and never sign another ticket against the new confirmed figure (that would charge twice).
+      // This channel has exactly one writing queue (channel = room × device × recipient × ratio) — the confirmed cumulative can only be pushed up by this queue
       if (r.reason === 'stale' && r.base !== undefined && BigInt(r.base) >= tip.cumulative) { this.confirmed = BigInt(r.base); return { ok: true, available: '' } }
-      // 累计对不上：服务器给了它认的已确认累计，直接按它重签；通道 / 比例 / 截止时间的问题要重新准备
+      // Cumulative mismatch: the server gave its recognized confirmed cumulative — re-sign against it directly; channel / ratio / deadline issues need a re-prepare
       if (r.reason === 'stale' && r.base !== undefined) this.confirmed = BigInt(r.base)
       else refresh = true
       if (!RETRY.has(r.reason) || attempt === 1) return { ok: false, reason: r.reason, error: r.error }
@@ -89,7 +89,7 @@ export class GiftQueue {
         const x = this.queue.shift()!
         let r: TapResult
         try { r = await this.one(x.gift) } catch (e) {
-          // 签名被用户拒绝 / 钱包锁着 / 网络：这一下算没送，后面的也取消（用户拒绝了就不要接着弹）
+          // Signature rejected by user / wallet locked / network: this tap counts as unsent, and the ones behind are cancelled too (when the user rejects, don't keep popping)
           r = { ok: false, reason: 'sign', error: e instanceof Error ? e.message : String(e) }
           this.prep = null
         }

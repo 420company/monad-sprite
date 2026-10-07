@@ -1,23 +1,23 @@
-// 美颜 + 换背景的画面合成（WebGL2，一次画完）：
-// · 美颜（2026-10-02 goat：要像抖音那样，分磨皮 / 美白 / 瘦脸 / 大眼四项）：
-//   磨皮 = 皮肤范围里三圈 24 点的保边模糊（颜色差得多的不混，眉毛眼睛轮廓不糊），再把一点细纹理加回去，不会磨成塑料；半径按脸大小走。
-//   美白 = 皮肤提亮（暗部提得多）、去一点黄、加一点气色。
-//   瘦脸 / 大眼 = 取样位置变形：脸颊、下颌四个点往鼻子方向收；两只眼睛以瞳孔为中心放大。点位由 processor 从人脸关键点算好传进来。
-// · 背景：虚化 = 摄像头画面的多级缩小图（mipmap）取模糊的那一级，几乎不花算力；图片 = 按画面比例铺满（cover）。
-// · 人像遮罩来自 engine.segment（0~255），只有约 256×144，直接放大边缘会糊、往里缩，把脸边衣服边「吃掉」（2026-10-02 goat）。
-//   所以放大时按原画面颜色对齐边缘（joint bilateral upsampling）：周围 5×5 个遮罩点按「颜色和这个像素像不像」加权，
-//   和人身上颜色接近的算人、和背景接近的算背景，边缘就贴着真实轮廓走；再用一段窄的 smoothstep 收边。
-//   界线：第一次取 0.4~0.62（怕头发外留一圈原房间），goat 实测边缘还是乱跳、被吃，要求人周围多留空间 → 改成 0.18~0.46。
-// · 纹理不翻转，着色器里统一用 (u, 1-v) 取样，画出来方向和摄像头一致（镜像由界面的预览自己处理，发出去的不镜像）。
-// · 猫头模式（2026-10-02 goat：背景和身体照旧，只用猫头挡住脸）：画面和真人模式一样合成，猫头由 processor 画在上面。
-//   中间试过把猫头周围露出的头发抹成背景，goat 看了说那块虚影很丑，去掉了，改成猫头往上放、盖住头发。
-//   veil：还没认到脸、或脸丢了一会儿，整幅画面大幅虚化（猫头还没对上位置时不露脸）。
+// Beauty + background-swap compositing (WebGL2, single pass):
+// - Beauty (2026-10-02 goat: TikTok-style, four controls — smooth / whiten / slim-face / big-eyes):
+//   Smooth = edge-preserving blur (3 rings × 24 taps) within skin regions (dissimilar colors don't blend, brow/eye contours stay crisp), then a touch of fine texture back in — never plastic; radius follows face size.
+//   Whiten = brighten skin (shadows lifted most), de-yellow a touch, add a hint of glow.
+//   Slim-face / big-eyes = sample-position warp: four cheek/jaw points pulled toward the nose; both eyes enlarged about the pupils. Landmarks computed by the processor from face keypoints.
+// - Background: blur = the blurry mip level of the camera frame's mipmap chain, nearly free; image = cover-fit to the frame.
+// - The person mask comes from engine.segment (0–255) at only ~256×144; naive upscaling blurs edges and shrinks inward, "eating" face and clothing edges (2026-10-02 goat).
+//   So upscaling aligns edges to the source frame's colors (joint bilateral upsampling): the surrounding 5×5 mask taps are weighted by "how much this pixel resembles each color",
+//   person-like colors count as person, background-like as background — edges hug the true contour; a narrow smoothstep finishes the edge.
+//   Thresholds: first 0.4–0.62 (feared a ring of the original room outside the hair); goat's testing showed edges still jumping and getting eaten, asked for more margin around the person → changed to 0.18–0.46.
+// - Textures aren't flipped; shaders sample (u, 1-v) uniformly so output matches the camera orientation (mirroring is the preview UI's own business; the sent stream isn't mirrored).
+// - Cat-head mode (2026-10-02 goat: background and body unchanged, just a cat head covering the face): composited like person mode, cat head drawn on top by the processor.
+//   An attempt to paint hair peeking around the cat head into the background looked ghostly-ugly to goat — removed; the cat head now sits higher, covering the hair.
+//   veil: no face detected yet, or face lost for a while — the whole frame blurs heavily (no face shown until the cat head is aligned).
 import { srcSize, type FrameSrc } from './engine'
 
 export type BgMode = 'none' | 'blur' | 'image'
-/** veil = 整幅大幅虚化（猫头模式下还没认到脸时用） */
+/** veil = heavy whole-frame blur (used in cat-head mode before a face is detected) */
 export interface FxLook { smooth: number; white: number; bg: BgMode; veil?: boolean; warp?: Warp | null; skinR?: number }
-/** 瘦脸 / 大眼的变形参数：坐标 0~1（原点左上），半径按画面高度算 */
+/** Slim-face / big-eyes warp params: coords 0–1 (origin top-left), radius in frame-height units */
 export interface Warp { slimP: number[]; slimM: number[]; slimR: number; eyeC: number[]; eyeR: number; eyeS: number }
 
 const VS = `#version 300 es
@@ -129,7 +129,7 @@ export class Compositor {
   private bgSize = { w: 1, h: 1 }
   private hasMask = false
   private maskSize = { w: 256, h: 144 }
-  /** 遮罩边缘对齐的取样半径：电脑 2（5×5），手机 1（3×3，省显卡） */
+  /** Mask edge-alignment sample radius: 2 on desktop (5×5), 1 on phones (3×3, saves GPU) */
   refineRadius = 2
   private u: Record<string, WebGLUniformLocation | null> = {}
 
@@ -145,7 +145,7 @@ export class Compositor {
     this.prog = p
     gl.useProgram(p)
     const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)   // 一个盖满屏幕的大三角形
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)   // One big triangle covering the screen
     const loc = gl.getAttribLocation(p, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
     for (const n of ['uCam', 'uMask', 'uBg', 'uBgMode', 'uSmooth', 'uWhite', 'uSkinR', 'uHasMask', 'uVeil', 'uAspect', 'uWarp', 'uSlimP', 'uSlimM', 'uEyeC', 'uSlimR', 'uEyeR', 'uEyeS', 'uTexel', 'uBgScale', 'uMaskTexel', 'uRad']) this.u[n] = gl.getUniformLocation(p, n)
     const tex = (unit: number, mip: boolean) => {
@@ -160,7 +160,7 @@ export class Compositor {
     gl.activeTexture(gl.TEXTURE2); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([18, 16, 28, 255]))
   }
 
-  /** 换背景图（已经解码好的图片） */
+  /** Swap the background image (already-decoded) */
   setBackground(img: HTMLImageElement | ImageBitmap | null) {
     const gl = this.gl
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.bg)
@@ -169,7 +169,7 @@ export class Compositor {
     this.bgSize = { w: 'naturalWidth' in img ? img.naturalWidth : img.width, h: 'naturalHeight' in img ? img.naturalHeight : img.height }
   }
 
-  /** 上传这一帧的人像遮罩；没有就传 null（这一帧不换背景） */
+  /** Upload this frame's person mask; null when absent (no background swap this frame) */
   setMask(m: { data: Uint8Array; w: number; h: number } | null) {
     const gl = this.gl
     this.hasMask = !!m
@@ -190,10 +190,10 @@ export class Compositor {
     gl.useProgram(this.prog)
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.cam)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video)
-    const mip = look.bg !== 'none' || !!look.veil || look.smooth > 0 || look.white > 0   // 虚化、判断皮肤、遮罩对齐边缘都要用多级缩小图
+    const mip = look.bg !== 'none' || !!look.veil || look.smooth > 0 || look.white > 0   // Blur, skin detection, and mask edge alignment all use the mipmap chain
     if (mip) gl.generateMipmap(gl.TEXTURE_2D)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
-    // 背景图按画面比例铺满：图更宽就左右裁，更高就上下裁
+    // Background image cover-fits the frame: wider images crop left/right, taller ones crop top/bottom
     const ca = w / h, ba = this.bgSize.w / this.bgSize.h
     const sx = ba > ca ? ca / ba : 1, sy = ba > ca ? 1 : ba / ca
     gl.uniform1i(this.u.uBgMode, look.bg === 'blur' ? 1 : look.bg === 'image' ? 2 : 0)

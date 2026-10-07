@@ -1,6 +1,6 @@
-// 0x4 浏览器插件适配层（docs/EXTENSION_API.md）：用一个假的 window.ox4（拿测试钥匙真签名）验证
-// 适配层把签名挂回交易 / 还原成已签交易都对、7702 授权会核对签名人、错误码映射、登录走 signLogin。
-// 每条成功路径都带对照（换钥匙 / 换合约 / 换链），证明检查真的在起作用。
+// 0x4 browser extension adapter layer (docs/EXTENSION_API.md): verified with a fake window.ox4 (real signatures with test keys)
+// The adapter attaches signatures back to txs / reconstructs signed txs correctly, verifies the signer for 7702 authorizations, maps error codes, and logs in via signLogin.
+// Every success path has a control (changed key / changed contract / changed chain) proving the checks really work.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Keypair, SystemProgram, Transaction, TransactionMessage, VersionedTransaction } from '@solana/web3.js'
 import bs58 from 'bs58'
@@ -14,11 +14,11 @@ import { b64 } from './native'
 
 const ALLOWED_7702 = '0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B'
 
-/** jsdom 里 Node 的 Buffer 和页面的 Uint8Array 不是同一种，签名库只认后者：统一转一下（只在测试里的假插件） */
+/** In jsdom, Node's Buffer and the page's Uint8Array are different types and the signing lib only accepts the latter: normalize (fake extension in tests only) */
 const edSign = (m: Uint8Array, kp: Keypair) => ed25519.sign(Uint8Array.from(m), Uint8Array.from(kp.secretKey.slice(0, 32)))
 const edVerify = (s: Uint8Array, m: Uint8Array, pk: Uint8Array) => ed25519.verify(Uint8Array.from(s), Uint8Array.from(m), Uint8Array.from(pk))
 
-/** 假插件：Solana 用 solKp 签，EVM 用 evmKey 签；calls 记下每次调用的方法和参数 */
+/** Fake extension: Solana signs with solKp, EVM with evmKey; calls records each call's method and params */
 function fakeOx4(solKp: Keypair, evmKey: Hex, over: Partial<Ox4Provider> = {}) {
   const calls: { m: string; a: unknown }[] = []
   const evm = privateKeyToAccount(evmKey)
@@ -32,7 +32,7 @@ function fakeOx4(solKp: Keypair, evmKey: Hex, over: Partial<Ox4Provider> = {}) {
     async signSolanaTransaction({ tx }) {
       calls.push({ m: 'signSolanaTransaction', a: tx })
       const raw = b64.toBytes(tx)
-      // 插件那边：认出是哪种交易，签它的 message
+      // Extension side: recognize the tx type, sign its message
       let msg: Uint8Array
       try { msg = VersionedTransaction.deserialize(raw).message.serialize() } catch { msg = Transaction.from(raw).serializeMessage() }
       return { signature: bs58.encode(edSign(msg, solKp)) }
@@ -81,7 +81,7 @@ describe('Solana', () => {
     await w.signTransaction(tx)
     expect(tx.verifySignatures()).toBe(true)
     expect(calls.find((c) => c.m === 'signSolanaTransaction')).toBeTruthy()
-    // 对照：插件拿别的钥匙签，挂到这个地址上就验不过
+    // Control: extension signs with a different key — attaching to this address fails verification
     const other = fakeOx4(Keypair.generate(), generatePrivateKey()).p
     const w2 = extensionSolanaWallet(other, kp.publicKey.toBase58())
     const tx2 = new Transaction({ feePayer: kp.publicKey, recentBlockhash: blockhash }).add(SystemProgram.transfer({ fromPubkey: kp.publicKey, toPubkey: Keypair.generate().publicKey, lamports: 1 }))
@@ -125,7 +125,7 @@ describe('EVM', () => {
     const td = { domain: { name: 'X', chainId: 56 }, types: { M: [{ name: 'n', type: 'uint256' }] }, primaryType: 'M', message: { n: 5 } }
     await extensionEvmAccount(p, evm.address).signTypedData!(td as never)
     expect(JSON.parse(calls.find((c) => c.m === 'signEvmTypedData')!.a as string)).toEqual(td)
-    // bigint 也能序列化（viem 的数值常是 bigint），不会抛 TypeError
+    // bigint serializes too (viem numbers are often bigint) — no TypeError
     const big = { ...td, message: { n: 123456789012345678901234567890n } }
     const { p: p2, calls: c2 } = fakeOx4(Keypair.generate(), generatePrivateKey(), { signEvmTypedData: async ({ typedData }) => { c2.push({ m: 'x', a: typedData }); return { signature: '0x' } } })
     await extensionEvmAccount(p2, evm.address).signTypedData!(big as never)
@@ -154,7 +154,7 @@ describe('EVM', () => {
     expect(agent.address).toBe('0x000000000000000000000000000000000000a9e7')
     expect(await agent.signTypedData({ domain: {}, types: {}, primaryType: 'X', message: {} })).toBe('0xagent')
     expect(calls.map((c) => c.m)).toEqual(['agentAddress', 'signAgentTypedData'])
-    // 从来不请求签「0x4 perp agent v2」这条原始消息
+    // Never requests a signature on the raw "0x4 perp agent v2" message
     expect(calls.some((c) => c.m === 'signEvmMessage')).toBe(false)
   })
 
@@ -166,13 +166,13 @@ describe('EVM', () => {
     expect(calls.at(-1)).toEqual({ m: 'perpWrite', a: { actions } })
     expect(await acc.ox4PerpSession.status()).toEqual({ active: false })
     expect(await acc.ox4PerpSession.start()).toEqual({ active: true, until: 1 })
-    // 登录：带上快捷交易请求（插件在登录窗口里放开关）
+    // Login: carries the quick-trade request (the extension puts the switch in the login window)
     const sol = extensionSolanaWallet(p, Keypair.generate().publicKey.toBase58())
     const seen: unknown[] = []
     p.signLogin = async (o) => { seen.push(o); return { signature: '0x', chain: 'evm' } }
     await sol.signLogin('hi')
-    expect(seen).toEqual([{ message: 'hi', perpSession: {} }])   // 不带额度（goat 2026-09-30）
-    // 老版本插件：window.ox4 上没有这些方法
+    expect(seen).toEqual([{ message: 'hi', perpSession: {} }])   // No allowance (goat 2026-09-30)
+    // Old extension versions: these methods don't exist on window.ox4
     const old = fakeOx4(Keypair.generate(), generatePrivateKey())
     const bare = { ...old.p } as Partial<Ox4Provider>
     delete bare.perpWrite; delete bare.perpSessionStatus; delete bare.perpSessionStart

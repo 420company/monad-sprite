@@ -1,14 +1,14 @@
-// 直播特效的识别部分（2026-10-02 goat：换背景、美颜、虚拟形象）：MediaPipe 人像分割 + 人脸关键点，全在主播自己的浏览器里跑。
-// · 识别引擎（wasm）和两个模型都打包进我们自己的站点（vite 的 ?url），不从谷歌的服务器下载：站点安全规则只放行自己的地址，
-//   主播的画面也不会因为这个经过任何第三方。
-// · 只在打开特效时才加载（整个 effects 目录都是按需加载的），普通用户打开网页不受影响。
-// · 送进识别的是缩小的画面（分割 256 宽、人脸 480 宽）：结果一样够用，每帧省很多算力。
+// The detection half of live effects (2026-10-02 goat: background swap, beautify, virtual avatar): MediaPipe person segmentation + face landmarks, all running in the streamer's own browser.
+// · The detection engine (wasm) and both models are bundled into our own site (vite's ?url), never downloaded from Google's servers: the site security rules only allow our own origin,
+//   and the streamer's video never passes through any third party because of this.
+// · Loaded only when effects are enabled (the whole effects directory is lazy-loaded), so regular page opens are unaffected.
+// · Detection runs on a downscaled picture (segmentation 256 wide, face 480 wide): results stay good enough while each frame costs much less compute.
 import { FaceLandmarker, ImageSegmenter, type FaceLandmarkerResult } from '@mediapipe/tasks-vision'
-import MP_DIR from 'virtual:0x4-mediapipe'   // mediapipe-<版本>，vite.config.ts 的 mediapipeWasm 插件给
+import MP_DIR from 'virtual:0x4-mediapipe'   // mediapipe-<version>, provided by vite.config.ts's mediapipeWasm plugin
 import segModel from './models/selfie_segmenter.tflite?url'
 import faceModel from './models/face_landmarker.task?url'
 
-// 识别引擎放在我们自己站点的 assets/mediapipe-<版本>/（vite.config.ts 的 mediapipeWasm 插件放进去）
+// The detection engine lives under our own site's assets/mediapipe-<version>/ (put there by vite.config.ts's mediapipeWasm plugin)
 const MP = `${import.meta.env.BASE_URL}assets/${MP_DIR}/`
 const FILESET = { wasmLoaderPath: `${MP}vision_wasm_internal.js`, wasmBinaryPath: `${MP}vision_wasm_internal.wasm` }
 
@@ -17,7 +17,7 @@ let segCpuP: Promise<ImageSegmenter> | null = null
 let faceP: Promise<FaceLandmarker> | null = null
 let faceCpuP: Promise<FaceLandmarker> | null = null
 
-// 先用显卡算；有的手机 / 内置浏览器显卡这条路建不起来，就退回 CPU（慢一点，但能用）
+// GPU first; on phones / embedded browsers where the GPU path can't be built, fall back to CPU (slower, but works)
 async function gpuThenCpu<T>(make: (delegate: 'GPU' | 'CPU') => Promise<T>): Promise<T> {
   try { return await make('GPU') } catch { return make('CPU') }
 }
@@ -27,12 +27,12 @@ const segOpts = (delegate: 'GPU' | 'CPU') => ImageSegmenter.createFromOptions(FI
   runningMode: 'VIDEO', outputConfidenceMasks: true, outputCategoryMask: false,
 })
 
-/** 人像分割器（背景用）：只建一次，后面复用 */
+/** Person segmenter (for backgrounds): built once, reused afterwards */
 export function loadSegmenter(): Promise<ImageSegmenter> {
   return (segP ??= gpuThenCpu(segOpts).catch((e) => { segP = null; throw e }))
 }
 
-/** 只用 CPU 的分割器：显卡那条路一跑就报错时换这个（见 processor） */
+/** CPU-only segmenter: switched to when the GPU path errors as soon as it runs (see processor) */
 export function loadSegmenterCpu(): Promise<ImageSegmenter> {
   return (segCpuP ??= segOpts('CPU').catch((e) => { segCpuP = null; throw e }))
 }
@@ -42,21 +42,21 @@ const faceOpts = (delegate: 'GPU' | 'CPU') => FaceLandmarker.createFromOptions(F
   runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true,
 })
 
-/** 人脸关键点（虚拟形象用）：要表情系数（眨眼、张嘴……）和头部姿态矩阵 */
+/** Face landmarks (for the virtual avatar): needs expression coefficients (blink, mouth open…) and the head pose matrix */
 export function loadFace(): Promise<FaceLandmarker> {
   return (faceP ??= gpuThenCpu(faceOpts).catch((e) => { faceP = null; throw e }))
 }
 
 /**
- * 只用 CPU 的人脸识别：有的手机（还有安卓模拟器）显卡这条路能建起来、却永远认不出脸、分割一跑就报错（2026-10-02 模拟器实测）。
- * processor 发现显卡这条路不灵（报错、或一直认不到脸）时换成这个。
+ * CPU-only face detection: on some phones (and the Android emulator) the GPU path builds fine but never detects a face and errors as soon as segmentation runs (measured 2026-10-02 on the emulator).
+ * The processor switches to this when the GPU path proves broken (errors, or never detects a face).
  */
 export function loadFaceCpu(): Promise<FaceLandmarker> {
   return (faceCpuP ??= faceOpts('CPU').catch((e) => { faceCpuP = null; throw e }))
 }
 
-/** 把一帧画面缩小到 w 宽（保持比例），给识别用 */
-/** 摄像头的一帧：老路是 <video>；Chrome / Edge 走新路，直接从摄像头轨道读出来的 VideoFrame（切到后台也照样有帧，见 processor.ts） */
+/** Downscale one video frame to w wide (keeping aspect ratio), for detection */
+/** One camera frame: the old path is <video>; Chrome / Edge take the new path — VideoFrames read straight off the camera track (frames keep coming in the background, see processor.ts) */
 export type FrameSrc = HTMLVideoElement | VideoFrame
 export const srcSize = (s: FrameSrc): { w: number; h: number } => (s instanceof HTMLVideoElement ? { w: s.videoWidth, h: s.videoHeight } : { w: s.displayWidth, h: s.displayHeight })
 
@@ -77,16 +77,16 @@ export class Downscaler {
   }
 }
 
-/** 分割一帧：返回 0~255 的人像遮罩（宽高同输入），给合成用 */
-/** out.person = 画面里人占的比例（0~1） */
+/** Segment one frame: returns a 0–255 person mask (same size as input), for compositing */
+/** out.person = the fraction of the frame occupied by the person (0–1) */
 export function segment(seg: ImageSegmenter, frame: HTMLCanvasElement, ts: number, out: { data: Uint8Array; w: number; h: number; person?: number }): boolean {
   const r = seg.segmentForVideo(frame, ts)
   const m = r.confidenceMasks?.[0]
   if (!m) { r.close(); return false }
   const f = m.getAsFloat32Array()
   const n = m.width * m.height
-  // 和上一帧的遮罩混一下：变化小的地方（边缘抖动）新的只占 35%，轮廓很稳；
-  // 变化大的地方（人在动）新的占 75%，跟得上又不至于一下子跳（2026-10-02 goat：边缘还是乱跳）
+  // Blend with the previous frame's mask: where change is small (edge jitter) the new mask only counts 35%, keeping the outline steady;
+  // where change is large (the person moving) the new one counts 75%, tracking fast without jumping (2026-10-02 goat: the edges still jittered)
   const keep = out.data.length === n && out.w === m.width
   if (!keep) out.data = new Uint8Array(n)
   let people = 0
@@ -100,9 +100,9 @@ export function segment(seg: ImageSegmenter, frame: HTMLCanvasElement, ts: numbe
   return true
 }
 
-/** 驱动猫头要用的几样：眨眼、张嘴、笑、挑眉、头的转动（弧度）；脸在画面里的位置（cx、cy 是脸框中心，fw 脸宽、fh 脸高，都按画面宽高归一到 0~1） */
+/** What drives the cat head: blink, mouth open, smile, raised brow, head rotation (radians); the face's position in the frame (cx, cy = face-box center; fw = face width, fh = face height — all normalized 0–1 against frame size) */
 export interface FacePose { found: boolean; blinkL: number; blinkR: number; jaw: number; smile: number; brow: number; yaw: number; pitch: number; roll: number; cx: number; cy: number; fw: number; fh: number
-  /** 478 个人脸关键点（0~1，原点左上；瘦脸、大眼用） */
+  /** 478 face landmarks (0–1, origin top-left; for face slimming, eye enlargement) */
   lm?: { x: number; y: number }[] }
 export const NO_FACE: FacePose = { found: false, blinkL: 0, blinkR: 0, jaw: 0, smile: 0, brow: 0, yaw: 0, pitch: 0, roll: 0, cx: 0.5, cy: 0.4, fw: 0, fh: 0 }
 
@@ -111,11 +111,11 @@ export function readFace(r: FaceLandmarkerResult): FacePose {
   const mx = r.facialTransformationMatrixes?.[0]?.data
   if (!bs || !mx) return NO_FACE
   const g = (name: string) => bs.find((c) => c.categoryName === name)?.score ?? 0
-  // 脸框：所有关键点的外接框
+  // Face box: the bounding box of all landmarks
   let x0 = 1, x1 = 0, y0 = 1, y1 = 0
   for (const p of r.faceLandmarks?.[0] ?? []) { if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y }
   if (x1 <= x0) return NO_FACE
-  // 4×4 列主序旋转矩阵 → 欧拉角（Y 偏航、X 俯仰、Z 翻滚）
+  // 4×4 column-major rotation matrix → Euler angles (Y yaw, X pitch, Z roll)
   const m00 = mx[0], m10 = mx[1], m20 = mx[2], m21 = mx[6], m22 = mx[10]
   return {
     found: true,

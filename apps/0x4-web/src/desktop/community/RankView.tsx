@@ -1,8 +1,8 @@
-// 社区 → 排行（/rank，2026-10-01 社区合并，设计稿「4-社区-排行」）：
-//   页签：交易 / 小精灵 / 热门社区；交易页签多两组切换：全球 / 我关注的、24 小时 / 7 天 / 30 天 / 全部；
-//   前三名三张卡（奖牌、盈亏、笔数、胜率、走势线），第 4 名起一行一个；我在榜上就标亮，不在前 50 就在最后钉一行我的。
-// 数据：/api/leaderboard（scope=following 只排我关注的人）、/api/users/:address/pnl（走势）、/api/flies、/api/communities。
-// 小精灵和社区只有累计数字，这两个页签不显示周期切换；没有的数字显示「--」，不编。
+// Community → Rankings (/rank; 2026-10-01 community merge, design spec "4-Community-Rankings"):
+//   Tabs: Trades / Sprites / Hot communities; the Trades tab adds two more switchers: Global / Following, 24h / 7d / 30d / All;
+//   Top 3 get cards (medal, PnL, trade count, win rate, sparkline); 4th onward one row each; my row is highlighted if I'm ranked, otherwise a pinned row of mine at the end if I'm outside the top 50.
+// Data: /api/leaderboard (scope=following ranks only people I follow), /api/users/:address/pnl (sparkline), /api/flies, /api/communities.
+// Sprites and communities only have cumulative numbers — those two tabs show no period switcher; missing numbers show "--", never made up.
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { RefreshCw, Trophy } from 'lucide-react'
@@ -35,8 +35,8 @@ export default function RankView() {
 
 function RankBody() {
   const [params, setParams] = useSearchParams()
-  // 老链接 /rank?focus=sprites（小精灵页「查看排行」）也认
-  // 页签直接跟着地址走：已经在排行页时点右侧栏「小精灵 / 热门社区」的链接也能切过去
+  // Old links /rank?focus=sprites (the sprite page's "view rankings") are also recognized
+  // Tabs follow the URL directly: links to "Sprites / Hot communities" in the right sidebar switch over even when already on the rankings page
   const tab: Tab = params.get('tab') === 'sprite' || params.get('focus') === 'sprites' ? 'sprite' : params.get('tab') === 'community' ? 'community' : 'trade'
   const setTab = (v: Tab) => setParams(v === 'trade' ? {} : { tab: v }, { replace: true })
   return (
@@ -52,7 +52,7 @@ function RankBody() {
   )
 }
 
-/** 走势线：累计已实现盈亏，最后一个点是现在的总盈亏（含持仓浮动），终点和卡片上的大数字一致 */
+/** Trend line: cumulative realized PnL; the last point is current total PnL (incl. open positions), matching the big number on the card */
 function Spark({ address, period, pnl }: { address: string; period: Period; pnl: number }) {
   const [pts, setPts] = useState<number[] | null>(null)
   useEffect(() => {
@@ -142,7 +142,7 @@ function SpriteBoard() {
     api<{ list: Fly[] }>('/api/flies').then((r) => { if (alive) setList(Array.isArray(r?.list) ? r.list : []) }).catch(() => { if (alive) setFailed(true) })
     return () => { alive = false }
   }, [status, retry])
-  // 有公开盈亏的按盈亏排；没启用 / 主人隐藏 / 还没数据的排在后面，说明原因
+  // Those with public PnL rank by PnL; unenabled / owner-hidden / not-yet-data rank after, with the reason stated
   const ranked = useMemo(() => [...(list ?? [])].sort((a, b) => score(b) - score(a)), [list])
   const open = (f: Fly) => { if (!needWallet()) nav(`/fly/${f.id}`) }
   if (failed && !list) return <Failed onRetry={() => setRetry((n) => n + 1)} />

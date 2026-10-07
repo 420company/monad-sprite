@@ -1,5 +1,5 @@
-// 直播点赞（2026-09-30）：一秒能连点十几下，每下都飘一颗心；本地攒 300 毫秒发一次（服务器每人每秒最多收 15 下）。
-// 直播间点赞数每下都算；主页「获赞」每个观众每场只算 1（服务器 liveSocial.ts）。
+// Livestream likes (2026-09-30): can be tapped a dozen+ times per second, each tap floats a heart; batched locally every 300ms (the server accepts at most 15 taps per person per second).
+// Every tap counts toward the room's like count; the profile's "likes received" counts each viewer once per session (server liveSocial.ts).
 import { useEffect, useRef, useState } from 'react'
 import { Heart } from 'lucide-react'
 import { t } from '@/lib/i18n'

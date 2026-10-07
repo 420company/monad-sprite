@@ -1,6 +1,6 @@
-// 外部浏览器与自动锁定（2026-09-28 GPT 审查 #2）：
-// 原来 openExternal 一律挂「不锁」豁免，只有深度链接跳回才解除；用户直接关掉浏览器（看完游戏、看完别人的 X 主页）后，
-// 豁免永远不解除，之后切后台、前台闲置都不再锁钱包。现在：普通浏览不挂豁免；要跳回的流程挂豁免，浏览器关闭或跳回时释放，且只释放一次。
+// External browser vs auto-lock (2026-09-28 GPT review #2):
+// openExternal used to always attach the "don't lock" exemption, lifted only when a deep link jumped back; after the user closed the browser directly (done with the game, done with someone's X profile),
+// the exemption never lifted, so backgrounding and foreground idleness never locked the wallet again. Now: plain browsing gets no exemption; flows that jump back get one, released when the browser closes or jumps back — exactly once.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ finished: null as null | (() => void), suspend: 0, resume: 0, openFails: false }))
@@ -12,7 +12,7 @@ vi.mock('@capacitor/core', async (orig) => {
 vi.mock('@capacitor/browser', () => ({
   Browser: {
     open: vi.fn(async () => { if (h.openFails) throw new Error('打不开') }),
-    close: vi.fn(async () => { h.finished?.() }),   // 真机上 close 之后系统也会发 browserFinished
+    close: vi.fn(async () => { h.finished?.() }),   // On real devices the OS also fires browserFinished after close
     addListener: vi.fn(async (_e: string, fn: () => void) => { h.finished = fn; return { remove: async () => {} } }),
   },
 }))
@@ -37,7 +37,7 @@ describe('openExternal 与自动锁定', () => {
     h.finished?.()
     await flush()
     expect(h.resume).toBe(1)
-    // 再来一次关闭事件不能多释放（否则会提前解除别的流程的豁免）
+    // A second close event must not release again (or it would early-release another flow's exemption)
     h.finished?.()
     await flush()
     expect(h.resume).toBe(1)

@@ -1,7 +1,7 @@
-// 小精灵现货全自动（B 方案）：委托的生成与签名格式（纯计算，不依赖 App 其它模块；服务器联调脚本也直接用它，保证两边完全一致）
+// Sprite spot autopilot (plan B): delegation generation and signing format (pure computation, no dependency on other app modules; the server integration script uses it directly too, keeping both sides identical)
 import { encodeAbiParameters, encodePacked, hashTypedData, toFunctionSelector, type Account, type Hex } from 'viem'
 
-/** 链上地址：MetaMask Delegation Framework v1.3.0（CREATE2 各链同址，2026-09-27 上链核实）；AutoTrader 由服务器下发（部署后才有） */
+/** On-chain addresses: MetaMask Delegation Framework v1.3.0 (CREATE2, same address on every chain, verified on-chain 2026-09-27); AutoTrader is pushed by the server (only exists after deployment) */
 export const DF = {
   delegationManager: '0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3',
   stateless7702: '0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B',
@@ -15,9 +15,9 @@ export const DF = {
   valueLte: '0x92Bf12322527cAA612fd31a0e810472BBB106A8F',
 } as const
 /**
- * AutoTrader 正式地址（BSC）：用通用确定性部署工厂（CREATE2）部署，地址由「合约代码 + 构造参数（守护者、operator、只收 USDT）+ salt」唯一决定，
- * 见 contracts/auto-trade/script/deploy.sh。写死在 App 里，服务器下发的地址对不上就拒绝开启（GPT-6 审查 #2：不能让提供交易服务的后端决定授权给谁）。
- * ★合约代码或构造参数改了，这里要跟着换成 deploy.sh address 算出的新地址
+ * AutoTrader canonical address (BSC): deployed via a generic deterministic deployment factory (CREATE2); the address is uniquely determined by "contract code + constructor args (guardian, operator, USDT-only) + salt",
+ * see contracts/auto-trade/script/deploy.sh. Hardcoded in the app; a server-pushed address that doesn't match is refused (GPT-6 review #2: the backend providing the trading service must not decide who gets approved).
+ * If the contract code or constructor args change, replace this with the new address computed by deploy.sh address
  */
 export const TRADER_BSC = '0xF7475059DF8d83DeA9a236f6e808A9e3e92B8673' as const
 export const USDT_BSC = '0x55d398326f99059fF775485246999027B3197955' as const
@@ -32,14 +32,14 @@ const DAY = 86400
 
 export interface Caveat { enforcer: Hex; terms: Hex; args: Hex }
 export interface Delegation { delegate: Hex; delegator: Hex; authority: Hex; caveats: Caveat[]; salt: bigint; signature: Hex }
-/** 初期只开放 USDT 付款（一份额度，GPT-6 审查 #3），不再签 BNB 买入委托 */
+/** Initially USDT payments only (single quota, GPT-6 review #3); no more signing BNB buy orders */
 export type DelegationKind = 'buyErc20' | 'sell'
 
 const cav = (enforcer: string, terms: Hex): Caveat => ({ enforcer: enforcer as Hex, terms, args: '0x' })
 const expiry = (until: number) => cav(DF.timestamp, encodePacked(['uint128', 'uint128'], [0n, BigInt(until)]))
 const toTrader = (trader: Hex) => cav(DF.allowedCalldata, encodePacked(['uint256', 'bytes'], [4n, encodeAbiParameters([{ type: 'address' }], [trader])]))
 
-/** 两个委托（未签名）。payPerDay 是最小单位；start / until 是秒；salt = 合约里用户当前的授权版本号 epoch（合约只认当前版本） */
+/** Two delegations (unsigned). payPerDay is in the smallest unit; start / until are seconds; salt = the user's current authorization version (epoch) in the contract (the contract only honors the current version) */
 export function buildDelegations(o: { user: Hex; trader: Hex; payToken: Hex; payPerDay: bigint; start: number; until: number; salt: bigint }): Record<DelegationKind, Delegation> {
   const base = (caveats: Caveat[], salt: bigint): Delegation => ({ delegate: o.trader, delegator: o.user, authority: ROOT_AUTHORITY, caveats, salt, signature: '0x' })
   return {
@@ -56,7 +56,7 @@ export function buildDelegations(o: { user: Hex; trader: Hex; payToken: Hex; pay
   }
 }
 
-/** EIP-712：和 DelegationManager 链上的 getDomainHash / getDelegationHash 一致（签名不参与哈希） */
+/** EIP-712: matches the on-chain getDomainHash / getDelegationHash of DelegationManager (the signature itself isn't hashed) */
 export function delegationTypedData(chainId: number, d: Delegation) {
   return {
     domain: { name: 'DelegationManager', version: '1', chainId, verifyingContract: DF.delegationManager as Hex },

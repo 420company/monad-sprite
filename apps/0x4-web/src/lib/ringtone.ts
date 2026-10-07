@@ -1,9 +1,9 @@
-// 通话提示音：用 WebAudio 现场合成，不带音频文件。
-//   来电 ring：两声短促的双音（像手机铃），每 2.4 秒一轮
-//   回铃 ringback：主叫等待时 1 秒长音、停 3 秒（国内回铃音 450Hz）
+// Call ringtones: synthesized live with WebAudio, no audio files.
+//   incoming ring: two short dual-tones (like a phone ring), one round every 2.4s
+//   ringback: while the caller waits, 1s long tone then 3s pause (domestic ringback 450Hz)
 //
-// iOS / 部分浏览器要求 AudioContext 在用户点按里创建或恢复，来电时往往没有点按，
-// 所以第一次触屏就先把上下文解锁好，之后来电就能直接响。解锁不了就只震动。
+// iOS / some browsers require the AudioContext to be created or resumed inside a user tap, but incoming calls usually come with no tap,
+// so the context is unlocked on the first touch — later incoming calls ring right away. When unlocking fails, vibrate only.
 let ctx: AudioContext | null = null
 let timer: ReturnType<typeof setInterval> | null = null
 let master: GainNode | null = null
@@ -17,7 +17,7 @@ function context(): AudioContext | null {
   return ctx
 }
 
-/** 挂一次：之后的第一次触屏顺手解锁音频 */
+/** Hook once: the next first touch unlocks audio as a side effect */
 export function primeRingtone(): void {
   if (typeof window === 'undefined') return
   const unlock = () => { const c = context(); if (c && c.state === 'suspended') void c.resume().catch(() => {}) }

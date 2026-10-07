@@ -1,8 +1,8 @@
-// 分享链接的观看页（2026-09-30 goat）：/watch/live/<直播间id>、/watch/meet/<会议码>。
-// 已登录的人直接进直播间 / 会议；没登录的人看直播以游客身份（服务器签只看、隐身的令牌），
-// 15 秒后弹登录框，画面在后面继续播，不登录弹框一直在、关不掉。
-// ★会议不给游客看（2026-10-01 goat）：没登录只显示会议信息和登录按钮，不连音视频；开了等候室的写「需要主持人同意才能加入」。
-// 付费直播要登录买票；有密码的会议显示「私人频道，您无法观看。」；已结束显示主播主页和关注。
+// Share-link watch page (2026-09-30 goat): /watch/live/<room id>, /watch/meet/<meeting code>.
+// Logged-in users go straight into the live room / meeting; logged-out viewers watch as guests (server signs a view-only, invisible token),
+// The login box pops 15 seconds in; the stream keeps playing behind it — the box stays until you log in, undismissable.
+// Meetings aren't shown to guests (2026-10-01 goat): logged-out users only see the meeting info and a login button, no audio/video; meetings with a waiting room say "needs the host's approval to join".
+// Paid streams require login + ticket; password-protected meetings show "Private channel, you can't watch."; ended ones show the host's profile and follow.
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { Room as LKRoom, RemoteTrack } from 'livekit-client'
@@ -43,7 +43,7 @@ export default function Watch() {
   const skew = useRef(0)
   const isLive = kind === 'live', isMeet = kind === 'meet'
 
-  // 已登录：直接去真正的直播间 / 会议（能聊天、点赞、送礼）
+  // Logged in: go straight to the real live room / meeting (can chat, like, gift)
   const goReal = loggedIn
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export default function Watch() {
           if (!alive) return
           if (r.status !== 'live') { setView({ k: 'ended', host: r.host, name: r.hostNickname, avatar: r.hostAvatar, meeting: false }); return }
           if (r.price > 0) { setView({ k: 'paid', room: r }); return }
-          // 游客观看凭证本来就是给没登录的人的：标成匿名请求，不然网页版的「写请求先连钱包」拦截会先弹连接面板再报错（2026-10-04 走查：没登录的人打开直播分享链接显示「暂时无法打开」）
+          // Guest watch credentials are for logged-out users by design: mark the request anonymous, otherwise web's "connect wallet before writes" interceptor pops the connect panel before erroring (2026-10-04 walkthrough: logged-out users opening a live share link saw "can't open right now")
           const g = await api<{ url: string; token: string }>(`/api/rooms/${encodeURIComponent(id)}/guest`, { method: 'POST' }, { anonymous: true })
           if (!alive) return
           setView({ k: 'watch', title: r.title, host: r.host, name: r.hostNickname, avatar: r.hostAvatar, url: g.url, token: g.token, level: r.hostLevel, streak: r.streak })
@@ -88,7 +88,7 @@ export default function Watch() {
           if (!alive) return
           if (m.hasPassword) { setView({ k: 'private' }); return }
           if (m.ended) { setView({ k: 'ended', host: m.host, name: m.hostNickname, avatar: m.hostAvatar, meeting: true }); return }
-          // 游客不能进会议：只给会议信息和登录入口
+          // Guests can't enter meetings: only the meeting info and a login entry
           setView({ k: 'meetLogin', title: m.title || '', host: m.host, name: m.hostNickname, avatar: m.hostAvatar, lobby: !!m.lobby })
         }
       } catch (e) {
@@ -101,7 +101,7 @@ export default function Watch() {
     return () => { alive = false; void roomRef.current?.disconnect(); roomRef.current = null }
   }, [kind, id, goReal]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 游客没有实时连接：PK 状态每 3 秒拉一次
+  // Guests have no realtime connection: PK state is pulled every 3 seconds
   useEffect(() => {
     if (!isLive || goReal || view.k !== 'watch') return
     let alive = true
@@ -115,7 +115,7 @@ export default function Watch() {
   if (goReal) return <Navigate to={isLive ? `/room/${id}` : `/meet/${id}`} replace />
 
   const login = () => {
-    try { sessionStorage.setItem(AFTER_UNLOCK, `/watch/${kind}/${id}`) } catch { /* 隐私模式 */ }
+    try { sessionStorage.setItem(AFTER_UNLOCK, `/watch/${kind}/${id}`) } catch { /* Private mode */ }
     if (WEB_SURFACE) { needWallet(); return }
     nav(useWallet.getState().wallet || useWallet.getState().evmAccount ? '/unlock' : '/onboarding')
   }

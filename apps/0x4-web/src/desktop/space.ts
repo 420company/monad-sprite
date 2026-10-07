@@ -1,16 +1,16 @@
-// 网页版第三种外观「空间」的背景（2026-10-03 goat 选 Gemini 方向 5，参考 Vision Pro）：
-// 1. 整页背后铺一张虚化的照片（8 张内置，或用户自己选的图片）。图片只在选了「空间」时才下载，同一时间只下载选中的那一张。
-// 2. 用户自己的图片：在本机缩到 2400 宽、转成 webp，存在这台电脑浏览器的 IndexedDB 里，不上传、不进服务器（goat：以后电脑客户端直接用桌面壁纸）。
-// 3. 视差：鼠标移动时背景反方向微微平移（最多十几像素，带阻尼），有「窗口浮在空间里」的感觉。
-//    交易终端页、系统开了「减少动态效果」、liquid.ts 判定电脑跑不动（html.lq-lite）时不动：背景一动，顶栏、胶囊、表头这些玻璃都得重新模糊。
-// 样式在 space.css（.sp-wall），只在 <html data-look="space"> 时显示。
+// Background for the web's third look "Space" (2026-10-03 goat picked Gemini direction 5, referencing Vision Pro):
+// 1. A blurred photo behind the whole page (8 built-in, or the user's own image). Images download only when "Space" is selected, and only the selected one at a time.
+// 2. The user's own image: downscaled to 2400 wide on-device, converted to webp, stored in this computer's browser IndexedDB — never uploaded, never reaches the server (goat: the future desktop client will just use the desktop wallpaper).
+// 3. Parallax: the background drifts slightly against the mouse (a dozen px at most, damped), giving a "windows floating in space" feel.
+//    Disabled on the trading terminal page, when the OS has "reduce motion" on, or when liquid.ts deems the machine too slow (html.lq-lite): moving the background forces every glass surface (top bar, capsules, headers) to re-blur.
+// Styles in space.css (.sp-wall), shown only under <html data-look="space">.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-// 背景图：src/desktop/img/space/<id>.webp（大图，选中才下载）+ <id>-s.webp（缩略图）。原图和出图脚本在 docs/art-src/space-walls
+// Wallpaper: src/desktop/img/space/<id>.webp (large, downloads only when selected) + <id>-s.webp (thumbnail). Source art and export scripts in docs/art-src/space-walls
 const FILES = import.meta.glob<string>('./img/space/*.webp', { eager: true, query: '?url', import: 'default' })
 const file = (n: string) => FILES[`./img/space/${n}.webp`] ?? ''
 
-/** 内置背景（2026-10-03 goat 从生成的 31 张里挑了这 8 张：抽象 4 张 + 星云、地球、深海、沙丘）。第一张是默认。label 显示时 t() */
+/** Built-in wallpapers (2026-10-03 goat picked these 8 from 31 generated: 4 abstract + nebula, earth, deep sea, dunes). The first is the default. label goes through t() at display time */
 const LIST: [id: string, label: string][] = [
   ['nebula', '星云'], ['orbit', '地球'], ['deepsea', '深海'], ['dunes', '沙丘'],
   ['haze', '霞光'], ['pearl', '珍珠'], ['silk', '丝绸'], ['prism', '棱镜'],
@@ -18,19 +18,19 @@ const LIST: [id: string, label: string][] = [
 export const SPACE_WALLS = LIST.map(([id, label]) => ({ id, label, src: file(id), thumb: file(`${id}-s`) }))
 const DEFAULT_WALL = SPACE_WALLS[0].id
 
-/** 内置背景的 id，或 'custom' = 用户自己的图片 */
+/** Built-in wallpaper id, or 'custom' = the user's own image */
 export type SpaceWall = string
 
 interface SpaceState {
   wall: SpaceWall
-  /** 用户自己的图片（本机 IndexedDB 读出来的 blob: 地址），没有为 null */
+  /** The user's own image (blob: URL read from local IndexedDB), null if none */
   customUrl: string | null
   setWall: (w: SpaceWall) => void
   setCustom: (file: File) => Promise<void>
   clearCustom: () => Promise<void>
 }
 
-// ---------- 本机存图（IndexedDB，库 0x4-space，表 files，键 wall） ----------
+// ---------- Local image storage (IndexedDB, db 0x4-space, table files, key wall) ----------
 const DB = '0x4-space'
 function idb<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T> {
   return new Promise((ok, fail) => {
@@ -48,7 +48,7 @@ function idb<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest)
   })
 }
 
-/** 把用户选的图片缩到最长边 2400、转 webp（不支持就 jpeg）。背景本来就要虚化，不需要原图那么大 */
+/** Downscale the user's chosen image to 2400 on the long side, convert to webp (jpeg where unsupported). The background gets blurred anyway — no need for full size */
 async function shrink(file: File): Promise<Blob> {
   const bmp = await createImageBitmap(file)
   const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height))
@@ -80,7 +80,7 @@ export const useSpace = create<SpaceState>()(
         set({ customUrl: URL.createObjectURL(blob), wall: 'custom' })
       },
       async clearCustom() {
-        try { await idb('readwrite', (s) => s.delete('wall')) } catch { /* 读不到库就当没有 */ }
+        try { await idb('readwrite', (s) => s.delete('wall')) } catch { /* If the db can't be read, treat as none */ }
         const old = get().customUrl
         if (old) URL.revokeObjectURL(old)
         set({ customUrl: null, wall: get().wall === 'custom' ? DEFAULT_WALL : get().wall })
@@ -88,7 +88,7 @@ export const useSpace = create<SpaceState>()(
     }),
     {
       name: '0x4.space', partialize: (s) => ({ wall: s.wall }),
-      // 存的是已经下架的背景（10/03 从 31 张减到 8 张）：换成默认的
+      // The stored wallpaper was retired (10/03 cut from 31 to 8): fall back to the default
       merge: (persisted, current) => {
         const w = (persisted as { wall?: string } | undefined)?.wall
         return { ...current, wall: w === 'custom' || SPACE_WALLS.some((x) => x.id === w) ? w! : DEFAULT_WALL }
@@ -97,7 +97,7 @@ export const useSpace = create<SpaceState>()(
   ),
 )
 
-/** 当前该铺哪张图 */
+/** Which image should currently be laid down */
 export function wallSrc(s: Pick<SpaceState, 'wall' | 'customUrl'>): string {
   if (s.wall === 'custom' && s.customUrl) return s.customUrl
   return (SPACE_WALLS.find((w) => w.id === s.wall) ?? SPACE_WALLS[0]).src
@@ -105,7 +105,7 @@ export function wallSrc(s: Pick<SpaceState, 'wall' | 'customUrl'>): string {
 
 const isSpace = () => document.documentElement.dataset.look === 'space'
 
-/** 图片的平均亮度（0~255）：缩到 24×15 取平均。图都是同源或本机 blob，画布读得出像素 */
+/** Average image brightness (0–255): downscale to 24×15 and average. Images are same-origin or local blobs, so canvas can read the pixels */
 function brightness(src: string): Promise<number> {
   return new Promise((ok) => {
     const im = new Image()
@@ -126,7 +126,7 @@ function brightness(src: string): Promise<number> {
     im.src = src
   })
 }
-/** 亮度 → 压暗多少：暗图（≤70）压 .12，越亮压得越多，最多 .5 */
+/** Brightness → how much to darken: dark images (≤70) get .12, brighter gets more, up to .5 */
 export const dimFor = (l: number): number => Math.round(Math.min(.5, Math.max(.12, .12 + (l - 70) / 185 * .38)) * 100) / 100
 
 export function mountSpace(): void {
@@ -138,12 +138,12 @@ export function mountSpace(): void {
   layer.appendChild(img)
   document.body.prepend(layer)
 
-  // 本机存过自己的图片：读出来（隐私模式等读不到就当没有，退回内置第一张）
+  // The user stored their own image: read it out (if unreadable — incognito etc. — treat as none, fall back to the first built-in)
   idb<Blob | undefined>('readonly', (s) => s.get('wall'))
     .then((blob) => { if (blob) useSpace.setState({ customUrl: URL.createObjectURL(blob) }) })
     .catch(() => { if (useSpace.getState().wall === 'custom') useSpace.setState({ wall: DEFAULT_WALL }) })
 
-  // 只在「空间」外观时才把图挂上去（挂上才会下载）
+  // Only mount the image under the "Space" look (mounting is what triggers the download)
   let shown = ''
   const paint = () => {
     const src = isSpace() ? wallSrc(useSpace.getState()) : ''
@@ -156,7 +156,7 @@ export function mountSpace(): void {
   new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ['data-look'] })
   paint()
 
-  // ---------- 视差 ----------
+  // ---------- Parallax ----------
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
   let tx = 0, ty = 0, x = 0, y = 0, raf = 0
   const still = () => !isSpace() || document.documentElement.classList.contains('lq-lite') || !!document.querySelector('.desk-term')

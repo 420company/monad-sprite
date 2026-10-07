@@ -1,4 +1,4 @@
-// 直播间里的几个小弹层（2026-09-30）：分享、观众操作（关注 / 禁言 / 踢出 / 设房管）、进场特效、游客 15 秒登录弹窗。
+// Small sheets in the live room (2026-09-30): share, audience actions (follow / mute / kick / set as mod), entry effects, the guest 15-second login popup.
 import { useEffect, useState } from 'react'
 import { Ban, Copy, Link2, LogIn, MicOff, Shield, ShieldOff, UserX } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -16,7 +16,7 @@ import { LevelBadge } from './Badges'
 import { shareUrl, xIntentUrl } from './share'
 import { guestGateOpen } from './guest'
 
-/** 分享：发到 X（打开发帖框，文案链接预填）/ 复制链接 */
+/** Share: post to X (opens the compose box with copy and link prefilled) / copy link */
 export function ShareSheet({ open, onClose, kind, id, title, hostName }: { open: boolean; onClose: () => void; kind: 'live' | 'meet'; id: string; title: string; hostName: string }) {
   const url = shareUrl(kind, id)
   const text = kind === 'live' ? t('{name} 正在 0x4 直播：{title}', { name: hostName, title }) : t('来 0x4 参加会议：{title}', { title })
@@ -32,14 +32,14 @@ export function ShareSheet({ open, onClose, kind, id, title, hostName }: { open:
     </div>
   </Sheet>
 }
-/** X 的标志（手写 SVG） */
+/** The X logo (hand-written SVG) */
 function XLogo() {
   return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3l-4.9-6.4L6.4 22H3.3l7.3-8.3L1 2h6.4l4.4 5.9L18.9 2Zm-1.1 18.1h1.7L6.3 3.8H4.5l13.3 16.3Z" /></svg>
 }
 
 export interface ModInfo { role: 'host' | 'admin' | 'viewer'; host: string; muted: boolean; admins: { address: string; nickname: string }[]; mutedList: { address: string }[]; maxAdmins: number }
 
-/** 点了弹幕里某个人：看资料、关注；主播 / 房管还能禁言、踢出；主播能设房管 */
+/** Tapping someone in danmaku: view profile, follow; streamers / mods can also mute or kick; streamers can appoint mods */
 export function ViewerSheet({ open, onClose, roomId, user, mod, onChanged }: {
   open: boolean; onClose: () => void; roomId: string; user: { address: string; nickname: string | null; avatar?: string | null; level?: number } | null
   mod: ModInfo | null; onChanged: () => void
@@ -75,7 +75,7 @@ export function ViewerSheet({ open, onClose, roomId, user, mod, onChanged }: {
   </Sheet>
 }
 
-/** 进场特效：观众 10 / 25 / 40 级起，底部飘一条带图的横幅，3 秒后消失 */
+/** Entry effects: from audience level 10 / 25 / 40, an illustrated banner floats at the bottom, gone after 3s */
 export function EnterBanner({ item }: { item: { key: string; nickname: string; level: number; tier: number } | null }) {
   if (!item) return null
   return <div key={item.key} className="enter-banner pointer-events-none absolute left-0 top-[38%] z-20 flex h-10 w-[78%] max-w-[360px] items-center" data-testid="enter-banner">
@@ -87,8 +87,8 @@ export function EnterBanner({ item }: { item: { key: string; nickname: string; l
 }
 
 /**
- * 游客（从分享链接进来、没登录）：能看 15 秒，之后弹登录框；画面在后面继续播；不登录弹框一直在、关不掉。
- * elapsedMs 由外面传进来（测试用），不传按真实时间
+ * Guests (entered via a share link, not logged in): can watch 15 seconds, then a login dialog pops; the stream keeps playing behind; the dialog stays, unclosable, until they log in.
+ * elapsedMs is passed in from outside (for tests); real time is used when absent
  */
 export function GuestGate({ loggedIn, onLogin, startedAt }: { loggedIn: boolean; onLogin: () => void; startedAt: number }) {
   const [, tick] = useState(0)
@@ -98,7 +98,7 @@ export function GuestGate({ loggedIn, onLogin, startedAt }: { loggedIn: boolean;
     return () => clearInterval(id)
   }, [loggedIn])
   if (!guestGateOpen(Date.now() - startedAt, loggedIn)) return null
-  // 故意不给关闭按钮、点背景也不关（goat：不登录弹窗一直在）
+  // Deliberately no close button, and tapping the background doesn't dismiss (goat: the dialog stays until login)
   return <div className="absolute inset-0 z-40 flex items-end justify-center bg-black/35 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={t('登录后继续观看')} data-testid="guest-gate">
     <div className="w-full max-w-[380px] rounded-2xl bg-bg p-5 text-center text-fg shadow-2xl ring-1 ring-line">
       <img src={LIVE_IMG.golive} alt="" className="mx-auto h-16 w-16 object-contain" draggable={false} />
@@ -109,7 +109,7 @@ export function GuestGate({ loggedIn, onLogin, startedAt }: { loggedIn: boolean;
   </div>
 }
 
-/** 被踢出 / 直播被平台关闭 / 被拉黑：整页提示 */
+/** Kicked out / stream closed by the platform / blocked: full-page notice */
 export function RoomGone({ kind, onBack }: { kind: 'kicked' | 'dissolved' | 'blocked' | 'ended'; onBack: () => void }) {
   const text = kind === 'kicked' ? t('你已被移出这场直播') : kind === 'dissolved' ? t('直播间已被平台关闭') : kind === 'blocked' ? t('无法进入这个直播间') : t('直播已结束')
   return <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center" role="status" data-testid="room-gone">

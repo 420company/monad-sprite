@@ -1,4 +1,4 @@
-// 礼物打赏（Lyra 需求）：用 USDC / USDT 等充值成平台余额（美元计价）→ 选礼物送人。收礼方积累收入，可在「我」里提现
+// Gift tipping (Lyra's request): top up platform balance (USD-denominated) with USDC / USDT etc. → pick a gift to send. Recipients accumulate earnings, withdrawable under "Me"
 import { useSocial } from '@/store/social'
 import { useEffect, useState } from 'react'
 import { Gift, Wallet } from 'lucide-react'
@@ -29,7 +29,7 @@ export interface Recipient { address: string; nickname?: string | null; avatar?:
 export function useGiftWallet() {
   const [w, setW] = useState<GiftWallet | null>(null)
   const load = () => api<GiftWallet>('/api/gifts').then(setW).catch(() => {})
-  // 登录后才读（没登录读必然 401：网页版没连钱包时各页面挂着的领养 / 转账面板不该去请求）
+  // Read only after login (unlogged reads always 401: adoption / transfer panels hanging on web pages without a connected wallet must not request)
   const ready = useSocial((s) => s.status === 'ready')
   useEffect(() => { if (ready) load() }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
   return { wallet: w, reload: load }
@@ -46,7 +46,7 @@ export default function GiftSheet({ open, onClose, recipients, initial, groupId,
   const [topup, setTopup] = useState(false)
 
   const candidates = recipients.filter((r) => r.address !== address)
-  // 只有一个可选对象时自动选中
+  // Auto-select when there's only one option
   useEffect(() => { if (!to && candidates.length === 1) setTo(candidates[0]) }, [to, candidates])
   const cost = (gift?.price || 0) * qty
   const enough = !!wallet && wallet.balance >= cost
@@ -115,7 +115,7 @@ export default function GiftSheet({ open, onClose, recipients, initial, groupId,
   )
 }
 
-/** 充值：选一种资产（USDC / USDT 优先）从自己钱包转到平台金库地址，交易哈希交给服务器按美元入账 */
+/** Top-up: pick an asset (USDC / USDT first) to transfer from your wallet to the platform vault address; the tx hash goes to the server for USD crediting */
 export function TopupSheet({ open, onClose, wallet, need }: { open: boolean; onClose: () => void; wallet: GiftWallet | null; need?: number }) {
   const { wallet: signer, evmAccount } = useWallet()
   const rpcUrl = useSettings((s) => s.rpcUrl)
@@ -123,9 +123,9 @@ export function TopupSheet({ open, onClose, wallet, need }: { open: boolean; onC
   const [asset, setAsset] = useState<PayAsset | null>(null)
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
-  // 可选资产：钱包里持有的排前面，稳定币优先
+  // Asset options: held-in-wallet first, stables preferred
   const options = (wallet?.assets || []).map((a) => ({ ...a, held: findHolding(holdings, { chainId: a.chainId, address: a.address, symbol: a.symbol, name: a.symbol, decimals: a.decimals })?.amount ?? 0, price: findHolding(holdings, { chainId: a.chainId, address: a.address, symbol: a.symbol, name: a.symbol, decimals: a.decimals })?.priceUsd ?? (a.kind === 'stable' ? 1 : undefined) }))
-    .filter((a) => a.kind === 'stable' || a.held > 0) // 非稳定币（如 BNG）只在钱包里真的持有时才出现
+    .filter((a) => a.kind === 'stable' || a.held > 0) // Non-stables (e.g. BNG) only appear when actually held in the wallet
     .sort((x, y) => (y.held > 0 ? 1 : 0) - (x.held > 0 ? 1 : 0) || (x.kind === 'stable' ? 0 : 1) - (y.kind === 'stable' ? 0 : 1))
   useEffect(() => { if (open && !asset && options.length) setAsset(options[0]) }, [open, options.length]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (open && need && !amount) setAmount(String(Math.ceil(need))) }, [open, need]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -138,11 +138,11 @@ export function TopupSheet({ open, onClose, wallet, need }: { open: boolean; onC
     setBusy(true)
     try {
       let tx: string
-      if (wallet.dryRun) tx = `dry:${usd ?? amt}:${Date.now()}` // 测试环境：金额:时间戳，避免重复
+      if (wallet.dryRun) tx = `dry:${usd ?? amt}:${Date.now()}` // Test env: amount:timestamp, to avoid duplicates
       else {
         const treasury = asset.chainId === SOLANA_CHAIN_ID ? wallet.treasury.solana : wallet.treasury.evm
         if (!treasury) throw new Error(t('暂不支持从这条链充值'))
-        // EVM 资产：服务器只认签名证明过的付款地址，先证明再转钱，免得钱转出去了却入不了账
+        // EVM assets: the server only recognizes the payment address after a signed proof — prove first, then transfer, so money can't leave without being credited
         if (asset.chainId !== SOLANA_CHAIN_ID && !(await proveEvmIfNeeded({ interactive: true }).catch(() => false))) throw new Error(t('EVM 地址验证失败，请稍后再试'))
         tx = await transfer({ chainId: asset.chainId, token: asset.address, decimals: asset.decimals, amount: amt, to: treasury }, { solana: signer, evm: evmAccount, solanaRpc: rpcUrl })
       }

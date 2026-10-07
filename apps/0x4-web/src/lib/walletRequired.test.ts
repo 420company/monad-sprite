@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// 只靠手机扫码登录的网页版做了要连钱包的事（2026-10-01 安全审查 #5，goat：网页版功能最齐，动钱和改交易要连钱包）：
-// 服务器回 403 + code WALLET_REQUIRED → 弹出连接钱包，不报红色错误；别的 403 照常报错
+// Web logged in via phone QR scan only, attempting something that needs a wallet (2026-10-01 security review #5, goat: the web has the fullest features — moving money and changing trades need a wallet):
+// Server returns 403 + code WALLET_REQUIRED → pop wallet connect, no red error; other 403s error as usual
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api, setToken, setWalletRequiredHandler } from './social'
 

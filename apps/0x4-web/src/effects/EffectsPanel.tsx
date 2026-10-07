@@ -1,7 +1,7 @@
-// 直播特效面板（网页版主播，2026-10-02 goat：换背景、美颜、虚拟形象）：贴在视频右边，和送礼侧栏同一个位置，不挡画面。
-// 选什么立刻生效；主播自己的预览一直是镜像（2026-10-02 goat：一开特效预览就左右翻一下很怪），观众看到的不镜像。设置存本机，下次开播自动带上。
-// 手机（layout="strip"，2026-10-02 goat：手机 App 主播也要有）：视频下方一条面板，真人 / 猫头切换 + 美颜 + 一行横滑的背景。
-// 美颜分磨皮 / 美白 / 瘦脸 / 大眼四项（goat：要像抖音）：电脑上四条滑条；手机上一排四个按钮选一项，下面一条滑条调这一项。
+// Live effects panel (web streamer, 2026-10-02 goat: background swap, beauty, virtual avatar): docked to the right of the video, same spot as the gift sidebar, never covering the picture.
+// Selections apply immediately; the streamer's own preview is always mirrored (2026-10-02 goat: flipping the preview the moment effects open feels weird) — viewers see it unmirrored. Settings are stored locally and restored on the next stream.
+// Phones (layout="strip", 2026-10-02 goat: phone-app streamers need it too): a panel under the video — real-person / cat-head switch + beauty + a horizontally scrolling row of backgrounds.
+// Beauty splits into four: skin smoothing / whitening / face slimming / eye enlarging (goat: make it like Douyin): four sliders on desktop; on phones, a row of four buttons picks one, with a slider below adjusting it.
 import { Fragment, useEffect, useState } from 'react'
 import './effects.css'
 import { Ban, Droplets, ScanFace, Sparkles, UserRound, X } from 'lucide-react'
@@ -10,7 +10,7 @@ import { BACKGROUNDS, BEAUTY_ITEMS, loadFx, saveFx, type BeautyKey, type FxBg, t
 import { onFxStatus, fxStatus } from './fx'
 import type { FxStatus } from './processor'
 
-/** title：直播里叫「直播特效」，会议里叫「画面特效」（2026-10-03 goat：会议也要能用虚拟形象不露脸，和直播共用这块面板和本机设置） */
+/** title: called "Live effects" in live streams, "Video effects" in meetings (2026-10-03 goat: meetings need virtual avatars too for faceless presence — sharing this panel and the local settings with live) */
 export default function EffectsPanel({ onClose, onChange, layout = 'dock', title }: { onClose: () => void; onChange: (s: FxSettings) => void; layout?: 'dock' | 'strip'; title?: string }) {
   const heading = title ?? t('直播特效')
   const [s, setS] = useState<FxSettings>(loadFx)
@@ -21,7 +21,7 @@ export default function EffectsPanel({ onClose, onChange, layout = 'dock', title
   const statusText = status === 'loading' ? t('正在加载识别模型，第一次大约要几秒…') : status === 'error' ? t('这台电脑暂时用不了这个特效（浏览器不支持图形加速）') : status === 'noFace' && cat ? t('没看到你的脸：正对摄像头，光线亮一点') : null
 
   const bgTiles = <>
-    {/* 原背景 = 摄像头里你自己的房间（猫头模式下人会被抹掉，只剩房间和猫） */}
+    {/* Original background = your own room in the camera (in cat-head mode the person is erased, leaving just the room and the cat) */}
     <BgTile on={s.bg === 'none'} onClick={() => set({ bg: 'none' })} label={t('原背景')}><Ban size={18} /></BgTile>
     <BgTile on={s.bg === 'blur'} onClick={() => set({ bg: 'blur' })} label={t('虚化')}><span className="fx-blur" /></BgTile>
     {BACKGROUNDS.map((b) => {
@@ -29,7 +29,7 @@ export default function EffectsPanel({ onClose, onChange, layout = 'dock', title
       return <BgTile key={b.id} on={s.bg === v} onClick={() => set({ bg: v })} label={b.label()}><img src={b.url} alt="" className="absolute inset-0 h-full w-full object-cover" /></BgTile>
     })}
   </>
-  const [pick, setPick] = useState<BeautyKey>('beauty')   // 手机上正在调哪一项
+  const [pick, setPick] = useState<BeautyKey>('beauty')   // Which item is being adjusted on phones
   const pct = (v: number) => (v > 0 ? `${Math.round(v * 100)}%` : t('关'))
   const slider = (k: BeautyKey, label: string) => <input type="range" min={0} max={1} step={0.05} value={s[k]} disabled={cat} onChange={(e) => set({ [k]: Number(e.target.value) })} aria-label={label} className="fx-range" style={{ '--p': `${s[k] * 100}%` } as React.CSSProperties} />
 

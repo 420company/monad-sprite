@@ -1,5 +1,5 @@
-// 新建会议弹窗（2026-10-03 从 MeetingsView 拆出来：会议页的「新建会议」和流媒体页头「创建流媒体 → 会议」共用）。
-// 选项：会议名称、申请进入 / 设置密码 / 公开会议；创建成功直接进会议。
+// New-meeting sheet (split from MeetingsView on 2026-10-03: shared by the meetings page's "new meeting" and the stream header's "create stream → meeting").
+// Options: meeting name, request-to-join / password / public meeting; enter the meeting right after creation.
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Video } from 'lucide-react'

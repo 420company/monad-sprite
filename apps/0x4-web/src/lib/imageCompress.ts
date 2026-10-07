@@ -1,5 +1,5 @@
-// 上传前在本机先压一遍图：省流量和上传时间。重新画到 canvas 再导出，EXIF（含 GPS）也一起没了。
-// 解不开的格式（比如部分浏览器的 HEIC）、GIF 动图原样交给服务端；服务端还会再统一压一次。
+// Compress images on-device before uploading: saves bandwidth and upload time. Redrawn to canvas and re-exported, so EXIF (incl. GPS) is stripped too.
+// Undecodable formats (e.g. HEIC on some browsers) and animated GIFs go to the server as-is; the server compresses once more uniformly.
 
 interface Decoded { source: CanvasImageSource; width: number; height: number; close: () => void }
 
@@ -8,7 +8,7 @@ async function decode(file: Blob): Promise<Decoded | null> {
     try {
       const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' })
       return { source: bmp, width: bmp.width, height: bmp.height, close: () => bmp.close() }
-    } catch { /* 换 <img> 再试 */ }
+    } catch { /* Retry with <img> */ }
   }
   if (typeof Image === 'undefined' || typeof URL.createObjectURL !== 'function') return null
   const url = URL.createObjectURL(file)
@@ -23,7 +23,7 @@ async function decode(file: Blob): Promise<Decoded | null> {
 
 const toBlob = (canvas: HTMLCanvasElement, type: string, quality: number) => new Promise<Blob | null>((res) => canvas.toBlob(res, type, quality))
 
-/** 画到长边 maxEdge 以内再导出。优先 WebP；浏览器不会编 WebP 时退 JPEG，但可能带透明的图不退（JPEG 会把透明变黑） */
+/** Draw within maxEdge on the long side, then export. WebP preferred; fall back to JPEG where the browser can't encode WebP — but not for possibly-transparent images (JPEG turns transparency black) */
 async function encode(d: Decoded, maxEdge: number, quality: number, mayHaveAlpha: boolean): Promise<{ blob: Blob; width: number; height: number } | null> {
   if (typeof document === 'undefined') return null
   const scale = Math.min(1, maxEdge / Math.max(d.width, d.height))
@@ -40,13 +40,13 @@ async function encode(d: Decoded, maxEdge: number, quality: number, mayHaveAlpha
     if (mayHaveAlpha) return null
     const jpeg = await toBlob(canvas, 'image/jpeg', quality)
     return jpeg && jpeg.type === 'image/jpeg' ? { blob: jpeg, width, height } : null
-  } finally { canvas.width = canvas.height = 0 } // iOS 上及时释放画布内存
+  } finally { canvas.width = canvas.height = 0 } // Release canvas memory promptly on iOS
 }
 
 const rename = (name: string, type: string) => (name.replace(/\.[^.]*$/, '') || 'image') + (type === 'image/webp' ? '.webp' : '.jpg')
 const canHaveAlpha = (type: string) => /png|webp|gif|avif|heic|heif/i.test(type)
 
-/** 上传前压缩：长边 2048、质量 0.85。压不了或压完没变小就用原文件 */
+/** Pre-upload compression: long side 2048, quality 0.85. If it can't compress or the result isn't smaller, use the original */
 export async function compressForUpload(file: File, maxEdge = 2048, quality = 0.85): Promise<File> {
   if (!file.type.startsWith('image/') || file.type === 'image/gif') return file
   const d = await decode(file)
@@ -59,7 +59,7 @@ export async function compressForUpload(file: File, maxEdge = 2048, quality = 0.
   } catch { return file } finally { d.close() }
 }
 
-/** 私信图片：服务端看不到明文，只能在本机按统一规格出大图 + 缩略图（与服务端同规格：1600 / 720）。解不开返回 null */
+/** DM images: the server can't see plaintext, so the full image + thumbnail must be produced on-device at the uniform spec (same as server: 1600 / 720). null when undecodable */
 export async function makeImageVariants(file: Blob): Promise<{ large: Blob; thumb: Blob; width: number; height: number } | null> {
   if (!file.type.startsWith('image/') || file.type === 'image/gif') return null
   const d = await decode(file)

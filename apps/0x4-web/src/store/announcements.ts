@@ -1,9 +1,9 @@
-// 全员公告（「0x4 官方」会话）：列表、未读数、实时事件。
+// Broadcast announcements (the "0x4 Official" conversation): list, unread count, realtime events.
 //
-// 不改 store/social.ts：这里订阅 social 的登录状态和 socket，自己挂一个 WebSocket 监听器，
-//   登录好了 / 实时连接重连上 / App 切回前台 → 重新拉第一页（离线期间发的、撤回的都能对上）；
-//   announcement 事件 → 插到最前面、未读 +1；announcement_recall 事件 → 删掉（没读过的顺带减未读）。
-// 公告只有管理员在后台发，服务端按「发布时已注册」过滤，撤回的不返回。
+// Don't touch store/social.ts: this subscribes to social's login state and socket, mounting its own WebSocket listener,
+//   Logged in / realtime reconnected / app back to foreground → re-pull the first page (posts and recalls from the offline period all line up);
+//   announcement event → insert at the front, unread +1; announcement_recall event → remove (decrement unread for the unread ones).
+// Announcements are only published by admins in the backend; the server filters by "registered at publish time", and recalled ones aren't returned.
 import { create } from 'zustand'
 import { api } from '@/lib/social'
 import { useSocial } from './social'
@@ -13,23 +13,23 @@ export interface Announcement { id: number; title: string | null; body: string; 
 interface ListResp { list: Announcement[]; hasMore: boolean; unread: number }
 
 interface AnnouncementState {
-  /** 新的在前 */
+  /** Newest first */
   list: Announcement[]
   unread: number
   hasMore: boolean
-  /** 第一页拉到过（没拉到之前会话列表里不显示「0x4 官方」，免得闪一下空的） */
+  /** The first page has been pulled (before that, the conversation list doesn't show "0x4 Official" — avoids flashing an empty one) */
   loaded: boolean
   failed: boolean
   loadingMore: boolean
   load: () => Promise<void>
   loadMore: () => Promise<void>
-  /** 进公告页：本地全标已读，再告诉服务器 */
+  /** Entering the announcements page: mark all read locally, then tell the server */
   markAllRead: () => Promise<void>
   reset: () => void
 }
 
 const EMPTY = { list: [] as Announcement[], unread: 0, hasMore: false, loaded: false, failed: false, loadingMore: false }
-let gen = 0   // 退出登录后丢掉还在路上的旧请求
+let gen = 0   // After logout, drop in-flight old requests
 
 export const useAnnouncements = create<AnnouncementState>()((set, get) => ({
   ...EMPTY,
@@ -53,24 +53,24 @@ export const useAnnouncements = create<AnnouncementState>()((set, get) => ({
       if (g !== gen) return
       const seen = new Set(get().list.map((a) => a.id))
       set({ list: [...get().list, ...r.list.filter((a) => !seen.has(a.id))], hasMore: r.hasMore, unread: r.unread })
-    } catch { /* 页面上可以再点 */ } finally { if (g === gen) set({ loadingMore: false }) }
+    } catch { /* Can be tapped again on the page */ } finally { if (g === gen) set({ loadingMore: false }) }
   },
   async markAllRead() {
     if (!get().unread && get().list.every((a) => a.read)) return
     set({ unread: 0, list: get().list.map((a) => (a.read ? a : { ...a, read: true })) })
-    try { await api('/api/announcements/read-all', { method: 'POST' }) } catch { /* 下次进来再标 */ }
+    try { await api('/api/announcements/read-all', { method: 'POST' }) } catch { /* Mark again next time in */ }
   },
   reset() { gen++; set({ ...EMPTY }) },
 }))
 
-/** 社区的未读总数：群 + 私信 + 公告（社区页「消息」标签和底部导航「社区」上的红点用） */
+/** Community unread total: groups + DMs + announcements (drives the red dot on the community page's "Messages" tab and the bottom nav's "Community" tab) */
 export function useCommunityUnread(): number {
   const chats = useSocial((s) => { let n = 0; for (const v of Object.values(s.unreadGroup)) n += v; for (const v of Object.values(s.unreadDm)) n += v; return n })
   const ann = useAnnouncements((s) => s.unread)
   return chats + ann
 }
 
-/** WebSocket 事件（导出给测试用） */
+/** WebSocket events (exported for tests) */
 export function handleAnnouncementEvent(d: { type?: unknown; a?: unknown; id?: unknown }) {
   const s = useAnnouncements.getState()
   if (d.type === 'announcement' && d.a && typeof d.a === 'object') {
@@ -85,7 +85,7 @@ export function handleAnnouncementEvent(d: { type?: unknown; a?: unknown; id?: u
   }
 }
 
-// ── 跟着社交登录走 ──
+// ── follows social login ──
 let off: (() => void) | null = null
 useSocial.subscribe((cur, prev) => {
   if (cur.socket !== prev.socket) {
@@ -93,7 +93,7 @@ useSocial.subscribe((cur, prev) => {
     off = cur.socket ? (cur.socket.on((d) => handleAnnouncementEvent(d as Parameters<typeof handleAnnouncementEvent>[0])) as () => void) : null
   }
   if (cur.status === 'ready' && prev.status !== 'ready') void useAnnouncements.getState().load()
-  // 实时连接断过又连上：断开期间的公告 / 撤回收不到事件，重新拉一次
+  // Realtime dropped and reconnected: announcements / recalls during the outage miss their events — pull once more
   else if (cur.status === 'ready' && cur.wsStatus === 'open' && prev.wsStatus !== 'open' && useAnnouncements.getState().loaded) void useAnnouncements.getState().load()
   if (cur.status === 'idle' && prev.status !== 'idle') useAnnouncements.getState().reset()
 })

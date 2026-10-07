@@ -1,12 +1,12 @@
-// 自定义代币收藏：用户通过合约地址添加的代币（任意链），持久化保存
+// Custom token favorites: user-added tokens by contract address (any chain), persisted
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { SOLANA_CHAIN_ID } from '@/lib/chains'
 
 export interface FavoriteToken {
-  /** DexScreener 链标识 */
+  /** DexScreener chain id */
   chain: string
-  /** LI.FI 链 id */
+  /** LI.FI chain id */
   chainId: number
   address: string
   symbol: string
@@ -17,10 +17,11 @@ export interface FavoriteToken {
 }
 
 /**
- * 默认自选：新装的 App 自带这 5 个，用户可以自己取消。
- * 自选按「链 + 合约地址」走 DexScreener 查行情，所以这里用的都是现货代币（原生币用包装版，
- * DEX 上交易的是它）。地址都在 DexScreener 实测过有交易对、价格正常（2026-09-25）。
- * symbol 写成大家熟悉的叫法，首页和自选列表显示用这个，行情里的 BTCB / WBNB 不直接露出来。
+ * Default watchlist: fresh installs ship with these 5; users may remove them.
+ * Watchlist resolves market data via DexScreener by "chain + contract address", so these are all spot tokens
+ * (native coins use their wrapped versions — that's what DEXs trade). Addresses verified on DexScreener to
+ * have pairs and sane prices (2026-09-25).
+ * symbols use familiar names for the home and watchlist display; the market's BTCB / WBNB never surface directly.
  */
 export const DEFAULT_FAVORITES: Omit<FavoriteToken, 'addedAt'>[] = [
   { chain: 'bsc', chainId: 56, address: '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c', symbol: 'BTC', name: 'Binance-Peg BTCB', decimals: 18 },
@@ -34,7 +35,7 @@ const defaults = (): FavoriteToken[] => DEFAULT_FAVORITES.map((f, i) => ({ ...f,
 
 interface FavoritesState {
   items: FavoriteToken[]
-  /** 默认自选已经放过一次。之后用户取消哪个就是哪个，不再自动补回 */
+  /** Default watchlist seeded once. Afterwards, whatever the user removes stays removed — never auto-restored */
   seeded: boolean
   add: (t: Omit<FavoriteToken, 'addedAt'>) => void
   remove: (chain: string, address: string) => void
@@ -47,7 +48,7 @@ const same = (a: { chain: string; address: string }, chain: string, address: str
 export const useFavorites = create<FavoritesState>()(
   persist(
     (set, get) => ({
-      // 本机没存过自选（新装）：直接带上默认 5 个
+      // No locally saved watchlist (fresh install): seed the default 5
       items: defaults(),
       seeded: true,
       add(t) {
@@ -66,8 +67,8 @@ export const useFavorites = create<FavoritesState>()(
     }),
     {
       name: '0x4.favorites',
-      // version 1 起有 seeded 标记。老数据（version 0）没有标记：自选是空的就补上默认，
-      // 不空就原样保留。迁移完 seeded 一律为 true，以后取消掉的不会再被加回。
+      // The seeded flag exists since version 1. Old data (version 0) lacks it: empty watchlists get the defaults,
+      // non-empty ones kept as-is. After migration seeded is always true — removed items never come back.
       version: 1,
       migrate: (persisted, version) => migrateFavorites(persisted, version),
     },

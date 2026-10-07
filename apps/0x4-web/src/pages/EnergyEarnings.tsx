@@ -1,6 +1,6 @@
-// 能量与收益（网页版，2026-09-30 goat）：我的能量（充值）+ 主播收益：今日收益、待到账、下次结算时间（北京时间 0 点）、
-// 链上结算记录（点开区块浏览器）、最近收到的礼物。服务器推 energy_earnings / energy_balance 时实时更新。
-// 手机 App 没有这一页（苹果规则：App 里不出现钱），App 里主播只看到「今天收到 N 个礼物」。
+// Energy & earnings (web, 2026-09-30 goat): my energy (top-up) + streamer earnings: today's earnings, pending settlement, next settlement time (midnight Beijing time),
+// on-chain settlement records (open in block explorer), recently received gifts. Updates live on server-pushed energy_earnings / energy_balance.
+// The mobile app has no such page (Apple rules: no money in the app); streamers in the app only see "received N gifts today".
 import { useEffect, useState } from 'react'
 import { ArrowLeft, ExternalLink, Plus, RefreshCw } from 'lucide-react'
 import Avatar from '@/components/Avatar'
@@ -14,7 +14,7 @@ import { useBack } from '@/lib/useBack'
 
 const scan = (chainId: number | undefined, hash: string) => (chainId === 97 ? `https://testnet.bscscan.com/tx/${hash}` : `https://bscscan.com/tx/${hash}`)
 const money = (s: string | number | undefined) => energyNum(String(s ?? 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })
-/** 下次结算：北京时间几点（按用户本机时区显示） */
+/** Next settlement: what time Beijing time (displayed in the user's local timezone) */
 const when = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—')
 
 export default function EnergyEarnings() {
@@ -33,12 +33,12 @@ export default function EnergyEarnings() {
     setLoading(true)
     try {
       const [e, h] = await Promise.all([energyEarnings(), energyHistory(), refreshMe(), energyGifts().then((r) => setGifts(r.gifts)).catch(() => {})])
-      // 送礼没开（服务器没配打赏合约）时这两个接口只回 { enabled: false }，没有 recent / items：页面别因此白屏（2026-10-04 走查发现）
+      // When gifting is off (the server has no tipping contract configured), both endpoints only return { enabled: false } with no recent / items: the page must not white-screen over it (found in the 2026-10-04 review)
       setEarn(e); setHist(h)
-    } catch { /* 显示空状态 */ } finally { setLoading(false) }
+    } catch { /* Show the empty state */ } finally { setLoading(false) }
   }
   useEffect(() => { void load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  // 有人送礼：今日收益 / 待到账实时变；结算后到账：重新拉记录
+  // Gift received: today's earnings / pending update live; settled and credited: refetch records
   useEffect(() => {
     if (!socket) return
     const off = socket.on((d) => {
@@ -62,7 +62,7 @@ export default function EnergyEarnings() {
       <div className="flex flex-col gap-4 px-4 pb-8">
         {me && !me.enabled && <p className="rounded-xl bg-warning/10 px-3 py-2.5 text-sm text-warning">{t('送礼暂未开放')}</p>}
 
-        {/* 我的能量 */}
+        {/* My energy */}
         <section className="flex items-center gap-3 rounded-2xl bg-card px-4 py-4 ring-1 ring-line">
           <img src={energyIcon} alt="" className="h-11 w-11" draggable={false} />
           <div className="min-w-0 flex-1">
@@ -73,7 +73,7 @@ export default function EnergyEarnings() {
           <Button size="sm" onClick={() => setDeposit(true)} disabled={!me?.enabled}><Plus size={15} />{t('充值')}</Button>
         </section>
 
-        {/* 主播收益 */}
+        {/* Streamer earnings */}
         <section className="rounded-2xl bg-card px-4 py-4 ring-1 ring-line" data-testid="earnings">
           <h2 className="mb-3 text-sm font-semibold">{t('主播收益')}</h2>
           <div className="grid grid-cols-2 gap-3">
@@ -83,7 +83,7 @@ export default function EnergyEarnings() {
           <p className="mt-3 text-xs text-muted">{t('自动结算到你的钱包，下次结算：{t}', { t: when(earn?.nextSettleAt) })}</p>
         </section>
 
-        {/* 结算记录 */}
+        {/* Settlement records */}
         <section className="rounded-2xl bg-card px-4 py-3 ring-1 ring-line">
           <h2 className="mb-1 text-sm font-semibold">{t('结算记录')}</h2>
           {!hist?.items?.length ? <p className="py-4 text-center text-sm text-muted">{t('还没有结算记录')}</p> : (
@@ -101,7 +101,7 @@ export default function EnergyEarnings() {
           )}
         </section>
 
-        {/* 最近收到的礼物 */}
+        {/* Recently received gifts */}
         <section className="rounded-2xl bg-card px-4 py-3 ring-1 ring-line">
           <h2 className="mb-1 text-sm font-semibold">{t('最近收到的礼物')}</h2>
           {!earn?.recent?.length ? <p className="py-4 text-center text-sm text-muted">{t('还没有收到礼物')}</p> : (

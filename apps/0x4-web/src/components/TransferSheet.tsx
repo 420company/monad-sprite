@@ -1,4 +1,4 @@
-// 快捷转账：从我的平台余额直接转给对方余额，秒到、免手续费（类似币安内部转账）
+// Quick transfer: from my platform balance straight to their balance — instant, zero fees (like Binance's internal transfers)
 import { useState } from 'react'
 import { Send } from 'lucide-react'
 import Sheet from './Sheet'

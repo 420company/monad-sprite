@@ -1,4 +1,4 @@
-// 带超时的 fetch 封装
+// fetch wrapper with timeout
 export async function fetchJson<T>(url: string, init: RequestInit = {}, timeoutMs = 12_000): Promise<T> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)

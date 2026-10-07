@@ -1,8 +1,8 @@
-// 会议室（2026-09-29 从 meet.420.meme 的会议室搬进 App，网页版「流媒体」里开会用；goat：直播、随机视频、会议原本就放一起）。
-// 流程：设备预检 → 进会。进会后：顶部栏（会议名、计时、人数、复制邀请链接）、中间舞台（演讲者视图 / 画廊视图）、
-// 右侧可折叠侧栏（聊天 / 成员）、底部控制条（麦克风、摄像头、共享屏幕、举手、表情、更多、离开）。
-// 聊天、举手、表情走音视频服务的数据通道（会议里人人可发），不经过我们的 WebSocket，也不保留。
-// 会议接口（/api/meet/meetings/*）认手机 App 的普通登录令牌，所以网页版用自己的钱包登录就能开会，不用扫码。
+// Meeting room (moved from meet.420.meme into the app on 2026-09-29; used for meetings in the web "Streaming" section. goat: live, random video, and meetings were always meant to live together).
+// Flow: device pre-check → join. After joining: top bar (meeting name, timer, headcount, copy invite link), center stage (speaker view / gallery view),
+// collapsible right sidebar (chat / members), bottom control bar (mic, camera, screen share, raise hand, reactions, more, leave).
+// Chat, hand-raises, and reactions go through the A/V service's data channel (everyone in the meeting can send them) — not our WebSocket, and not persisted.
+// Meeting APIs (/api/meet/meetings/*) accept the mobile app's regular login token, so the web client can host meetings with its own wallet login — no QR scan needed.
 import type React from 'react'
 import { WEB_SURFACE } from '@/lib/surface'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -32,7 +32,7 @@ import { GiftFxLayer, useRoomGifts, type GiftFxLayerHandle } from '@/components/
 import { ENERGY_GIFTS } from '@/lib/energy'
 import { reportActivity } from '@/desktop/qrIdle'
 import { watchSpeaking } from '@/desktop/speakActivity'
-// 画面特效（2026-10-03 goat：会议里也要能用虚拟形象「不露脸」）：和直播同一套处理器、同一块面板、同一份本机设置（0x4.liveFx）
+// Video effects (2026-10-03 goat: the virtual avatar "faceless" mode must also work in meetings): same processor, same panel, same local settings (0x4.liveFx) as live streaming.
 import { applyFx, processorForCamera } from '@/effects/fx'
 import { loadFx, type FxSettings } from '@/effects/settings'
 const EffectsPanel = lazy(() => import('@/effects/EffectsPanel'))
@@ -42,7 +42,7 @@ type Stage = 'precheck' | 'joining' | 'waiting' | 'denied' | 'in' | 'left' | 'en
 interface ChatLine { id: string; from: string; name: string; text: string; ts: number; mine: boolean }
 const EMOJIS = ['👍', '👏', '🎉', '😂', '❤️', '🔥', '😮', '🙏']
 
-/** 参与者资料（头像）按地址缓存：音视频服务里只有 identity = 地址和名字 */
+/** Participant profiles (avatars) cached by address: the A/V service only gives identity = address and name */
 const profileCache = new Map<string, string | null>()
 function useAvatars(ids: string[]): Record<string, string | null> {
   const [, force] = useState(0)
@@ -53,13 +53,13 @@ function useAvatars(ids: string[]): Record<string, string | null> {
       profileCache.set(id, null)
       api<{ avatar: string | null }>(`/api/users/${encodeURIComponent(id)}`)
         .then((p) => { profileCache.set(id, p.avatar ?? null); force((n) => n + 1) })
-        .catch(() => { /* 拿不到就用地址像素头像 */ })
+        .catch(() => { /* Fall back to an address-generated pixel avatar when unavailable */ })
     }
   }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
   return Object.fromEntries(ids.map((id) => [id, profileCache.get(id) ?? null]))
 }
 
-/** 离开会议回哪：网页版回社区「会议」页（2026-10-01 社区合并），手机 App 回流媒体页（会议在那一页） */
+/** Where leaving takes you: web returns to the community "Meetings" page (2026-10-01 community merge); the mobile app returns to the Streaming page (meetings live there) */
 const BACK = WEB_SURFACE ? '/meetings' : '/live'
 
 export default function MeetingRoom() {
@@ -67,13 +67,13 @@ export default function MeetingRoom() {
   const nav = useNavigate()
   const me = useSocial((s) => s.me)
   const [info, setInfo] = useState<Meeting | null>(null)
-  // 分享到 X / 复制链接（2026-09-30 goat）：有密码的会议卡片显示「私人频道，您无法观看。」
+  // Share to X / copy link (2026-09-30 goat): password-protected meeting cards show a "private channel" notice
   const [sharing, setSharing] = useState(false)
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [stage, setStage] = useState<Stage>('precheck')
   const lk = useLkRoom()
   const { room, parts } = lk
-  // 扫码登录的公共电脑：自己在说话算「在用」（不会因为一直在讲话却没碰电脑被退出）
+  // Shared computers signed in via QR: talking counts as "in use" (you won't get logged out for talking without touching the machine).
   useEffect(() => watchSpeaking(room), [room])
   const [joinedAt, setJoinedAt] = useState(0)
   const [nowTs, setNowTs] = useState(Date.now())
@@ -84,14 +84,14 @@ export default function MeetingRoom() {
   const [floats, setFloats] = useState<{ id: number; emoji: string; left: number; name: string }[]>([])
   const [busy, setBusy] = useState<'mic' | 'cam' | 'screen' | null>(null)
   const [leaveAsk, setLeaveAsk] = useState(false)
-  const [screenHelp, setScreenHelp] = useState(false)   // 共享屏幕被系统拦下时的说明
-  // 会议密码（2026-09-30）：有密码的会议在进会前输入；错了在输入框下提示
+  const [screenHelp, setScreenHelp] = useState(false)   // Explainer shown when the OS blocks screen sharing
+  // Meeting password (2026-09-30): password-protected meetings ask for it before joining; a wrong password shows a hint under the input.
   const [pw, setPw] = useState('')
   const [pwErr, setPwErr] = useState<string | null>(null)
-  // 会议管理状态（全员禁言 / 管理员 / 台上 / 举手申请），以服务器为准，见 meet/moderation.ts
+  // Meeting moderation state (mute-all / admin / on-stage / hand-raise requests) is server-authoritative, see meet/moderation.ts
   const [mod, setMod] = useState<ModState | null>(null)
   const hands = useMemo(() => new Set(mod?.hands.map((h) => h.address) ?? []), [mod])
-  // 画笔标注（2026-09-30，规则见 meet/annotate.ts）：所有人共用一份笔画，能画的人 = 正在共享屏幕的人 + 主持人
+  // Whiteboard annotations (2026-09-30, rules in meet/annotate.ts): everyone shares one stroke set; who can draw = the current screen sharer + the host.
   const [strokes, setStrokes] = useState<Stroke[]>([])
   const strokesRef = useRef(strokes)
   strokesRef.current = strokes
@@ -117,13 +117,13 @@ export default function MeetingRoom() {
     setTimeout(() => setFloats((f) => f.filter((x) => x.id !== id)), 2900)
   }, [])
 
-  // 数据消息：聊天 / 举手 / 表情 / 主持人结束会议
+  // Data messages: chat / hand-raise / reactions / host ends the meeting
   useEffect(() => {
     const onData = (payload: Uint8Array, p?: RemoteParticipant) => {
       const d = unpackData(payload)
       if (!d || !p) return
       if (d.t === 'ann') {
-        // 标注：发送者身份用音视频服务给的 identity 判断（不信消息里自报的）；补发（sync）只认当前共享者
+        // Annotations: sender identity comes from the identity the A/V service assigns (never trust the one claimed inside the message); catch-up (sync) only trusts the current sharer.
         const m = sanitizeAnn(d)
         if (!m || !info || !canAnnotate(p.identity, sharerRef.current, info.host)) return
         if (m.k === 'sync' && p.identity !== sharerRef.current) return
@@ -136,7 +136,7 @@ export default function MeetingRoom() {
       } else if (d.t === 'react' && EMOJIS.includes(d.emoji)) addFloat(d.emoji, p.name || '')
       else if (d.t === 'end' && info && p.identity === info.host) { void room.disconnect(); setStage('ended') }
     }
-    // 有人新进来：我是当前共享者，就把现有笔画补发给他一个人（等他那边接好数据通道）
+    // Someone new joins: if I'm the current sharer, resend the existing strokes to just that person (once their data channel is ready).
     const onJoined = (p: RemoteParticipant) => {
       if (sharerRef.current !== room.localParticipant.identity) return
       setTimeout(() => {
@@ -149,20 +149,20 @@ export default function MeetingRoom() {
     return () => { room.off(RoomEvent.DataReceived, onData); room.off(RoomEvent.ParticipantConnected, onJoined) }
   }, [room, info, addFloat])
 
-  // 停止共享 / 换人共享：所有人本地清空标注；自己不再能画就退出标注
+  // Screen share stops / switches sharer: everyone clears local annotations; if I can no longer draw, exit annotation mode.
   useEffect(() => { setStrokes([]) }, [sharerId])
   const localId = room.localParticipant.identity || me?.address || ''
   localIdRef.current = localId
   const canDraw = !!sharerId && !!info && canAnnotate(localId, sharerId, info.host)
   useEffect(() => { if (!canDraw) setAnnotating(false) }, [canDraw])
-  // 激光笔淡出完就去掉（只在有激光笔时跑）
+  // The laser pointer is removed once its fade-out finishes (only runs while a laser pointer exists).
   const hasLaser = strokes.some((x) => x.tool === 'laser')
   useEffect(() => {
     if (!hasLaser) return
     const id = setInterval(() => setStrokes((x) => pruneLaser(x, Date.now())), 500)
     return () => clearInterval(id)
   }, [hasLaser])
-  // Esc 退出标注
+  // Esc exits annotation mode
   useEffect(() => {
     if (!annotating) return
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setAnnotating(false) }
@@ -171,12 +171,12 @@ export default function MeetingRoom() {
   }, [annotating])
 
   const send = (d: MeetData) => room.localParticipant.publishData(packData(d), { reliable: true }).catch(() => {})
-  /** 自己的标注动作：本地先生效，再发给所有人 */
+  /** Your own annotation strokes: apply locally first, then broadcast to everyone */
   const annLocal = (m: AnnMsg) => { setStrokes((x) => applyAnn(x, m, localIdRef.current, Date.now())); void send(m) }
 
-  // 等候室（2026-10-01）：进会时选的设备记下来，主持人同意后用同一套设置再进一次
+  // Waiting room (2026-10-01): devices picked before joining are remembered; rejoin with the same settings once the host approves.
   const prefsRef = useRef<JoinPrefs>({ camOn: false, micOn: false })
-  // 开摄像头：本机设置里有特效（虚拟形象 / 美颜 / 背景）就带上处理器。选了虚拟形象却没挂上（显卡不支持等）：马上关掉摄像头，绝不发出真人画面
+  // Camera on: attach the processor when local settings include effects (virtual avatar / beautify / background). Virtual avatar selected but failed to attach (GPU unsupported, etc.): kill the camera immediately — never transmit the real face.
   const camTrack = () => room.localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack as LocalVideoTrack | undefined
   const camOn = async (deviceId?: string) => {
     await room.localParticipant.setCameraEnabled(true, { ...(deviceId ? { deviceId } : {}), resolution: VideoPresets.h720.resolution, processor: await processorForCamera() })
@@ -185,7 +185,7 @@ export default function MeetingRoom() {
       toast.error(t('虚拟形象没能打开，已先关掉摄像头'))
     }
   }
-  // 会议中改特效（和直播间 changeFx 同一个做法）
+  // Changing effects mid-meeting (same approach as the live room's changeFx)
   const changeFx = async (s: FxSettings) => {
     try { await applyFx(camTrack(), s) } catch {
       if (s.avatar === 'cat') { await room.localParticipant.setCameraEnabled(false).catch(() => {}); toast.error(t('虚拟形象没能打开，已先关掉摄像头')) }
@@ -198,11 +198,11 @@ export default function MeetingRoom() {
     prefsRef.current = prefs
     setStage('joining')
     try {
-      // 有密码的会议带上密码（主持人不用）
+      // Password-protected meetings include the password (hosts don't need it).
       const needPw = !!info?.hasPassword && info.host !== me?.address
       const r = await api<Meeting & { token: string; url: string; state?: unknown }>(`/api/meet/meetings/${code}/join`, { method: 'POST', body: JSON.stringify(needPw ? { password: pw } : {}) })
       setPwErr(null)
-      // 开了等候室：服务器没给令牌，先等主持人同意
+      // Waiting room enabled: the server hasn't issued a token yet, so wait for the host's approval first.
       if (isLobbyWaiting(r)) { setStage('waiting'); return }
       setInfo(r)
       setMod(parseModState(r.state))
@@ -217,7 +217,7 @@ export default function MeetingRoom() {
     } catch (e) {
       void room.disconnect()
       const why = (e as { code?: unknown }).code
-      // 密码没输 / 输错：留在进会前的页面，在密码框下提示；被移出本场的：直接显示结果页
+      // Password missing / wrong: stay on the pre-join page with a hint under the password box; if removed from this session: show the result page directly.
       if (why === 'PASSWORD_REQUIRED' || why === 'PASSWORD_WRONG') { setPwErr(why === 'PASSWORD_WRONG' ? t('密码不对') : t('请输入会议密码')); setStage('precheck'); return }
       if (why === 'KICKED') { setStage('kicked'); return }
       if (why === 'LOBBY_DENIED') { setStage('denied'); return }
@@ -226,10 +226,10 @@ export default function MeetingRoom() {
     }
   }
 
-  // 在等候室：每 3 秒问一次；同意了（或者被服务器清出列表）就用原来的设置再进一次，拒绝了显示结果页
+  // In the waiting room: poll every 3 seconds; once approved (or cleared from the list by the server), rejoin with the original settings; if rejected, show the result page.
   useLobbyWait(api, code, stage === 'waiting', (s) => { if (s === 'denied') setStage('denied'); else void join(prefsRef.current) })
 
-  // 会议中：服务器改了状态（房间元数据）马上更新；被主持人 / 管理员移出 → 结果页；自己的权限变了刷新按钮；每 20 秒心跳（大厅在线人数 + 兜底同步状态）
+  // In the meeting: server state changes (room metadata) apply immediately; removed by host / admin → result page; refresh buttons when your own permissions change; heartbeat every 20 s (lobby online count + fallback state sync).
   const refreshRef = useRef(lk.refresh)
   refreshRef.current = lk.refresh
   useEffect(() => {
@@ -248,7 +248,7 @@ export default function MeetingRoom() {
   }, [stage, room, code])
   const myRole = roleIn(mod, localId)
   const canTalk = speakOk(mod, localId)
-  // 自己能不能说话变了：给一句提示（开全员禁言、被请下台、批准上台）
+  // Your speaking permission changed: show a one-line notice (mute-all enabled, taken off stage, approved to go on stage).
   const prevTalk = useRef(true)
   useEffect(() => {
     if (stage === 'in' && prevTalk.current !== canTalk) {
@@ -257,7 +257,7 @@ export default function MeetingRoom() {
     }
     prevTalk.current = canTalk
   }, [canTalk, stage]) // eslint-disable-line react-hooks/exhaustive-deps
-  /** 管理操作都走服务器，返回新状态 */
+  /** All moderation actions go through the server, which returns the new state */
   const modAct = (path: string, body: object) => api<{ state?: unknown }>(`/api/meet/meetings/${code}/${path}`, { method: 'POST', body: JSON.stringify(body) })
     .then((r) => { const st = parseModState(r.state); if (st) setMod(st) })
     .catch((e) => toast.error(errorText(e, t('操作失败'))))
@@ -271,7 +271,7 @@ export default function MeetingRoom() {
   const local = parts.find((p) => p.isLocal)
   const toggle = async (kind: 'mic' | 'cam' | 'screen') => {
     if (busy || !local) return
-    // 禁言中：服务器已经收回推流权限，这里只给一句提示（关掉的操作不拦）
+    // While muted: the server has already revoked publish rights; just show a notice here (the turn-off action itself isn't blocked).
     if (!canTalk && !(kind === 'mic' ? local.mic : kind === 'cam' ? local.cam : local.screen)) { toast.info(t('全员禁言中，举手申请发言')); return }
     setBusy(kind)
     try {
@@ -280,12 +280,12 @@ export default function MeetingRoom() {
       else await room.localParticipant.setScreenShareEnabled(!local.screen, { audio: true })
       lk.refresh()
     } catch (e) {
-      // 被系统拦下（Mac 没给浏览器屏幕录制权限）：弹出怎么打开；用户自己点取消的不提示
+      // Blocked by the OS (browser lacks screen-recording permission on Mac): pop up how to enable it; don't prompt when the user dismissed it themselves.
       if (kind === 'screen' && deniedBySystem(e)) setScreenHelp(true)
       else if (kind !== 'screen' || !(e instanceof Error && e.name === 'NotAllowedError')) toast.error(kind === 'mic' ? t('无法开启麦克风，请检查浏览器权限') : kind === 'cam' ? t('无法开启摄像头，请检查浏览器权限') : t('无法共享屏幕'))
     } finally { setBusy(null) }
   }
-  // 举手 = 申请上台（走服务器，主持人和管理员在成员列表里批准 / 拒绝）
+  // Raise hand = request to go on stage (via the server; hosts and admins approve / reject in the member list).
   const myHand = hands.has(localId)
   const toggleHand = () => void modAct('hand', { up: !myHand })
   const react = (emoji: string) => { addFloat(emoji, t('你')); void send({ t: 'react', emoji }) }
@@ -307,7 +307,7 @@ export default function MeetingRoom() {
   }
   const isHost = !!info && !!me && info.host === me.address
 
-  // ---------- 会议外的几种状态 ----------
+  // ---------- Pre-join states ----------
   if (loadErr) return <Centered title={loadErr} action={<button className="meet-btn meet-btn-ghost" onClick={() => nav(BACK)}><ArrowLeft size={16} />{t('回到会议')}</button>} />
   if (!info) return <div className="meet-ui flex h-full items-center justify-center"><Spinner size={22} /></div>
   if (stage === 'ended') return <Centered title={t('会议已结束')} sub={info.title} action={<button className="meet-btn meet-btn-primary" onClick={() => nav(BACK)}>{t('回到会议')}</button>} />
@@ -348,7 +348,7 @@ export default function MeetingRoom() {
     </div>
   }
 
-  // ---------- 会议中 ----------
+  // ---------- In the meeting ----------
   return <>
   <InCall {...{ info, code, parts, lk, layout, setLayout, panel, setPanel, chat, unread, setUnread, hands, floats, busy, local, myHand, isHost }}
     mod={{ state: mod, me: localId, role: myRole, canTalk, ...modActions }}
@@ -361,7 +361,7 @@ export default function MeetingRoom() {
         <button className="meet-btn meet-btn-ghost w-full" onClick={() => void leave(false)}>{t('只是我离开')}</button>
       </div>
     </Modal>} />
-    {/* 共享屏幕被系统拦下：说清楚去哪里打开（2026-09-30） */}
+    {/* Screen share blocked by the OS: explain exactly where to enable it (2026-09-30) */}
     <Modal open={screenHelp} onClose={() => setScreenHelp(false)} title={t('还不能共享窗口或整个屏幕')} width={440}>
       <p className="mb-3 text-sm text-muted">{t('系统没有给浏览器屏幕录制权限。现在仍然可以共享浏览器标签页。')}</p>
       <ScreenPermissionHelp />
@@ -371,7 +371,7 @@ export default function MeetingRoom() {
   </>
 }
 
-/** 右边侧栏：聊天 / 成员 / 画面特效 */
+/** Right sidebar: chat / members / video effects */
 type Panel = 'chat' | 'people' | 'fx' | null
 
 function InCall(props: {
@@ -386,9 +386,9 @@ function InCall(props: {
   const { info, code, parts, lk, layout, setLayout, panel, setPanel, chat, unread, setUnread, hands, floats, busy, local, myHand, elapsed, ann, mod } = props
   const isMod = mod.role !== 'member'
   const pending = isMod ? mod.state?.hands.length ?? 0 : 0
-  // 等候室：主持人 / 管理员看等待列表、会中开关
+  // Waiting room: hosts / admins see the waiting list and in-meeting toggles.
   const lobby = useLobbyHost(api, code, isMod, !!info.lobby, (e) => toast.error(errorText(e, t('操作失败'))))
-  // 共享画面上的标注层：只叠在正在共享的那个人的屏幕上；大画面上能画的人打开标注后可以画，其余地方只看
+  // Annotation layer over the shared screen: only overlays whoever is currently sharing; those allowed to draw on the main view can draw once annotation mode is on, everywhere else is view-only.
   const annLayer = (p: PSnap, drawable: boolean) => p.id === ann.sharerId && p.screenTrack
     ? <AnnotationLayer strokes={ann.strokes} localId={ann.localId} drawing={drawable && ann.on && ann.canDraw} tool={ann.tool} color={ann.color} onLocal={ann.act} />
     : undefined
@@ -396,19 +396,19 @@ function InCall(props: {
   const myStrokes = ann.strokes.some((s) => s.by === ann.localId && s.tool === 'pen')
   const [pop, setPop] = useState<'emoji' | 'more' | null>(null)
   const avatars = useAvatars(parts.map((p) => p.id))
-  // 能量礼物（2026-09-30）：会议里只能送给主持人 + 台上开着视频或共享屏幕的人（服务器会再核对）。
-  // 送出的礼物服务器确认后广播到会议的礼物频道 meet:<会议码>，所有人收到才播动画
+  // Energy gifts (2026-09-30): in meetings you can only gift the host + people on stage with video or screen share on (the server double-checks).
+  // Once the server confirms a gift, it's broadcast to the meeting's gift channel meet:<code>; animations play only after everyone receives it.
   const myAddr = useSocial((s) => s.me?.address)
   const fx = useRef<GiftFxLayerHandle>(null)
   const [giftOpen, setGiftOpen] = useState(false)
   useRoomGifts(`meet:${code}`, (g) => fx.current?.play(g), true)
   const giftTargets: GiftTarget[] = [
     { address: info.host, nickname: info.hostNickname, avatar: info.hostAvatar, label: t('主持人') },
-    // 台上的人都能收（goat 10-01：不管开没开麦克风 / 视频，只要在台上）；没开全员禁言时人人都在台上
+    // Everyone on stage can receive (goat 10-01: mic / camera on or off doesn't matter, being on stage is what counts); when mute-all is off, everyone is on stage.
     ...parts.filter((p) => p.id !== info.host && speakOk(props.mod.state, p.id)).map((p) => ({ address: p.id, nickname: p.name, avatar: avatars[p.id] ?? null, label: p.screen ? t('正在共享') : t('台上') })),
   ].filter((x) => x.address !== myAddr)
-  // 舞台主画面（2026-10-02 goat：别人没开摄像头时，主持人这边大屏变成一张头像、自己有画面的反而挤在角上）：
-  // 固定的 > 共享屏幕 > 正在说话的别人 > 刚说过话且开着摄像头的别人 > 开着摄像头的别人 > 别人都没开摄像头而自己开着 → 自己 > 第一个别人 > 自己
+  // Stage main view (2026-10-02 goat: when others had cameras off, the host's big screen became one avatar while my own video squeezed into a corner):
+  // pinned > screen share > others currently speaking > others who recently spoke with camera on > others with camera on > nobody else on camera but I am → me > first other person > me
   const [pinned, setPinned] = useState<string | null>(null)
   const lastSpeaker = useRef<string | null>(null)
   const speaker = parts.find((p) => !p.isLocal && p.speaking)
@@ -424,8 +424,8 @@ function InCall(props: {
     window.addEventListener('mousedown', off)
     return () => window.removeEventListener('mousedown', off)
   }, [pop])
-  // 画廊每页最多 16 格（2026-10-02 goat 问人多会不会卡）：再多就翻页。看不到的人不解码视频（adaptiveStream 自动暂停），
-  // 电脑不用同时解几十路画面。排序：在共享屏幕的、开着摄像头的排前面，第一页就是最有内容的人
+  // Gallery: at most 16 tiles per page (2026-10-02 goat asked whether many people would lag): extra pages beyond that. People not visible don't decode video (adaptiveStream auto-pauses),
+  // so the machine never decodes dozens of streams at once. Sort order: screen sharers and camera-on users first — page one is always the most content-rich people.
   const GALLERY_PAGE = 16
   const [gPage, setGPage] = useState(0)
   const ordered = useMemo(() => [...parts].sort((a, b) => Number(!!b.screen) - Number(!!a.screen) || Number(!!b.cam) - Number(!!a.cam)), [parts])
@@ -435,9 +435,9 @@ function InCall(props: {
   const gridCols = gShown.length <= 1 ? 1 : gShown.length <= 4 ? 2 : gShown.length <= 9 ? 3 : 4
 
   return <div className="meet-ui flex h-full flex-col bg-[var(--mt-page)]" data-testid="in-call">
-    {/* 顶部栏 */}
+    {/* Top bar */}
     <header className="relative flex h-16 shrink-0 items-center gap-4 px-6">
-      {/* 画笔工具栏（2026-10-02 goat）：放在顶栏正中——左边会议名称、右边全员禁言之间那块空档，不占视频的地方 */}
+      {/* Annotation toolbar (2026-10-02 goat): centered in the top bar — in the gap between the meeting name on the left and mute-all on the right, taking no video space */}
       {layout === 'speaker' && main && <div className="pointer-events-none absolute inset-x-0 top-1/2 z-20 flex -translate-y-1/2 justify-center"><div className="pointer-events-auto">{ann.on && ann.canDraw && main.id === ann.sharerId && <AnnotateToolbar tool={ann.tool} color={ann.color} onTool={ann.setTool} onColor={ann.setColor} onUndo={() => ann.act({ t: 'ann', k: 'undo' })} onClear={() => ann.act({ t: 'ann', k: 'clear' })} onExit={() => ann.setOn(false)} canUndo={myStrokes} canClear={ann.strokes.length > 0} />}</div></div>}
       <div className="min-w-0">
         <div className="truncate text-[15px] font-semibold tracking-tight">{info.title}</div>
@@ -447,17 +447,17 @@ function InCall(props: {
       {lk.state === 'reconnecting' && <span className="flex items-center gap-2 text-[12.5px] text-[#ffc9a8]"><Spinner size={12} />{t('正在重新连接')}</span>}
       {mod.state?.muteAll && <span className="flex items-center gap-1.5 rounded-full bg-[#ff6b76]/15 px-3 py-1 text-[12px] font-medium text-[#ff9aa2]"><MicOff size={13} />{t('全员禁言中')}</span>}
       <div className="ml-auto flex items-center gap-2">
-        {/* 举手申请：主持人 / 管理员看到醒目的待处理数，点开成员列表处理 */}
+        {/* Hand-raise requests: hosts / admins see a prominent pending count, then open the member list to handle them */}
         {pending > 0 && <button className="meet-btn h-9 animate-pulse bg-[#ffc9a8] px-3 text-[13px] font-semibold text-[#1a1208]" onClick={() => setPanel('people')} data-testid="hands-pending"><Hand size={15} />{t('{n} 人申请发言', { n: pending })}</button>}
         {isMod && <button className={`meet-btn h-9 px-3 text-[13px] ${mod.state?.muteAll ? 'bg-[#ff6b76] font-semibold text-[#1b0a0c]' : 'meet-btn-ghost'}`} onClick={() => mod.muteAll(!mod.state?.muteAll)} data-testid="mute-all">{mod.state?.muteAll ? <><Mic size={15} />{t('解除全员禁言')}</> : <><MicOff size={15} />{t('全员禁言')}</>}</button>}
         <button className="meet-btn meet-btn-ghost h-9 px-3 text-[13px]" onClick={() => setPanel(panel === 'people' ? null : 'people')}><Users size={15} /><span className="tabular-nums">{parts.length}</span></button>
-        {/* 2026-09-30 goat：舞台中间的「只有你在会议里」浮条挡住共享画面，删掉；这里改成主按钮，只有自己一人时加一圈提示光晕 */}
+        {/* 2026-09-30 goat: the "you're the only one here" floating banner in the middle of the stage covered shared screens, so it was removed; now a primary button here, with a highlight glow when you're the only one in the meeting */}
         <button className={`meet-btn meet-btn-primary h-9 px-3.5 text-[13px] ${alone ? 'meet-invite-glow' : ''}`} onClick={props.onCopy} data-testid="copy-invite" title={alone ? t('只有你在会议里。把链接发给要参加的人') : undefined}><Copy size={14} />{t('复制邀请链接')}</button>
       </div>
     </header>
 
     <div className="flex min-h-0 flex-1 gap-3 px-4">
-      {/* 舞台 */}
+      {/* Stage */}
       <section className="relative min-w-0 flex-1" aria-label={t('舞台')}>
         <GiftFxLayer ref={fx} />
         {layout === 'speaker' && main ? <div className="flex h-full gap-3">
@@ -469,7 +469,7 @@ function InCall(props: {
           </div>}
         </div> : <div className={`relative h-full ${gPages > 1 ? 'px-12' : ''}`}>
           <div className="meet-gallery" style={{ '--cols': gridCols, '--rows': Math.ceil(gShown.length / gridCols) } as React.CSSProperties}>
-            {/* 画廊：每格 16:9，宽度同时按「横着放得下」和「竖着放得下」取小的那个，一屏装下、不重叠（2026-10-02 截图里第 3 格压住第 1 格） */}
+            {/* Gallery: each tile 16:9; tile width takes the smaller of "fits horizontally" and "fits vertically" so one screen holds everything without overlap (2026-10-02 screenshot: tile 3 covered tile 1) */}
             {gShown.map((p) => <div key={p.id}><Tile p={p} hand={hands.has(p.id)} avatar={avatars[p.id]} overlay={annLayer(p, false)} /></div>)}
           </div>
           {gPages > 1 && <>
@@ -478,14 +478,14 @@ function InCall(props: {
             <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs text-white/80 num">{t('第 {a} / {b} 页', { a: gCur + 1, b: gPages })}</span>
           </>}
         </div>}
-        {/* 表情飘屏 */}
+        {/* Floating reactions */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           {floats.map((f) => <div key={f.id} className="meet-float-up absolute bottom-6 flex flex-col items-center" style={{ left: `${f.left}%` }}><span className="text-[40px] leading-none">{f.emoji}</span><span className="mt-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] text-white">{f.name}</span></div>)}
         </div>
         {lk.audioBlocked && <button className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black shadow-lg" onClick={() => void lk.startAudio()}><Volume2 size={16} />{t('点这里开启声音')}</button>}
       </section>
 
-      {/* 侧栏 */}
+      {/* Sidebar */}
       {panel === 'fx' && <div className="meet-fade meet-hairline meet-glass meet-fx flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[20px] bg-[var(--mt-surface)]">
         <Suspense fallback={null}><EffectsPanel title={t('画面特效')} onClose={() => setPanel(null)} onChange={props.onFx} /></Suspense>
       </div>}
@@ -499,14 +499,13 @@ function InCall(props: {
     </div>
 
     {ENERGY_GIFTS && giftOpen && <GiftPanel open onClose={() => setGiftOpen(false)} room={`meet:${code}`} targets={giftTargets} />}
-    {/* 底部控制条。z-30：它往上弹出的菜单（更多、表情）要盖在舞台上面——画廊里共享屏幕时右下角的摄像头小窗是 z-10，
-        以前菜单没层级，被小窗挡住（2026-10-02 goat） */}
+    {/* Bottom control bar. z-30: its pop-up menus (more, reactions) must render above the stage — during gallery screen-sharing the camera PiP at bottom-right is z-10,\n        and menus used to have no z-index and got covered by it (2026-10-02 goat) */}
     <footer className="relative z-30 flex h-[88px] shrink-0 items-center px-6">
       <div className="hidden w-1/4 min-w-0 items-center gap-2 text-[13px] text-muted lg:flex"><span className="truncate font-mono">{code}</span></div>
       <div className="meet-dock flex flex-1 items-center justify-center gap-2.5">
         <button className="meet-ctl meet-tip" data-off={!local?.mic} data-locked={!mod.canTalk || undefined} data-tip={!mod.canTalk ? t('全员禁言中，举手申请发言') : local?.mic ? t('关闭麦克风') : t('开启麦克风')} disabled={busy === 'mic'} onClick={() => props.onToggle('mic')} aria-label={t('麦克风')} data-testid="ctl-mic">{local?.mic ? <Mic size={20} /> : <MicOff size={20} />}</button>
         <button className="meet-ctl meet-tip" data-off={!local?.cam} data-locked={!mod.canTalk || undefined} data-tip={!mod.canTalk ? t('全员禁言中，举手申请发言') : local?.cam ? t('关闭摄像头') : t('开启摄像头')} disabled={busy === 'cam'} onClick={() => props.onToggle('cam')} aria-label={t('摄像头')} data-testid="ctl-cam">{local?.cam ? <Video size={20} /> : <VideoOff size={20} />}</button>
-        {/* 画面特效：虚拟形象（不露脸）、美颜、换背景 */}
+        {/* Video effects: virtual avatar (faceless), beautify, background swap */}
         <button className="meet-ctl meet-tip" data-on={panel === 'fx'} data-tip={t('虚拟形象和美颜')} onClick={() => setPanel(panel === 'fx' ? null : 'fx')} aria-label={t('画面特效')} data-testid="ctl-fx"><Sparkles size={20} /></button>
         <button className="meet-ctl meet-tip" data-on={!!local?.screen} data-locked={!mod.canTalk || undefined} data-tip={!mod.canTalk ? t('全员禁言中，举手申请发言') : local?.screen ? t('停止共享') : t('共享屏幕')} disabled={busy === 'screen'} onClick={() => props.onToggle('screen')} aria-label={t('共享屏幕')}><MonitorUp size={20} /></button>
         {ann.canDraw && <button className="meet-ctl meet-tip" data-on={ann.on} data-tip={ann.on ? t('退出标注') : t('在共享画面上标注')} onClick={() => { if (!ann.on) { setLayout('speaker'); setPinned(null) } ann.setOn(!ann.on) }} aria-label={t('标注')} data-testid="ctl-annotate"><Pencil size={19} /></button>}
@@ -525,10 +524,10 @@ function InCall(props: {
             <MenuItem icon={<LayoutGrid size={16} />} label={t('画廊视图')} active={layout === 'grid'} onClick={() => { setLayout('grid'); setPop(null) }} />
             <div className="my-1 h-px bg-line" />
             <MenuItem icon={<Maximize size={16} />} label={t('全屏')} onClick={() => { void document.documentElement.requestFullscreen?.().catch(() => {}); setPop(null) }} />
-            {/* 复制邀请链接不放这里（2026-10-02 goat：和右上角的按钮重复了） */}
-            {/* 主持人改密码 / 去掉密码（2026-09-30 goat）；已经在会议里的人不受影响 */}
+            {/* Copy-invite-link doesn't go here (2026-10-02 goat: it duplicates the top-right button) */}
+            {/* Host changes / removes the password (2026-09-30 goat); people already in the meeting are unaffected */}
             {props.isHost && <MenuItem icon={<Lock size={16} />} label={t('会议密码')} onClick={() => { setPwOpen(true); setPop(null) }} />}
-            {/* 等候室开关（2026-10-01 goat）：主持人和管理员；关掉时正在等的人全部进来 */}
+            {/* Waiting-room toggle (2026-10-01 goat): hosts and admins; turning it off admits everyone currently waiting */}
             {isMod && <MenuItem icon={<DoorOpen size={16} />} label={t('等候室')} active={lobby.on} onClick={() => { void lobby.toggle(!lobby.on); setPop(null) }} />}
           </div>}
         </div>
@@ -573,7 +572,7 @@ function ChatPanel({ lines, onSend, locked }: { lines: ChatLine[]; onSend: (text
   </>
 }
 
-/** 会议管理：InCall 用到的状态和操作（都走服务器） */
+/** Meeting moderation: state and actions used by InCall (all server-side) */
 interface ModCtl {
   state: ModState | null; me: string; role: 'host' | 'admin' | 'member'; canTalk: boolean
   muteAll: (on: boolean) => void; setAdmin: (address: string, on: boolean) => void; kick: (address: string) => void; stage: (address: string, action: 'approve' | 'deny' | 'remove') => void
@@ -587,7 +586,7 @@ function PeoplePanel({ parts, hands, host, avatars, onCopy, mod }: { parts: PSna
   const nameOf = (id: string) => parts.find((p) => p.id === id)?.name || st?.hands.find((h) => h.address === id)?.name || id.slice(0, 6)
   return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
     <button onClick={onCopy} className="mx-2 mb-2 flex w-[calc(100%-16px)] items-center gap-3 rounded-xl px-3 py-3 text-left text-[13.5px] hover:bg-[var(--mt-2)]"><span className="meet-brand-fill flex h-9 w-9 items-center justify-center rounded-full text-[#121318]"><Link2 size={16} /></span><span className="flex-1">{t('邀请别人加入')}</span><ChevronRight size={15} className="text-muted" /></button>
-    {/* 举手申请（主持人 / 管理员）：批准后对方可以开麦、开摄像头、共享屏幕 */}
+    {/* Hand-raise requests (hosts / admins): approving lets the person unmute, turn on camera, and share screen */}
     {isMod && !!st?.hands.length && <div className="mx-2 mb-2 rounded-2xl bg-[#ffc9a8]/10 p-2" data-testid="hand-requests">
       <div className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-[.14em] text-[#ffc9a8]">{t('申请发言')}</div>
       {st.hands.map((h) => <div key={h.address} className="flex items-center gap-2 rounded-xl px-2 py-2">
@@ -627,7 +626,7 @@ function Centered({ title, sub, action }: { title: string; sub?: string; action?
   </div>
 }
 
-/** 主持人改会议密码：设置新密码或去掉密码（4~32 位）。已经在会议里的人不受影响，之后进来的人按新设置 */
+/** Host changes the meeting password: set a new one or remove it (4–32 chars). People already in the meeting are unaffected; later joiners follow the new setting */
 function PasswordModal({ code, hasPassword, onClose }: { code: string; hasPassword: boolean; onClose: () => void }) {
   const [on, setOn] = useState(hasPassword)
   const [pw, setPw] = useState('')

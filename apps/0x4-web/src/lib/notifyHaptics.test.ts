@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
-// 通知震动（2026-09-29 goat：「在通知里也能设置哪些通知可以有震动，用户自己选开关」）：
-// ① 默认值：私信、@ 我、小精灵、评论、礼物红包、官方公告、其他通知开；群聊新消息、新粉丝、点赞关
-// ② 每类开关生效：开着震（系统「提醒」震动，不是按键轻震），关了不震；一串提醒挤在一起只震一次；App 在后台不震
-// ③ 真实事件：收到通知 / 小精灵确认请求 / 群消息时按类别震；正在和这个人私聊时私信通知不震；@ 我的群消息不按「群聊新消息」重复震
-// ④ 「按键震动」关掉后，成功 / 失败提示也不再震（2026-09-29 和「操作结果」合成一个开关）
-// ⑤ 通知和震动合成一个开关：没单独存过的类别跟推送开关走；老设置里「按键震动」「操作结果」任一开着 → 合并后开
+// Notification haptics (2026-09-29 goat: "which notifications may vibrate should also be settable in notifications — user picks the switches"):
+// ① Defaults: DMs, @mentions, sprite, comments, gift/red-packet, official announcements, other notifications on; new group messages, new followers, likes off
+// ② Per-category switches take effect: on vibrates (the system "alert" vibration, not the key-tap haptic), off doesn't; a burst of alerts vibrates only once; no vibration while the app is in background
+// ③ Real events: vibrate per category on notification / sprite confirm request / group message; no vibration for a DM notification while actively chatting with that person; @-me group messages don't double-vibrate as "new group messages"
+// ④ Turning off "key haptics" also silences success / failure prompts (merged with "operation results" into one switch on 2026-09-29)
+// ⑤ Notification and haptics merged into one switch: categories never stored separately follow the push switch; legacy settings with either "key haptics" or "operation results" on → on after merging
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.hoisted(() => {
-  // jsdom 没有 matchMedia，主题 / 弹层一加载就会调
+  // jsdom has no matchMedia, which theme / sheet modules call on load
   if (typeof window !== 'undefined' && !window.matchMedia) {
     window.matchMedia = ((q: string) => ({ matches: false, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia
   }
@@ -98,12 +98,12 @@ describe('通知震动：开关', () => {
     expect(h.notice).toEqual(['SUCCESS'])
   })
   it('没单独存过的类别跟推送开关走；单独存过的照存的（老版本关过震动的保留）', () => {
-    expect(vibeOn('follow')).toBe(false)                      // 默认值
+    expect(vibeOn('follow')).toBe(false)                      // Defaults
     useSettings.getState().setPushPrefsCache({ follow: true, dm: false })
-    expect(vibeOn('follow')).toBe(true)                       // 推送开了 → 震动也开
+    expect(vibeOn('follow')).toBe(true)                       // Push on → haptics on too
     expect(vibeOn('dm')).toBe(false)
     useSettings.getState().setNotifyHaptic('dm', true)
-    expect(vibeOn('dm')).toBe(true)                           // 单独存过的优先
+    expect(vibeOn('dm')).toBe(true)                           // Separately stored ones win
   })
   it('升级：「按键震动」「操作结果」任一开着 → 合并后开；两个都关 → 关；没存过 → 开', async () => {
     const { migrateSettings } = await import('@/store/settings')
@@ -112,7 +112,7 @@ describe('通知震动：开关', () => {
     expect(migrateSettings({ pressHaptics: false, resultHaptics: false }, 0).pressHaptics).toBe(false)
     expect(migrateSettings({}, 0).pressHaptics).toBe(true)
     expect('resultHaptics' in migrateSettings({ resultHaptics: false }, 0)).toBe(false)
-    expect(migrateSettings({ pressHaptics: false }, 1).pressHaptics).toBe(false)   // 已经是新版本的不动
+    expect(migrateSettings({ pressHaptics: false }, 1).pressHaptics).toBe(false)   // Already-new versions left alone
   })
 })
 
@@ -173,18 +173,18 @@ describe('通知面板（原生 App）', () => {
     const mine = document.querySelector('[aria-label="和我有关"]')!
     const rows = [...mine.querySelectorAll('[role="switch"]')]
     expect(rows.map((b) => b.querySelector('span')?.textContent)).toEqual(['私信', '群里 @ 我', '群聊新消息', '小精灵', '评论', '礼物和红包', '新粉丝', '点赞', '官方公告', '其他通知'])
-    // 有推送的类别：一个开关同时改推送（服务器）和 App 开着时的震动（本机）
+    // Categories with push: one switch changes both push (server) and in-app haptics (local)
     const follow = rows.find((b) => b.textContent?.startsWith('新粉丝'))!
     expect(follow.getAttribute('aria-checked')).toBe('false')
     await act(async () => { (follow as HTMLButtonElement).click() })
     expect(prefs.follow).toBe(true)
     expect(useSettings.getState().notifyHaptics.follow).toBe(true)
     expect(vibeOn('follow')).toBe(true)
-    // 没有推送的类别：只管 App 开着时震不震
+    // Categories without push: only whether haptics fire while the app is open
     const group = rows.find((b) => b.textContent?.startsWith('群聊新消息'))!
     await act(async () => { (group as HTMLButtonElement).click() })
     expect(useSettings.getState().notifyHaptics.group).toBe(true)
-    // 按键震动：只剩一个开关，没有「操作结果」
+    // Key haptics: only one switch left, no "operation results"
     const press = document.querySelector('[aria-label="按键震动"]')!
     expect(press.querySelectorAll('[role="switch"]')).toHaveLength(1)
     expect(document.body.textContent).not.toContain('操作结果')

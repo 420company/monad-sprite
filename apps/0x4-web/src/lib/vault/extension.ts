@@ -1,9 +1,9 @@
-// 网页版（420.meme/app）的签名适配层：私钥在 0x4 浏览器插件里，这里只把「要签什么」交给 window.ox4、把签名拿回来。
-// 接口约定见 docs/EXTENSION_API.md（插件那边照同一份实现）。形状和原生金库的 nativeSolanaWallet / nativeEvmAccount /
-// nativeBtcSigner / nativeDm 一一对应，放在 store/wallet 的带闸外壳后面，上层（转账、闪兑、合约、社交）不用改。
+// Signing adapter for the web app (420.meme/app): private keys live in the 0x4 browser extension; this layer only hands "what to sign" to window.ox4 and takes the signature back.
+// Interface contract in docs/EXTENSION_API.md (the extension implements the same doc). The shape mirrors the native vault's nativeSolanaWallet / nativeEvmAccount /
+// nativeBtcSigner / nativeDm one-to-one, sitting behind store/wallet's gated shell — the upper layers (transfers, swaps, perps, social) stay unchanged.
 //
-// 2026-09-29 goat：网页版不做任何创建 / 导入 / 解锁钱包的页面，钱包只连 0x4 浏览器插件。
-// 插件永远不提供：导出助记词 / 私钥、创建 / 导入、eth_sign、「0x4 perp agent v2」原始消息签名。
+// 2026-09-29 goat: the web app has no create / import / unlock wallet pages at all; wallets only connect to the 0x4 browser extension.
+// The extension never provides: seed-phrase / private-key export, create / import, eth_sign, or raw "0x4 perp agent v2" message signing.
 import { Transaction, VersionedTransaction, PublicKey } from '@solana/web3.js'
 import bs58 from 'bs58'
 import { toAccount } from 'viem/accounts'
@@ -17,28 +17,28 @@ import { t } from '@/lib/i18n'
 import type { PerpReadEndpoint } from '@/lib/asterPerpRead'
 import type { PerpWriteAction, PerpWriteResult } from '@/lib/asterPerpWrite'
 
-// ---------- window.ox4 的类型（照 docs/EXTENSION_API.md 第 2 节） ----------
+// ---------- window.ox4 types (per docs/EXTENSION_API.md section 2) ----------
 
 export interface Ox4Status { version: string; connected: boolean; unlocked: boolean; address: string; evmAddress: string; btcAddress: string }
 export interface Ox4Accounts { address: string; evmAddress: string; btcAddress: string }
-/** 网页快捷交易会话的状态（插件只给这些：开没开、到期时间。不设额度，用户自己在插件里设的单笔上限不告诉网页） */
+/** Web quick-trade session status (the extension only shares: enabled or not, expiry. No limits — the per-order cap users set in the extension isn't told to the web app) */
 export type Ox4PerpSession = { active: false } | { active: true; until: number }
 /**
- * 网页版登录 / 连接时请插件在窗口里放一个默认勾上的「开启网页快捷交易」开关（2026-09-30 goat：登录时授权一次，之后下单不再逐笔弹窗）。
- * 不带额度（goat 2026-09-30：大户不能被额度卡住）。老版本插件 0.2.x 收到空对象按它自己的默认额度开
+ * On web login / connect, ask the extension to include a default-on "enable web quick trading" switch in the window (2026-09-30 goat: authorize once at login, no per-order popups afterwards).
+ * No limits attached (goat 2026-09-30: whales must not be throttled by limits). Old extension 0.2.x enables with its own default limits on an empty object
  */
 export const PERP_SESSION_REQUEST: Record<string, never> = {}
 export type Ox4Event = 'accountsChanged' | 'lock' | 'disconnect'
-/** 打赏授权的状态（插件只给这些：开没开、到期时间、授权的合约和单次最多几能量） */
+/** Tipping authorization status (the extension only shares: enabled or not, expiry, authorized contract and max energy per tip) */
 export type Ox4GiftSession = { active: false } | { active: true; until: number; chainId: number; contract: string; maxTip: number }
 
 export interface Ox4Provider {
   isOx4: true
   status(): Promise<Ox4Status>
-  /** perpSession：窗口里带「开启网页快捷交易」开关（老版本插件忽略这个参数） */
+  /** perpSession: the window carries the "enable web quick trading" switch (old extension versions ignore this param) */
   connect(o?: { perpSession?: Record<string, never> }): Promise<Ox4Accounts>
   disconnect(): Promise<{ ok: true }>
-  /** evmLink：同一个窗口里顺带签 EVM 关联消息（插件按自己的地址和登录 nonce 重算核对），返回 evmSignature；老版本插件不认这个参数就不返回 */
+  /** evmLink: also sign the EVM association message in the same window (the extension re-derives and checks against its own address and the login nonce), returning evmSignature; old extension versions don't recognize this param and won't return it */
   signLogin(o: { message: string; evmLink?: string; perpSession?: Record<string, never> }): Promise<{ signature: string; chain: 'solana' | 'evm'; evmSignature?: string; perpSession?: Ox4PerpSession }>
   signSolanaTransaction(o: { tx: string }): Promise<{ signature: string }>
   signSolanaMessage(o: { message: string }): Promise<{ signature: string }>
@@ -49,11 +49,11 @@ export interface Ox4Provider {
   signAutoTrade(o: { perDay: string; start: string; until: string; salt: string }): Promise<{ buyErc20: string; sell: string }>
   agentAddress(): Promise<{ address: string }>
   signAgentTypedData(o: { typedData: string }): Promise<{ signature: string }>
-  /** 合约只读查询由插件代办：插件自己签名、自己请求交易所，只回结果（HTTP 状态码 + JSON），签名不出插件 */
+  /** Perp read-only queries are delegated to the extension: the extension signs and requests the exchange itself, returning only results (HTTP status + JSON); signatures never leave the extension */
   perpRead(o: { endpoint: PerpReadEndpoint; params?: Record<string, string> }): Promise<{ status: number; body: unknown }>
   /**
-   * 合约写操作（下单 / 撤单 / 改杠杆 / 改保证金模式）由插件代办：网页只给动作和参数（lib/asterPerpWrite.ts 白名单），
-   * 插件自己签名、自己请求交易所，只回每个动作的结果。没开网页快捷交易时插件弹窗确认，开了且在上限以内不弹
+   * Perp write operations (place / cancel / change leverage / change margin mode) are delegated to the extension: the web app only supplies actions and params (lib/asterPerpWrite.ts allowlist),
+   * the extension signs and requests the exchange itself, returning each action's result. Without web quick trading, the extension pops a confirmation; with it enabled and within limits, no popup
    */
   perpWrite(o: { actions: PerpWriteAction[] }): Promise<{ results: PerpWriteResult[] }>
   perpSessionStart(o?: Record<string, never>): Promise<Ox4PerpSession>
@@ -63,7 +63,7 @@ export interface Ox4Provider {
   dmEncrypt(o: { text: string; peerPublicKey: string }): Promise<{ ciphertext: string; nonce: string; epk: string }>
   dmDecrypt(o: { ciphertext: string; nonce: string; epk: string }): Promise<{ text: string }>
   signBtc(o: { tx: string; prevouts: { amount: string; script: string }[] }): Promise<{ tx: string }>
-  /** 打赏授权（插件 0.4.3 起）：授权一次后，这个打赏合约的送礼小票不再逐次弹窗；老版本插件没有这几个方法 */
+  /** Tipping authorization (extension 0.4.3+): after one authorization, gift tickets for that tipping contract no longer pop per gift; old extension versions lack these methods */
   giftSessionStart?(o: { chainId: number; contract: string; maxTip: number }): Promise<Ox4GiftSession>
   giftSessionStatus?(): Promise<Ox4GiftSession>
   giftSessionEnd?(): Promise<Ox4GiftSession>
@@ -72,16 +72,16 @@ export interface Ox4Provider {
   off(name: Ox4Event, cb: (payload?: unknown) => void): void
 }
 
-// ---------- 发现插件 ----------
+// ---------- Extension discovery ----------
 
-/** 当前页面上的 0x4 插件；没装（或这个网站不在插件的白名单里）返回 null */
+/** The 0x4 extension on the current page; null when not installed (or when this site isn't in the extension's allowlist) */
 export function getOx4(): Ox4Provider | null {
   if (typeof window === 'undefined') return null
   const p = (window as unknown as { ox4?: Ox4Provider }).ox4
   return p && p.isOx4 === true ? p : null
 }
 
-/** 插件可能晚于页面脚本注入：等 ox4#initialized 事件，最多等 timeoutMs */
+/** The extension may inject later than the page scripts: wait for the ox4#initialized event, at most timeoutMs */
 export function waitForOx4(timeoutMs = 1500): Promise<Ox4Provider | null> {
   const now = getOx4()
   if (now || typeof window === 'undefined') return Promise.resolve(now)
@@ -92,11 +92,11 @@ export function waitForOx4(timeoutMs = 1500): Promise<Ox4Provider | null> {
   })
 }
 
-// ---------- 错误 ----------
+// ---------- Errors ----------
 
 /**
- * 插件抛的是 { code, message }。4001（用户拒绝 / 取消）的名字给成 UnlockCancelled，
- * lib/errors.ts 的 isUserCancel 认得，界面不弹红色提示；其它码按原文抛出（上层 errorText 会过滤原始数据）。
+ * The extension throws { code, message }. 4001 (user rejected / cancelled) is named UnlockCancelled,
+ * which lib/errors.ts's isUserCancel recognizes so the UI shows no red alert; other codes are rethrown as-is (upper-layer errorText filters raw data).
  */
 export class Ox4Error extends Error {
   code: number
@@ -114,10 +114,10 @@ async function call<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-// ---------- 确认窗口排队（2026-09-29 goat 实测：一连接就弹五个窗口、合约页十几个，超过插件每站 5 个上限被自动拒） ----------
-// 会弹确认窗口的请求一个一个交给插件：前一个窗口处理完（确认 / 拒绝 / 关掉）才发下一个，屏幕上同时最多一个 0x4 确认窗口。
-// 用户拒绝了一个，那一刻已经排在后面的一起作废（同一批的，4001「已取消」，不再一个接一个弹）；之后新发起的操作照常。
-// 不弹窗的（status、agentAddress、私信加解密、合约只读查询 perpRead）不排队。
+// ---------- Confirmation-window queue (2026-09-29 goat on-device: five windows on connect, a dozen on the perp page — past the extension's 5-per-site cap they got auto-rejected) ----------
+// Requests that pop a confirmation window go to the extension one at a time: the next is sent only after the previous window is handled (confirmed / rejected / closed); at most one 0x4 confirmation window on screen at a time.
+// If the user rejects one, everything already queued behind it is voided together (same batch, 4001 "cancelled", no more sequential popups); operations started afterwards behave normally.
+// Non-popup calls (status, agentAddress, DM encrypt/decrypt, perp read-only queries perpRead) don't queue.
 let tail: Promise<unknown> = Promise.resolve()
 let refusedEpoch = 0
 function serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -133,10 +133,10 @@ function serial<T>(fn: () => Promise<T>): Promise<T> {
   tail = job.catch(() => {})
   return job
 }
-/** 测试用：清空队列状态 */
+/** Test-only: reset queue state */
 export function resetOx4Queue() { tail = Promise.resolve(); refusedEpoch = 0 }
 
-/** 签名的编码：约定里交易签名是 base58；签名串只含 base58 字母就按 base58 解，否则按 base64（插件两种都可能回） */
+/** Signature encoding: the contract says transaction signatures are base58; if the signature string only contains base58 chars decode as base58, otherwise base64 (the extension may return either) */
 function decodeSig(sig: string): Uint8Array {
   if (/^[1-9A-HJ-NP-Za-km-z]+$/.test(sig)) {
     const bytes = bs58.decode(sig)
@@ -145,7 +145,7 @@ function decodeSig(sig: string): Uint8Array {
   return b64.toBytes(sig)
 }
 
-/** 结构化数据整份传给插件（插件按字段显示给用户），bigint 转成十进制字符串 */
+/** Structured data is passed to the extension whole (the extension displays it to the user field by field); bigints become decimal strings */
 function typedDataJson(td: unknown): string {
   return JSON.stringify(td, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))
 }
@@ -159,7 +159,7 @@ function hexToBytes(hex: string): Uint8Array {
 
 // ---------- Solana ----------
 
-/** 插件里的 Solana 钱包。多了 signLogin：登录消息走插件的专用入口（弹窗显示成「登录 420.meme」） */
+/** The Solana wallet in the extension. Extra signLogin: login messages go through the extension's dedicated entry (the popup shows "Log in to 420.meme") */
 export type ExtensionSolanaWallet = SolanaWallet & { signLogin(message: string, evmLink?: string): Promise<{ signature: string; chain: 'solana' | 'evm'; evmSignature?: string; perpSession?: Ox4PerpSession }> }
 
 export function extensionSolanaWallet(p: Ox4Provider, address: string): ExtensionSolanaWallet {
@@ -167,7 +167,7 @@ export function extensionSolanaWallet(p: Ox4Provider, address: string): Extensio
   return {
     publicKey,
     async signTransaction(tx) {
-      // 整笔未签名交易交给插件（它要解码、模拟余额变化给用户看），拿回签名再挂到交易上
+      // The whole unsigned transaction goes to the extension (it decodes it and simulates balance changes for the user); the signature comes back and is attached to the transaction
       const raw = tx instanceof VersionedTransaction ? tx.serialize() : tx.serialize({ requireAllSignatures: false, verifySignatures: false })
       const { signature } = await serial(() => p.signSolanaTransaction({ tx: b64.fromBytes(raw) }))
       tx.addSignature(publicKey, decodeSig(signature) as unknown as Parameters<Transaction['addSignature']>[1])
@@ -177,21 +177,21 @@ export function extensionSolanaWallet(p: Ox4Provider, address: string): Extensio
       const { signature } = await serial(() => p.signSolanaMessage({ message: b64.fromBytes(message) }))
       return decodeSig(signature)
     },
-    // 网页版登录窗口里带「开启网页快捷交易」开关（默认勾上）；插件返回会话状态，合约页据此显示
+    // The web login window carries the "enable web quick trading" switch (default on); the extension returns the session status, which the perp page displays
     signLogin: (message, evmLink) => serial(() => p.signLogin(evmLink ? { message, evmLink } : { message, perpSession: PERP_SESSION_REQUEST })),
   }
 }
 
 // ---------- EVM ----------
 
-/** 唯一允许挂的 7702 实现（和原生、插件写死的同一个），网页层签完再核对一遍 */
+/** The only permitted 7702 implementation (the same one hardcoded natively and in the extension); the web layer double-checks after signing */
 const ALLOWED_7702 = '0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B'
 
 export function extensionEvmAccount(p: Ox4Provider, address: string) {
   const acc = toAccount({
     address: address as Hex,
     async signMessage({ message }) {
-      // 约定只收 UTF-8 原文（插件把原文显示给用户）；原始字节解不成文字就拒绝，不去盲签
+      // Only UTF-8 plaintext is accepted by contract (the extension shows the text to the user); raw bytes that don't decode as text are refused — never blind-sign
       let text: string
       if (typeof message === 'string') text = message
       else {
@@ -217,7 +217,7 @@ export function extensionEvmAccount(p: Ox4Provider, address: string) {
     },
   })
   return Object.assign(acc, {
-    /** EIP-7702 授权（全自动交易）：只传链号和 nonce，挂哪个合约由插件写死；签完核对签名人 */
+    /** EIP-7702 authorization (fully automated trading): only chain ID and nonce are passed; which contract to attach to is hardcoded in the extension; verify the signer after signing */
     async signAuthorization(auth: { address: Hex; chainId: number; nonce: number }) {
       if (auth.address.toLowerCase() !== ALLOWED_7702.toLowerCase()) throw new Error(t('不支持这项授权'))
       const { signature } = await serial(() => p.signAuthorization7702({ chainId: String(auth.chainId), nonce: String(auth.nonce) }))
@@ -227,18 +227,18 @@ export function extensionEvmAccount(p: Ox4Provider, address: string) {
       if (signer.toLowerCase() !== address.toLowerCase()) throw new Error(t('授权签名验证未通过'))
       return out
     },
-    /** 全自动交易的两个委托：插件按模板组装、弹窗写明额度和到期后签 */
+    /** The two delegations for fully automated trading: the extension assembles them from templates and signs after the popup states the limits and expiry */
     async signAutoTrade(o: { perDay: bigint; start: number; until: number; salt: bigint }) {
       const r = await serial(() => p.signAutoTrade({ perDay: o.perDay.toString(), start: String(o.start), until: String(o.until), salt: o.salt.toString() }))
       return { buyErc20: r.buyErc20 as Hex, sell: r.sell as Hex }
     },
-    /** 合约交易密钥：在插件里按「0x4 perp agent v2」规则派生，私钥不出插件（lib/aster.ts agentFor 认这个） */
+    /** Perp trading key: derived in the extension per the "0x4 perp agent v2" rules; the private key never leaves the extension (lib/aster.ts's agentFor recognizes this) */
     ox4Agent: async () => {
       const { address: agent } = await call(() => p.agentAddress())
       return {
         address: agent as Hex,
         async signTypedData(td: unknown) {
-          // 2026-09-30 起只剩合约账户提现走这里（插件逐笔弹确认）；下单 / 撤单 / 改杠杆走下面的 ox4PerpWrite
+          // Since 2026-09-30 only perp-account withdrawals go through here (the extension pops a confirmation per transaction); placing / cancelling / changing leverage goes through ox4PerpWrite below
           const json = typedDataJson(td)
           const { signature } = await serial(() => p.signAgentTypedData({ typedData: json }))
           return signature as Hex
@@ -246,8 +246,8 @@ export function extensionEvmAccount(p: Ox4Provider, address: string) {
       }
     },
     /**
-     * 合约只读查询（查账户 / 挂单 / 成交 / 杠杆分档）：交给插件代办，拿回 HTTP 状态码和交易所返回的 JSON（lib/aster.ts 的 call 认这个）。
-     * 不弹窗、不排队。老版本插件没有这个方法（回 4200）：提示更新插件，不退回「网页拿签名自己请求」的老路
+     * Perp read-only queries (account / open orders / fills / leverage tiers): delegated to the extension, returning the HTTP status and the exchange's JSON (lib/aster.ts's call recognizes this).
+     * No popup, no queueing. Old extension versions lack this method (returns 4200): prompt to update the extension instead of falling back to the old "web fetches a signature and requests itself" path
      */
     ox4PerpRead: async (endpoint: PerpReadEndpoint, params: Record<string, string>) => {
       try { return await call(() => p.perpRead({ endpoint, params })) } catch (e) {
@@ -256,15 +256,15 @@ export function extensionEvmAccount(p: Ox4Provider, address: string) {
       }
     },
     /**
-     * 合约写操作（lib/aster.ts 认这个）：一次用户操作的所有动作（改杠杆、主单、止盈止损）一起交给插件，最多一个确认窗口。
-     * 可能弹窗，所以排进确认队列。老版本插件没有这个方法（「不支持的方法」4200）：提示更新插件
+     * Perp write operations (recognized by lib/aster.ts): all actions of one user operation (change leverage, main order, TP/SL) go to the extension together — at most one confirmation window.
+     * May pop a window, so it enters the confirmation queue. Old extension versions lack this method ("unsupported method" 4200): prompt to update the extension
      */
     ox4PerpWrite: async (actions: PerpWriteAction[]) => {
-      // 插件注入的 window.ox4 只带它认识的方法：老版本插件上根本没有 perpWrite
+      // The injected window.ox4 only carries methods it knows: old extension versions don't have perpWrite at all
       if (typeof p.perpWrite !== 'function') throw new Ox4Error(4200, t('请更新 0x4 浏览器插件后再试'))
       return serial(() => p.perpWrite({ actions }))
     },
-    /** 网页快捷交易会话：查状态、开启（插件弹窗）、关闭。老版本插件没有：状态当作没开 */
+    /** Web quick-trade session: query status, enable (extension popup), disable. Old extension versions lack it: treat status as disabled */
     ox4PerpSession: {
       status: async (): Promise<Ox4PerpSession> => { try { return await call(() => p.perpSessionStatus()) } catch { return { active: false } } },
       start: async (): Promise<Ox4PerpSession> => {
@@ -276,9 +276,9 @@ export function extensionEvmAccount(p: Ox4Provider, address: string) {
   })
 }
 
-// ---------- 私信 ----------
+// ---------- DMs ----------
 
-/** 私信钥匙不出插件：加解密都交给它 */
+/** The DM key never leaves the extension: encryption and decryption are both delegated to it */
 export function extensionDm(p: Ox4Provider): DmCrypto {
   return {
     async publicKey() { return (await call(() => p.dmPublicKey())).publicKey },
@@ -287,7 +287,7 @@ export function extensionDm(p: Ox4Provider): DmCrypto {
   }
 }
 
-// ---------- 比特币 ----------
+// ---------- Bitcoin ----------
 
 export function extensionBtcSigner(p: Ox4Provider, address: string): BtcSigner {
   return {

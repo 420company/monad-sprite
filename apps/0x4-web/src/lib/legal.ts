@@ -1,8 +1,8 @@
-// 法律文件（2026-10-01 goat：网页底部和 App 里都要能找到）。正文是 420.meme 上的静态页（deploy/0x4-site/terms|privacy|risk），
-// 中英文在同一页、按语言切换；App 里用系统浏览器打开（openExternal），不在钱包页面里内嵌网页。
+// Legal docs (2026-10-01 goat: findable in the web footer and in the app). Bodies are static pages on 420.meme (deploy/0x4-site/terms|privacy|risk),
+// Chinese and English on the same page, switched by language; the app opens them in the system browser (openExternal), never embedded in the wallet page.
 import { currentTheme } from '@/lib/theme'
 
-/** 静态页的地址带上当前主题（legal/theme.js 读 ?theme=）：从 app.420.meme 或手机 App 跳过去不同源，读不到网页版存的主题，靠这个参数跟随 */
+/** Static page URLs carry the current theme (legal/theme.js reads ?theme=): jumping from app.420.meme or the mobile app is cross-origin, so the web's stored theme is unreadable — this param follows along */
 export const legalUrl = (url: string): string => `${url}?theme=${currentTheme()}`
 
 export const LEGAL_LINKS = [
@@ -11,5 +11,5 @@ export const LEGAL_LINKS = [
   { key: 'risk', label: '风险披露', url: 'https://420.meme/risk/' },
 ] as const
 
-/** 网页版用的一排链接：三份法律文件 + 下载中心（2026-10-04 走查：手机浏览器里底部状态栏整条不显示、「空间」外观也藏了，访客找不到这几页；「关于」里也没有下载中心） */
+/** The web's row of links: three legal docs + download center (2026-10-04 walkthrough: the whole bottom status bar hides in phone browsers and the "Space" look hides it too — guests couldn't find these pages; "About" had no download center either) */
 export const SITE_LINKS = [...LEGAL_LINKS, { key: 'download', label: '下载中心', url: 'https://420.meme/download/' }] as const

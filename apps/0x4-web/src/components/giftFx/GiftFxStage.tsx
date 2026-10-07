@@ -1,5 +1,5 @@
-// React 外壳：铺满父元素（父元素要 position: relative），用 ref.play(事件) 播放。
-// 直播间 / 会议 / App 的礼物消息到了（服务器已经扣好能量）就调一次 play，不要自己先播。
+// React wrapper: fills the parent (the parent needs position: relative); play with ref.play(event).
+// Call play once when a gift message arrives in the live room / meeting / app (the server has already deducted the energy); don't play on your own first.
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { GiftFxEngine, type GiftFxEvent, type GiftFxOptions } from './engine'
 

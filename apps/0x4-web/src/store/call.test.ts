@@ -1,4 +1,4 @@
-// 通话状态机：呼出 / 来电 / 接听 / 拒接 / 取消 / 占线 / 未接 / 对方挂断 / 多设备，以及 ended 自动回 idle。
+// Call state machine: outgoing / incoming / answered / rejected / cancelled / busy / missed / peer hung up / multi-device, plus ended auto-returning to idle.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const calls: { path: string; body?: unknown }[] = []
@@ -27,7 +27,7 @@ describe('呼出', () => {
     await p
     expect(calls[0]).toEqual({ path: '/api/calls', body: { to: 'Bob111', video: true } })
     expect(st()).toMatchObject({ phase: 'outgoing', callId: 'c1', token: 'tok', video: true, outgoingCall: true, peerOnline: true })
-    // 别的通话的事件不理
+    // Ignore events from other calls
     st().onEvent({ type: 'call_accepted', callId: 'other' })
     expect(st().phase).toBe('outgoing')
     st().onEvent({ type: 'call_accepted', callId: 'c1' })
@@ -112,7 +112,7 @@ describe('来电', () => {
     await p
     expect(calls.at(-1)?.path).toBe('/api/calls/in1/accept')
     expect(st()).toMatchObject({ token: 'tk', url: 'wss://lk' })
-    // 自己接听后服务端广播的 call_accepted 不影响本机
+    // The server-broadcast call_accepted after answering locally doesn't affect this device
     st().onEvent({ type: 'call_accepted', callId: 'in1' })
     expect(st().phase).toBe('connecting')
     st().connected()

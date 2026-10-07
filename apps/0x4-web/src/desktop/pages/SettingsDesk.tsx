@@ -1,8 +1,8 @@
-// 网页版「设置」（/settings，钱包菜单进来。2026-09-29 goat：「设置也是（手机页面）」）。
-// 版式（docs/WEB_DESIGN.md）：最大宽 960，左边分组导航，右边内容；分组记在地址里（?tab=），铃铛那边的「通知设置」能直接跳到通知组。
-// 网页版的钱包在 0x4 浏览器插件里：不出现创建 / 导入 / 导出钱包、生物识别、震动、自动锁定这些手机专属项；
-// 钱包组里是「断开钱包」（desktop/walletGate 的 disconnectWallet，0x4 插件和外部钱包都走这里）。
-// 各项的读写都复用手机设置页用的 store / 接口 / 弹层（资料、X 绑定、消息记录、滑点、燃料费、全自动交易、账户种类、已登录的电脑），弹层在网页版宽屏下是居中模态框。
+// Web "Settings" (/settings, entered from the wallet menu. 2026-09-29 goat: "settings is a (mobile) page too").
+// Layout (docs/WEB_DESIGN.md): max 960 wide, group nav on the left, content on the right; the group is recorded in the URL (?tab=) so the bell's "notification settings" jumps straight to the notification group.
+// The web wallet lives in the 0x4 browser extension: mobile-only items never appear — create / import / export wallet, biometrics, haptics, auto-lock;
+// the wallet group has "Disconnect wallet" (desktop/walletGate's disconnectWallet — both the 0x4 extension and external wallets go through it).
+// Every setting reuses the mobile settings page's stores / APIs / sheets (profile, X binding, message history, slippage, fuel fees, auto-trading, account type, logged-in computers); sheets are centered modals on wide web screens.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AtSign, Bell, Bot, ChevronRight, Copy, Crown, FileText, Fuel, Headset, ImagePlus, Info, Languages, Laptop, Palette, LogOut, Mail, MessageSquareLock, Pencil, ShieldCheck, SlidersHorizontal, Trash2, UserRound, Wallet } from 'lucide-react'
@@ -36,7 +36,7 @@ import { SocialLogin, copyAddr, midShort } from '../ui'
 import { replaceRoute, routeQuery } from '@/lib/route'
 
 type Group = 'general' | 'trade' | 'notify' | 'look' | 'lang' | 'wallet' | 'help' | 'about'
-/** 分组：label 是函数，渲染时才翻译 */
+/** Groups: label is a function, translated at render time */
 const GROUPS: { k: Group; label: () => string; icon: typeof UserRound }[] = [
   { k: 'general', label: () => t('通用'), icon: UserRound },
   { k: 'trade', label: () => t('交易||settings'), icon: Bot },
@@ -44,7 +44,7 @@ const GROUPS: { k: Group; label: () => string; icon: typeof UserRound }[] = [
   { k: 'look', label: () => t('外观'), icon: Palette },
   { k: 'lang', label: () => t('语言'), icon: Languages },
   { k: 'wallet', label: () => t('钱包与安全'), icon: ShieldCheck },
-  // 帮助与客服单独一项（2026-10-02 goat：不该藏在「关于」里）
+  // Help & support is its own item (2026-10-02 goat: it shouldn't be buried under "About")
   { k: 'help', label: () => t('帮助与客服'), icon: Headset },
   { k: 'about', label: () => t('关于'), icon: Info },
 ]
@@ -53,9 +53,9 @@ const isGroup = (v: string | null): v is Group => !!v && GROUPS.some((g) => g.k 
 export default function SettingsDesk() {
   const [params, setParams] = useSearchParams()
   const raw = params.get('tab')
-  // ?open=pc：「新电脑登录了你的账号」通知点进来（lib/notifRef.ts），去「钱包与安全」并打开已登录的电脑（2026-10-04 走查：以前停在「通用」）
+  // ?open=pc: entered from the "a new computer logged into your account" notification (lib/notifRef.ts) — goes to "Wallet & security" and opens logged-in computers (2026-10-04 walkthrough: it used to land on "General")
   const openPc = params.get('open') === 'pc'
-  // 老链接 ?tab=notify 之外还可能带 X 授权回来的 ?x=…，那时停在「通用」
+  // Legacy links may carry ?tab=notify plus the X-auth return ?x=… — those land on "General"
   const group: Group = openPc ? 'wallet' : isGroup(raw) ? raw : 'general'
   const pick = (k: Group) => setParams({ tab: k }, { replace: true })
   const cur = GROUPS.find((g) => g.k === group)!
@@ -69,7 +69,7 @@ export default function SettingsDesk() {
           {GROUPS.map(({ k, label, icon: Icon }) => <button key={k} type="button" aria-current={group === k ? 'true' : undefined} onClick={() => pick(k)}><Icon size={16} aria-hidden="true" />{label()}</button>)}
         </nav>
         <section className="wc-set-main" aria-label={cur.label()}>
-          {/* 社区没登录上：资料、X、消息记录、通知偏好都要登录，原因只在这里说一次 */}
+          {/* Community not logged in: profile, X, message history and notification prefs all need login — the reason is stated here only once */}
           <SocialLogin bar />
           {group === 'general' && <GeneralGroup />}
           {group === 'trade' && <TradeGroup />}
@@ -85,7 +85,7 @@ export default function SettingsDesk() {
   )
 }
 
-/** 一行设置：左标题 + 说明，右边值 / 按钮 */
+/** One setting row: title + description on the left, value / button on the right */
 function Row({ title, desc, children }: { title: ReactNode; desc?: ReactNode; children?: ReactNode }) {
   return <div className="wc-set-row"><div className="wc-set-text"><b>{title}</b>{desc && <p>{desc}</p>}</div>{children}</div>
 }
@@ -93,7 +93,7 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <section className="wc-panel"><div className="wc-ph"><h2 className="wc-ph-t">{title}</h2></div>{children}</section>
 }
 
-/** 通用：个人资料、X 账号、消息记录 */
+/** General: profile, X account, message history */
 function GeneralGroup() {
   const nav = useNavigate()
   const { me, status, chatMode, setChatMode } = useSocial()
@@ -110,7 +110,7 @@ function GeneralGroup() {
     api<{ xConfigured: boolean }>('/api/me').then((r) => { if (alive) setXConfigured(r.xConfigured) }).catch(() => {})
     return () => { alive = false }
   }, [ready])
-  // X 授权在新窗口完成，结果从那边发回来（和手机设置页同一套 lib/xauth）；整页跳转退回来时结果在地址里
+  // X authorization completes in a new window and posts the result back (same lib/xauth as the mobile settings page); on full-page navigation back, the result is in the URL
   useEffect(() => {
     const show = (r: XAuthResult) => {
       setXBusy(false)
@@ -136,9 +136,9 @@ function GeneralGroup() {
   }
   const unlinkX = async () => {
     if (!confirm(t('解绑 X 账号？'))) return
-    try { await api('/api/me/x', { method: 'DELETE' }); await useSocial.getState().refreshMe(); if (me?.address) useXHandles.getState().set(me.address, null) /* X 标记按 0x4 账号记，不按插件地址 */; toast.success(t('已解绑')) } catch (e) { toast.error(errorText(e, t('失败'))) }
+    try { await api('/api/me/x', { method: 'DELETE' }); await useSocial.getState().refreshMe(); if (me?.address) useXHandles.getState().set(me.address, null) /* The X mark is recorded per 0x4 account, not per extension address */; toast.success(t('已解绑')) } catch (e) { toast.error(errorText(e, t('失败'))) }
   }
-  // 消息记录模式：切到只存本机 / 每天清空前二次确认，记录删了找不回来（和手机设置页同一规则）
+  // Message history mode: double-confirm before switching to device-only storage / daily clearing; deleted records can't be recovered (same rule as the mobile settings page)
   const pickMode = async (mode: ChatMode) => {
     if (mode === chatMode || modeBusy) return
     const warn = mode === 'device'
@@ -148,7 +148,7 @@ function GeneralGroup() {
     setModeBusy(true)
     try { await setChatMode(mode); toast.success(t('已保存')) } catch (e) { toast.error(errorText(e, t('失败'))) } finally { setModeBusy(false) }
   }
-  // 「只存在这台手机」在电脑上说成「这台设备」
+  // "Stored only on this phone" becomes "this device" on desktop
   const modeText = (o: (typeof CHAT_MODE_OPTIONS)[number]) => o.value === 'device'
     ? { label: t('只存在这台设备'), note: t('消息送达后从云端删除，记录加密保存在本机。换设备或清除浏览器数据后无法恢复。') }
     : o.value === 'cloud' ? { label: t(o.label), note: t('私信只存密文，换设备连接同一钱包可恢复。') }
@@ -181,7 +181,7 @@ function GeneralGroup() {
         </div>
         <div className="wc-pf"><span className="flex items-center gap-2"><MessageSquareLock size={13} aria-hidden="true" />{t('群聊记录属于整个群，这里只影响你自己看到的内容。')}</span></div>
       </Panel>
-      {/* 黑名单、注销账号（2026-10-02 上架要求，手机和电脑都有） */}
+      {/* Blocklist and account deletion (2026-10-02 listing requirement, on both mobile and desktop) */}
       <Panel title={t('隐私与账号')}>
         <Row title={t('黑名单')} desc={t('被你拉黑的人：互相看不到对方的动态和评论，对方不能给你发私信。')}>
           <button type="button" className="wc-btn is-sm" disabled={!ready} onClick={() => setSafety('blocks')}>{t('查看')}<ChevronRight size={13} /></button>
@@ -197,7 +197,7 @@ function GeneralGroup() {
   )
 }
 
-/** 交易：全自动交易、滑点上限、燃料费、账户种类 */
+/** Trading: auto-trading, slippage cap, fuel fees, account type */
 function TradeGroup() {
   const { slippageBps, setSlippageBps, autoRefuel } = useSettings()
   const ready = useSocial((s) => s.status === 'ready')
@@ -216,7 +216,7 @@ function TradeGroup() {
         <Row title={<span className="flex items-center gap-2"><Bot size={15} aria-hidden="true" />{t('全自动交易（BNB Chain）')}</span>} desc={t('开启后，小精灵会自动执行交易，不用每笔确认。')}>
           <button type="button" className="wc-btn is-sm" onClick={() => setSheet('auto')}>{t('管理||action')}<ChevronRight size={13} /></button>
         </Row>
-        {/* Solana 版（2026-10-04）：开启、关闭、把保险箱里的币提回钱包 */}
+        {/* Solana version (2026-10-04): enable, disable, withdraw vault coins back to the wallet */}
         <Row title={<span className="flex items-center gap-2"><Bot size={15} aria-hidden="true" />{t('全自动交易（Solana）')}</span>} desc={t('开启后，小精灵会自动执行交易，不用每笔确认。')}>
           <button type="button" className="wc-btn is-sm" onClick={() => setSheet('solAuto')}>{t('管理||action')}<ChevronRight size={13} /></button>
         </Row>
@@ -242,8 +242,8 @@ function TradeGroup() {
   )
 }
 
-/** 外观（2026-10-02 goat 午夜黑 / 香芋白；10-03 加「空间」）：每种一张卡，卡上是这套配色的缩略样子，点一下立刻换。
- *  选了「空间」下面多一排背景：7 张内置 + 用自己的图片（只存在这台电脑的浏览器里，space.ts） */
+/** Appearance (2026-10-02 goat: midnight black / taro white; "space" added 10-03): one card per theme showing a thumbnail of that colorway; tap to switch instantly.
+ *  Picking "space" adds a row of backgrounds below: 7 built-in + your own images (stored only in this computer's browser, space.ts) */
 function LookGroup() {
   const theme = useTheme((s) => s.theme)
   const setting = useTheme((s) => s.setting)
@@ -266,7 +266,7 @@ function LookGroup() {
   )
 }
 
-/** 「空间」的背景：我的图片（本机）+ 内置 8 张 */
+/** "Space" backgrounds: my images (this machine) + 8 built-in */
 function SpaceWalls() {
   const { wall, customUrl, setWall, setCustom, clearCustom } = useSpace()
   const file = useRef<HTMLInputElement>(null)
@@ -282,7 +282,7 @@ function SpaceWalls() {
   return (
     <Panel title={t('空间背景')}>
       <div role="radiogroup" aria-label={t('空间背景')}>
-        {/* 我的图片放最上面 */}
+        {/* My images go on top */}
         <p className="wc-bgs-h">{t('我的图片')}</p>
         <div className="wc-bgs">
           {customUrl
@@ -315,7 +315,7 @@ function SpaceWalls() {
   )
 }
 
-/** 语言：选项用各自语言写（简体中文 / 繁體中文 / English），不翻译，谁都认得出自己的语言；顶栏还有 CHN / ENG 随时切 */
+/** Language: options written in their own language — Chinese (Simplified), Chinese (Traditional), English — never translated, so everyone recognizes their own; language switch in the top bar works anytime */
 function LangGroup() {
   const { setting, setLang } = useLang()
   return (
@@ -331,14 +331,14 @@ function LangGroup() {
   )
 }
 
-/** 钱包与安全：连着的地址、已登录的电脑、代币授权、断开 0x4 Wallet（网页版不创建 / 导入 / 导出） */
+/** Wallet & security: connected addresses, logged-in computers, token approvals, disconnect 0x4 Wallet (web doesn't create / import / export) */
 function WalletGroup() {
   const [params, setParams] = useSearchParams()
   const nav = useNavigate()
   const { evmAddress, address, btcAddress } = useWallet()
   const ready = useSocial((s) => s.status === 'ready')
   const [sessions, setSessions] = useState(() => params.get('open') === 'pc')
-  // 打开过就把 open=pc 去掉（关掉弹层再刷新不会又弹出来），停在钱包与安全
+  // Once opened, drop open=pc (closing the sheet then refreshing won't pop it again); stay on Wallet & security
   useEffect(() => { if (params.get('open') === 'pc') setParams({ tab: 'wallet' }, { replace: true }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const addrs = [
     evmAddress && { k: 'EVM', note: t('适用于 BNB Chain、Ethereum、Base、Arbitrum 等 EVM 网络'), v: evmAddress },
@@ -371,7 +371,7 @@ function WalletGroup() {
   )
 }
 
-/** 帮助与客服（2026-10-02 单独一项）：工单（新建、看回复）和客服邮箱 */
+/** Help & support (its own item since 2026-10-02): tickets (new, view replies) and the support email */
 function HelpGroup() {
   const nav = useNavigate()
   const ready = useSocial((s) => s.status === 'ready')
@@ -387,12 +387,12 @@ function HelpGroup() {
   )
 }
 
-/** 关于：版本、法律文件、开源许可（K 线图库的许可要求注明出处） */
+/** About: version, legal docs, open-source licenses (the chart library's license requires attribution) */
 function AboutGroup() {
   return (
     <>
       <Panel title={t('法律文件')}>
-        {/* 「关于」里也放下载中心（2026-10-04 走查：以前只有三份法律文件） */}
+        {/* The download center also goes under "About" (2026-10-04 walkthrough: previously only the three legal docs) */}
         {SITE_LINKS.map((l) => (
           <Row key={l.key} title={t(l.label)}>
             <a className="wc-btn is-sm" href={legalUrl(l.url)} target="_blank" rel="noreferrer">{t('打开')}<ChevronRight size={13} /></a>
@@ -400,7 +400,7 @@ function AboutGroup() {
         ))}
       </Panel>
       <Panel title={t('开源许可')}>
-        {/* TradingView Lightweight Charts 的许可（Apache 2.0 + NOTICE）要求在 App 里注明出处并链接 tradingview.com */}
+        {/* TradingView Lightweight Charts' license (Apache 2.0 + NOTICE) requires in-app attribution with a link to tradingview.com */}
         <Row title={<span className="flex items-center gap-2"><FileText size={15} aria-hidden="true" />{t('K 线图使用 TradingView Lightweight Charts™。')}</span>} desc={<>Copyright (c) 2025 TradingView, Inc. · Apache License 2.0 · <a className="wc-link" href="https://www.tradingview.com/" target="_blank" rel="noreferrer">https://www.tradingview.com/</a></>} />
       </Panel>
     </>

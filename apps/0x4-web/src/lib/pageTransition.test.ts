@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 页面切换动画（2026-09-29 goat：「切换很生硬」）：方向判断、右滑返回不重复播、减弱动态效果 / 不支持时直接切换
+// Page transition animations (2026-09-29 goat: "switching feels stiff"): direction detection, no replay on swipe-back, instant switch under reduce-motion / unsupported
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { markNextNav, navDirection, runWithTransition, takeHint, withPageTransitions, type NavStep, webNavDirection } from './pageTransition'
 
@@ -28,7 +28,7 @@ describe('方向判断', () => {
     const pop = { from: '/token/bsc/0xabc', to: '/discover', action: 'POP', delta: -1 }
     expect(navDirection(step({ ...pop, native: false, coarse: true }))).toBe('none')
     expect(navDirection(step({ ...pop, native: false, coarse: true, hint: 'back' }))).toBe('back')
-    expect(navDirection(step({ ...pop, native: false, coarse: false }))).toBe('back')   // 电脑浏览器的后退按钮照播
+    expect(navDirection(step({ ...pop, native: false, coarse: false }))).toBe('back')   // The desktop browser back button plays as usual
   })
   it('提示只管紧接着的那一次导航，1 秒后作废', () => {
     markNextNav('none', 1000)
@@ -86,13 +86,13 @@ describe('执行过渡', () => {
     const fake = { location: { pathname: '/discover' }, listen: (fn: (u: never) => void) => { listeners.push(fn as never); return () => {} } }
     const h = withPageTransitions(fake as unknown as Parameters<typeof withPageTransitions>[0], { native: true, coarse: () => true })
     const seen: string[] = []
-    // 记下每次更新是不是在过渡里执行的、当时标的方向
+    // Record whether each update ran inside a transition, and the direction marked at the time
     h.listen(((u: { location: { pathname: string } }) => { seen.push(`${u.location.pathname}:${inTransition ? document.documentElement.dataset.nav : '-'}`) }) as never)
     const go = (pathname: string, action = 'PUSH', delta: number | null = null) => listeners[0]({ action, location: { pathname }, delta })
-    go('/token/bsc/0xabc')                  // 进入下一级
-    markNextNav('none'); go('/discover', 'POP', -1)   // 右滑返回
-    markNextNav('back'); go('/token/bsc/0xabc', 'PUSH'); // 提示被上一次用掉了吗？这里重新给了 back，按 back 播
-    go('/settings')                          // 点标签栏
+    go('/token/bsc/0xabc')                  // Enter the next level
+    markNextNav('none'); go('/discover', 'POP', -1)   // Swipe right to go back
+    markNextNav('back'); go('/token/bsc/0xabc', 'PUSH'); // Was the hint consumed by the last run? A new back hint was given here — play as back
+    go('/settings')                          // Tap the tab bar
     expect(seen).toEqual(['/token/bsc/0xabc:forward', '/discover:-', '/token/bsc/0xabc:back', '/settings:tab'])
     expect(startCalls).toBe(3)
   })
@@ -109,7 +109,7 @@ describe('返回入口告诉动画方向', () => {
   })
 })
 
-// 电脑网页版（2026-09-30 goat：整页滑走不舒服）：同栏目不动，换栏目只淡入淡出
+// Desktop web (2026-09-30 goat: whole-page sliding feels wrong): same tab doesn't move, tab switches only fade in/out
 describe('webNavDirection', () => {
   it('现货里换币种、现货列表进单个币：整页不动', () => {
     expect(webNavDirection('/token/solana/AAA', '/token/bsc/BBB', 'forward')).toBe('none')

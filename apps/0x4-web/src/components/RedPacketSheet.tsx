@@ -1,4 +1,4 @@
-// 发红包：选资产 → 总额 / 个数 / 随机或均分 → 转入托管小钱包 → 确认到账后群里可领
+// Send a red packet: pick asset → total / count / random or even split → fund the escrow wallet → claimable in the group once receipt is confirmed
 import { useState } from 'react'
 import { BALANCE_FEATURES } from '@/lib/features'
 import { ChevronDown } from 'lucide-react'
@@ -26,7 +26,7 @@ export default function RedPacketSheet({ open, onClose, groupId }: { open: boole
   const { wallet, evmAccount } = useWallet()
   const rpcUrl = useSettings((s) => s.rpcUrl)
   const holdings = usePortfolio((s) => s.holdings)
-  // 链上红包默认 BSC（2026-09-25 goat）：用 BSC 上价值最高的持仓，没有就默认 BNB
+  // On-chain red packets default to BSC (2026-09-25 goat): use the highest-value BSC holding, defaulting to BNB when there's none
   const top = holdings.filter((h) => h.chainId === 56).sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))[0]
   const bnb = chainById(56)?.native
   const [asset, setAsset] = useState<PickedToken | null>(top ? { chainId: top.chainId, address: top.mint, symbol: top.symbol, name: top.name || top.symbol, decimals: top.decimals, logo: top.logo, amount: top.amount, priceUsd: top.priceUsd } : bnb ? { ...bnb, amount: 0 } : null)
@@ -36,7 +36,7 @@ export default function RedPacketSheet({ open, onClose, groupId }: { open: boole
   const [message, setMessage] = useState(() => t('恭喜发财，大吉大利'))
   const [picking, setPicking] = useState(false)
   const [phase, setPhase] = useState<'idle' | 'creating' | 'transfer' | 'confirm'>('idle')
-  // 默认余额红包（从平台余额扣，秒到）；手机 App 里没有余额类功能，只能发链上红包
+  // Default to balance red packets (deducted from platform balance, instant); the mobile app has no balance-type features, so only on-chain red packets there
   const [source, setSource] = useState<'credit' | 'chain'>(BALANCE_FEATURES ? 'credit' : 'chain')
   const { wallet: creditWallet, reload: reloadCredit } = useGiftWallet()
   const [topup, setTopup] = useState(false)
@@ -61,7 +61,7 @@ export default function RedPacketSheet({ open, onClose, groupId }: { open: boole
       })
       setPhase('transfer')
       const txs: string[] = []
-      // 按清单逐笔转入托管小钱包（代币 + 手续费预留）
+      // Fund the escrow wallet item by item from the list (tokens + fee reserve)
       for (const d of res.deposits) {
         txs.push(await transfer({ chainId: asset.chainId, token: d.token === 'native' ? nativeAddr : d.token, decimals: d.decimals, amount: d.amount, to: res.packet.depositAddress }, { solana: wallet, evm: evmAccount, solanaRpc: rpcUrl }))
       }

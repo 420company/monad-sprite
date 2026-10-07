@@ -1,4 +1,4 @@
-// 现货详情：报价、真实历史数据空态、持仓与持币社区。
+// Spot detail: quote, real historical-data empty states, positions and holder communities.
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Copy, ExternalLink, RefreshCw, Star } from 'lucide-react'
@@ -30,7 +30,7 @@ export default function Token() {
   const chain = params.chain || 'solana'
   const address = params.address || params.mint || ''
   const nav = useNavigate()
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /discover
+  // Back: returns to the previous page when there is one (its state / scroll restored); when opened directly from a push / deep link, goes to /discover
   const goBack = useBack('/discover')
   const { cache, put } = useMarket()
   const { items: favorites, add: addFav, remove: removeFav } = useFavorites()
@@ -38,13 +38,13 @@ export default function Token() {
   const [state, setState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
   const [retry, setRetry] = useState(0)
   const [postKey, setPostKey] = useState(0)
-  // 概览 / 动态标签按币记在会话里，K 线周期全局记住：点进帖子、个人主页再返回还是原样（lib/pageState）
+  // Overview / feed tabs are remembered per token in the session, candle periods globally: tapping into a post or profile and returning keeps everything as it was (lib/pageState)
   const [view, setView] = usePageState<'overview' | 'posts'>(`token.view:${chain}:${address}`, 'overview', oneOf('overview', 'posts'))
   const token = cache[marketKey(chain, address)]
   const holding = usePortfolio(s => s.holdings.find(h => token && h.chainId === token.chainId && sameAddr(h.mint, address) && h.amount > 0))
   const isFav = favorites.some(f => f.chain === chain && sameAddr(f.address, address))
 
-  // 历史 K 线：GeckoTerminal 按「链 + 交易对」取，切周期或换币时旧请求作废
+  // Historical candles: GeckoTerminal fetches by "chain + pair"; switching periods or tokens voids old requests
   const [interval, setInterval_] = usePageState<DexInterval>('token.interval', '1h', oneOf('15m', '1h', '4h', '1d'))
   const [chart, setChart] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; data: DexCandles | null }>({ status: 'idle', data: null })
   const [chartRetry, setChartRetry] = useState(0)
@@ -52,15 +52,15 @@ export default function Token() {
   useEffect(() => {
     if (!pairAddress) { setChart({ status: 'idle', data: null }); return }
     const ctrl = new AbortController()
-    // 手上有这个币这个周期的 K 线（刚才按下时预取的、或上次看过存在本机的）就先画出来，同时去拿最新的
+    // If we already have this token's candles for this period (prefetched on the last tap, or cached locally from last time), draw them first while fetching the latest
     const known = peekDexCandles({ chain, address, pairAddress, interval })
     setChart((c) => known ? { status: 'ready', data: known } : { status: 'loading', data: c.data?.pairAddress === pairAddress && c.data.interval === interval ? c.data : null })
     let full = false
     loadDexCandles({ chain, address, pairAddress, interval }, ctrl.signal)
       .then((data) => { full = true; if (!ctrl.signal.aborted) setChart({ status: 'ready', data }) })
-      // GeckoTerminal 失败时，手上已有这个交易对这个周期的快速 K 线就留着显示，不报错
+      // When GeckoTerminal fails, keep showing the quick candles we already have for this pair and period — no error
       .catch(() => { if (!ctrl.signal.aborted) setChart((c) => ({ status: c.data?.pairAddress === pairAddress && c.data.interval === interval ? 'ready' : 'error', data: c.data })) })
-    // 手上什么都没有时，同时要一份快速 K 线（服务器 DexPaprika 通道全部周期，没开通就免密钥直连 1 小时），先画出来；完整历史到了整张换掉，晚到的快速结果不再覆盖
+    // With nothing in hand, also request quick candles (the server's DexPaprika channel covers all periods; without it, keyless direct fetch covers 1 hour) and draw them first; when full history arrives the whole chart is replaced, and late-arriving quick results no longer overwrite
     if (!known) loadFastCandles({ chain, address, pairAddress, interval }).then((q) => { if (q && !full && !ctrl.signal.aborted) setChart({ status: 'ready', data: q }) })
     return () => ctrl.abort()
   }, [chain, address, pairAddress, interval, chartRetry])
@@ -104,7 +104,7 @@ export default function Token() {
     else { addFav({ chain, chainId: token.chainId, address: token.address, symbol: token.symbol, name: token.name, logo: token.logo, decimals: holding?.decimals ?? token.decimals }); toast.success(t('已收藏')) }
   }
 
-  // 买卖入口：手机是贴底的一条胶囊；网页版放在右栏的交易面板里（左 K 线、右下单）
+  // Trade entry: a bottom-docked capsule on mobile; on web it sits in the right column's trade panel (left candles, right order entry)
   const tradeButtons = isSol ? <Button className="w-full" onClick={() => nav('/swap')}>{t('兑换 SOL')}</Button> : <><Button variant="up" className="min-w-0 flex-1" onClick={() => { if (!needWallet()) setTrade('buy') }}>{t('买入')}</Button><Button variant="down" className="min-w-0 flex-1" disabled={!holding} onClick={() => { if (!needWallet()) setTrade('sell') }}>{t('卖出')}</Button></>
   return (
     <div className={WEB_SURFACE ? 'tok-desk' : 'safe-top pb-24'}>
@@ -134,12 +134,12 @@ export default function Token() {
               {chart.status === 'loading' && !chart.data ? t('加载中') : chart.status === 'error' ? <button className="text-warning" onClick={() => setChartRetry((v) => v + 1)}>{t('K 线加载失败，重试')}</button> : chart.data?.supported === false ? t('该交易对暂无 K 线') : chart.data ? t('更新于 {time}', { time: new Date(chart.data.asOf).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }) }) : ''}
             </span>
           </div>
-          {/* 只画真实 OHLCV；没有数据时 Sparkline 自己显示「暂无历史 K 线」 */}
+          {/* Only real OHLCV is drawn; without data the Sparkline itself shows "no historical candles" */}
           <Sparkline height={WEB_SURFACE ? 380 : 200} candles={chart.data?.candles ?? []} label={t('{symbol} {interval} K 线', { symbol: token.symbol, interval })} />
           <dl className="page-gutter grid grid-cols-4 gap-2 py-3 text-center">{([['5m', token.change5m], ['1h', token.change1h], ['6h', token.change6h], ['24h', token.change24h]] as const).map(([key, value]) => <div key={key} className="min-w-0"><dt className="text-xs text-muted">{key}</dt><dd className="mt-1 break-all"><PriceChange value={value} className="text-[13px] font-medium" /></dd></div>)}</dl>
         </section>
         {holding && <section className="page-gutter mt-5" aria-label={t('我的持仓')}><div className="border-y border-line py-4"><h2 className="text-sm text-muted">{t('我的持仓')}</h2><div className="number mt-2 flex flex-wrap items-baseline justify-between gap-2"><span className="break-all text-base font-semibold">{fmtAmount(holding.amount)} {holding.symbol}</span><span className="text-sm">{holding.priceUsd > 0 ? fmtMoney(holding.valueUsd) : '--'}</span></div></div></section>}
-        {/* 合约地址卡片（2026-09-30 goat：要让用户很明显地看到合约地址；和网页版代币信息同一设计）：完整地址 + 明显的复制按钮 */}
+        {/* Contract address card (2026-09-30 goat: the contract address must be unmissable; same design as web token info): full address + a prominent copy button */}
         <section className="page-gutter mt-5" aria-label={t('合约地址')}>
           <div className="flex items-center gap-3 rounded-2xl border border-accent/35 bg-accent/10 px-4 py-3">
             <div className="min-w-0 flex-1">
@@ -155,11 +155,11 @@ export default function Token() {
           {explorer && <a href={explorer} target="_blank" rel="noreferrer" className="text-action mt-2">{t('区块浏览器')}<ExternalLink size={14} /></a>}
         </section>
       </> : <section className="page-gutter py-4" aria-label={t('代币动态')}><PostComposer token={{ chain: token.chain, address: token.address, symbol: token.symbol }} onPosted={() => setPostKey(key => key + 1)} /><PostList filter={{ token: `${token.chain}:${token.address}` }} refreshKey={postKey} /></section>}
-      {/* 社区：官方社区 + 持币最多的社区（不再自动建群 / 自动加入） */}
+      {/* Community: the official community + the biggest holder community (no more auto-creating / auto-joining groups) */}
       <TokenCommunities chain={token.chain} address={token.address} symbol={token.symbol} />
       {!chainInfo && <p className="page-gutter mt-4 text-sm text-muted">{t('暂不支持在 {chain} 上交易', { chain: token.chain })}</p>}
      </div>
-      {/* 贴底买卖条：手机 App 一直有；网页版只在窄屏（手机浏览器）出现，宽屏用右栏面板（tok-bar 在 desktop.css 里按宽度隐藏） */}
+      {/* Bottom-docked trade bar: always present in the mobile app; on web it only appears on narrow screens (phone browsers), wide screens use the right-column panel (tok-bar hides by width in desktop.css) */}
       {chainInfo && <div className={`${WEB_SURFACE ? 'tok-bar ' : ''}glass fixed inset-x-3 bottom-[calc(max(14px,env(safe-area-inset-bottom))+4.75rem)] z-30 mx-auto flex max-w-[456px] gap-3 rounded-[26px] px-3 py-3`} aria-label={t('代币交易')}>
         {tradeButtons}
       </div>}

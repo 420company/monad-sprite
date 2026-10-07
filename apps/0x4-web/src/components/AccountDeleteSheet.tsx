@@ -1,6 +1,6 @@
-// 注销账号（2026-10-02 goat，上架要求：能创建账号就必须能在 App 里删除账号）。
-// 先把会发生什么列清楚（服务器给的预览：小精灵、我是群主的群、余额），勾选确认后才执行；不可恢复。
-// 注销的是 0x4 账号（服务器上的资料和内容），不是钱包：私钥和链上的币都不受影响。
+// Account deletion (2026-10-02 goat, listing requirement: if accounts can be created, they must be deletable in-app).
+// First spells out what will happen (the server's preview: the sprite, groups I own, balances); executes only after checking the confirmation; irreversible.
+// What's deleted is the 0x4 account (profile and content on the server), not the wallet: private keys and on-chain funds are unaffected.
 import { useEffect, useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -34,11 +34,11 @@ export default function AccountDeleteSheet({ open, onClose, onDone }: { open: bo
     try {
       const key = walletKey()
       await deleteAccount(hasMoney)
-      // 同意条款的记录清掉：之后不会自动又建一个新账号，想再用社交功能要重新同意
+      // The terms-acceptance record is cleared: no new account gets auto-created afterwards; using social features again requires accepting again
       if (key) revokeTerms(key)
       useTermsGate.setState({ open: false, dismissed: true })
       useSocial.getState().logout(true)
-      // 界面上显示成「还没启用社交功能」（有重新同意的入口），而不是一直「连接中」
+      // The UI shows "social features not yet enabled" (with an entry to accept again), rather than a perpetual "connecting"
       useSocial.setState({ needTerms: true })
       toast.success(t('账号已注销'))
       onClose()

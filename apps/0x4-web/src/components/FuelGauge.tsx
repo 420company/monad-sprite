@@ -1,11 +1,11 @@
-// 燃料费油量表图标（2026-09-29 goat：「像汽车仪表盘显示汽油余量那样」，三档 low / middle / high）。
-// 半圆表盘分三段（左红、中黄、右绿），指针指向当前档位，当前那段点亮，其余两段调暗；表心一个小圆（指针细、表盘粗，偏低档竖直时也不像字母）。
-// 不传 level 时是单色的中间档，给菜单这类只表示「燃料费」的地方用。
+// Gas-fee fuel gauge icon (2026-09-29 goat: "like a car dashboard showing remaining fuel", three levels low / middle / high).
+// A half-dial split into three arcs (left red, middle yellow, right green); the needle points at the current level, the current arc lit and the other two dimmed; a small circle at the dial's heart (thin needle, thick dial — never looks like a letter even when vertical at the low end).
+// Without level it's a monochrome middle level, for menu-like spots that only stand for "gas fees".
 import type { FuelLevel } from '@/lib/gas'
 import { t } from '@/lib/i18n'
 
 const COLOR: Record<FuelLevel, string> = { low: 'var(--color-down)', middle: 'var(--color-warning)', high: 'var(--color-up)' }
-// 三段在表盘上的范围（从正上方起算的角度，左负右正），中间留 4 度空隙
+// The three arcs' spans on the dial (angles from straight up, negative left / positive right), with a 4-degree gap between them
 const SEG: Record<FuelLevel, [number, number]> = { low: [-78, -30], middle: [-26, 26], high: [30, 78] }
 const NEEDLE: Record<FuelLevel, number> = { low: -54, middle: 0, high: 54 }
 const CX = 12, CY = 16, R = 9

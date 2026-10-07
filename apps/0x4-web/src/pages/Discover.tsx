@@ -1,4 +1,4 @@
-// 发现页：真实行情、自选与搜索共用稳定的代币行。
+// Discover page: real market data, watchlist and search share the stable token row.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Loader2, Plus, RefreshCw, Search, Star, WifiOff, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -28,15 +28,15 @@ import { WEB_SURFACE } from '@/lib/surface'
 
 type Sort = 'volume' | 'gainers' | 'new' | 'mcap'
 type View = 'market' | 'favorites' | 'hot' | 'new' | 'stocks'
-/** 列表每页条数：先显示这么多，底部「加载更多」每次再加这么多 */
+/** List page size: show this many first, bottom "load more" adds this many each time */
 const PAGE = 20
 
-/** 链筛选（市场 / 火热 / 最新共用）：值是 DexScreener 链标识，all = 全部。顺序是 goat 定的（2026-09-25，BSC 打头），
- *  其余能直接交易的链收在「更多」弹层里，清单见 chains.ts 的 MARKET_PRIMARY / MARKET_MORE */
+/** Chain filter (shared by market / hot / new): values are DexScreener chain ids, all = all. Order set by goat (2026-09-25, BSC first),
+ *  remaining directly-tradable chains tucked in the "More" sheet; the list lives in chains.ts MARKET_PRIMARY / MARKET_MORE */
 const CHAIN_FILTERS: { value: string; label: string }[] = [{ value: 'all', label: '全部' }, ...MARKET_PRIMARY.map((c) => ({ value: c.dexKey, label: c.label }))]
 const MORE_KEYS = new Set(MARKET_MORE.map((c) => c.dexKey))
 const moreLabel = (key: string) => MARKET_MORE.find((c) => c.dexKey === key)?.label ?? key
-/** 两份榜单合并，同一条链同一个币只留先出现的 */
+/** Two lists merged: same chain + same coin keeps only the first occurrence */
 const mergeUniq = (a: MarketToken[], b: MarketToken[]) => {
   const seen = new Set(a.map((x) => marketKey(x.chain, x.address)))
   return [...a, ...b.filter((x) => !seen.has(marketKey(x.chain, x.address)))]
@@ -47,7 +47,7 @@ interface Trader { address: string; nickname: string | null; avatar: string | nu
 export default function Discover() {
   const { refreshTrending, cache, put } = useMarket()
   const favorites = useFavorites((s) => s.items)
-  // 视图 / 排序 / 搜索词 / 链筛选 / 已显示条数都记在会话里（lib/pageState）：点进币详情再返回，还是离开时的样子
+  // View / sort / search term / chain filter / shown count all kept in session (lib/pageState): opening a coin detail and coming back restores how it was left
   const [view, setView] = usePageState<View>('discover.view', () => (favorites.length ? 'favorites' : 'market'), oneOf('market', 'favorites', 'hot', 'new', 'stocks'))
   const [sort, setSort] = usePageState<Sort>('discover.sort', 'volume', oneOf('volume', 'gainers', 'new', 'mcap'))
   const [q, setQ] = usePageState('discover.q', '', isString)
@@ -62,8 +62,8 @@ export default function Discover() {
   const [retry, setRetry] = useState(0)
   const [adding, setAdding] = useState(false)
 
-  // 市场 / 火热 / 最新 / 股票（2026-09-26 改）：数据放在 store/discoverFeed，内存 + 本地快照。
-  // 进发现页先拉当前视图，稍后把另外几个榜单也拉上；之后切视图、切链都是本地过滤，不再等网络。
+  // Market / Hot / New / Stocks (changed 2026-09-26): data lives in store/discoverFeed, memory + local snapshot.
+  // Entering Discover fetches the current view first, the other lists shortly after; switching views/chains afterwards is local filtering — no more waiting on the network.
   const feeds = useDiscoverFeed((s) => s.feeds)
   const loadFeed = useDiscoverFeed((s) => s.load)
   const loadPools = useDiscoverFeed((s) => s.loadPools)
@@ -71,22 +71,22 @@ export default function Discover() {
   useEffect(() => {
     if (!feedView || query) return
     void loadFeed(feedView)
-    if (feedView === 'market') void refreshTrending() // 首页等处还在用 store 里的 SOL 价格，顺手刷新
-    // 每 5 秒看一眼，真发不发请求由 isFresh 决定：平时 30 秒一次，服务器说有链首轮还没拉完时 4 秒一次
+    if (feedView === 'market') void refreshTrending() // Home etc. still use the SOL price in the store — refresh it while we're at it
+    // Check every 5s; isFresh decides whether to actually request: normally every 30s, every 4s while the server says some chain's first round isn't done yet
     const timer = setInterval(() => void loadFeed(feedView), 5_000)
     return () => clearInterval(timer)
   }, [feedView, query, loadFeed, refreshTrending])
   useEffect(() => {
-    // 预取：市场 / 火热 / 最新都拉上（市场和火热共用服务器同一份热门池，只多几次 DexScreener 请求）
+    // Prefetch: pull market / hot / new all (market and hot share the server's same hot pool, costing only a few extra DexScreener requests)
     const timer = setTimeout(() => { for (const k of ['market', 'hot', 'new'] as const) void loadFeed(k) }, 600)
     return () => clearTimeout(timer)
   }, [loadFeed])
-  // 分页：换视图 / 排序 / 搜索时回到第一页
+  // Pagination: view / sort / search change resets to page one
   const [chainFilter, setChainFilter] = usePageState('discover.chain', 'all', isString)
-  // 「更多」里选中的链：筛选条上临时多出一个胶囊，数据由服务器按需拉（主筛选的链常驻，不用单独拉）
+  // Chains picked in "More": a temporary extra capsule on the filter bar, data pulled on demand by the server (primary filter chains are resident, no separate pull needed)
   const [moreOpen, setMoreOpen] = useState(false)
   const pickMore = (key: string) => { setChainFilter(key); setMoreOpen(false) }
-  const ALWAYS = CHAIN_FILTERS.slice(0, 4) // 全部 · BSC · Solana · Base
+  const ALWAYS = CHAIN_FILTERS.slice(0, 4) // All · BSC · Solana · Base
   const visibleChips = ALWAYS.some((c) => c.value === chainFilter)
     ? ALWAYS
     : [...ALWAYS.slice(0, 3), { value: chainFilter, label: CHAIN_FILTERS.find((c) => c.value === chainFilter)?.label ?? moreLabel(chainFilter) }]
@@ -96,17 +96,17 @@ export default function Discover() {
   useEffect(() => {
     if (!isMore || !poolView) return
     void loadPools(poolKind, chainFilter)
-    const timer = setInterval(() => void loadPools(poolKind, chainFilter), 15_000)   // 服务器那边缓存 60 秒，60 秒内拉过的不会真发请求
+    const timer = setInterval(() => void loadPools(poolKind, chainFilter), 15_000)   // The server caches for 60s — no real request for pulls within 60s
     return () => clearInterval(timer)
   }, [isMore, poolView, poolKind, chainFilter, loadPools])
   const pools = isMore && poolView ? (feeds[poolsFeedName(poolKind, chainFilter)] ?? EMPTY_FEED) : null
-  /** 按链筛选（返回新数组，后面可以放心排序）；「更多」里的链再并上它自己的榜单 */
+  /** Filter by chain (returns a new array, safe to sort afterwards); chains from "More" additionally merge their own list */
   const byChain = (l: MarketToken[]) => {
     const own = filterChain(l, chainFilter)
     return pools ? mergeUniq(own, pools.list) : [...own]
   }
   const [shown, setShown] = usePageState('discover.shown', PAGE, posInt())
-  // 换视图 / 排序 / 搜索 / 链时回到第一页。挂载那一次不算（那是返回时恢复出来的值，不能把「加载更多」的条数清掉）
+  // View / sort / search / chain change resets to page one. The mount pass doesn't count (that value is restored from back-navigation — must not clear the "load more" count)
   const filterSig = `${view}|${sort}|${query}|${chainFilter}`
   const lastSig = useRef(filterSig)
   useEffect(() => { if (lastSig.current !== filterSig) { lastSig.current = filterSig; setShown(PAGE) } }, [filterSig, setShown])
@@ -122,7 +122,7 @@ export default function Discover() {
       setFavoritesLoading(true)
       const byChain = new Map<string, string[]>()
       favorites.forEach((f) => byChain.set(f.chain, [...(byChain.get(f.chain) || []), f.address]))
-      // 请求结果独立记录，某条链失败不会覆盖其它链已取得的报价。
+      // Request results recorded independently — one chain failing won't overwrite quotes already obtained for other chains.
       const requests = await Promise.allSettled([...byChain].map(([chain, addresses]) => getTokens(addresses, chain)))
       if (!alive) return
       requests.forEach((r) => { if (r.status === 'fulfilled') put(r.value) })
@@ -140,10 +140,10 @@ export default function Discover() {
     if (!query) return
     let alive = true
     const timer = setTimeout(() => {
-      // 使用会抛出错误的既有接口，区分没有结果和请求失败；旧查询不能回写新结果。
+      // Uses the existing throwing API to distinguish no-results from request failure; old queries must not write back new results.
       searchTokensGrouped(query).then((r) => {
         if (!alive) return
-        // 官方置顶、冒牌不显示（规则见 lib/market.ts rankSearch，2026-09-30）
+        // Official pinned, impostors hidden (rules in lib/market.ts rankSearch, 2026-09-30)
         put(r.tokens); setResults(r.tokens)
       }).catch(() => { if (alive) setSearchError(true) }).finally(() => { if (alive) setSearching(false) })
       api<Trader[]>(`/api/users/search?q=${encodeURIComponent(query)}`).then((users) => {
@@ -161,10 +161,10 @@ export default function Discover() {
       case 'gainers': return tokens.sort((a, b) => (b.change24h ?? -Infinity) - (a.change24h ?? -Infinity))
       case 'new': return tokens.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
       case 'mcap': return tokens.sort((a, b) => (b.marketCap ?? b.fdv ?? 0) - (a.marketCap ?? a.fdv ?? 0))
-      default: return pools ? tokens.sort((a, b) => (b.volume24h || 0) - (a.volume24h || 0)) : tokens   // 并进来的链上榜单要重新按成交额排
+      default: return pools ? tokens.sort((a, b) => (b.volume24h || 0) - (a.volume24h || 0)) : tokens   // Merged chain lists get re-sorted by volume
     }
   }, [view, feed, sort, chainFilter, pools]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 火热 / 最新按链筛过后的列表；并进「更多」链的榜单时按各自的规则重排（火热看 1 小时涨跌幅度，最新看上线时间）。股票不按链筛
+  // Hot / New lists after chain filtering; when merging "More" chains' lists, re-sort by each one's own rule (hot by 1h change, new by listing time). Stocks aren't chain-filtered
   const extraList = useMemo(() => {
     if (view === 'market' || !feedView) return []
     if (view === 'stocks') return feed.list
@@ -173,8 +173,8 @@ export default function Discover() {
     return view === 'new' ? tokens.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)) : tokens.sort((a, b) => Math.abs(b.change1h ?? 0) - Math.abs(a.change1h ?? 0))
   }, [view, feedView, feed, chainFilter, pools]) // eslint-disable-line react-hooks/exhaustive-deps
   const shownList = view === 'market' ? list : extraList
-  // 在列表上停一会儿（1.2 秒）就预取排在最前面 3 个币的 K 线：多数人点的就是这几个，点开时已经在手上。
-  // 翻榜单、换链、换排序会取消还没开始的这一轮；额度在 candles.ts 里管，不会挤掉用户自己点开的请求
+  // Pausing on the list for a bit (1.2s) prefetches candles for the top 3 coins: most people tap those, and they'll already be in hand when opened.
+  // Scrolling the list, switching chains or sort cancels a round that hasn't started; quota is managed in candles.ts — never crowds out requests the user opened themselves
   const topKeys = shownList.slice(0, 3).map((tk) => marketKey(tk.chain, tk.address)).join(',')
   useEffect(() => {
     if (!topKeys) return
@@ -182,7 +182,7 @@ export default function Discover() {
     const timer = setTimeout(() => { for (const tk of top) prefetchTokenChart(tk) }, 1200)
     return () => clearTimeout(timer)
   }, [topKeys]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 列表区域的状态：有数据显示列表；没数据时「正在读取中」→「读取失败，点击重试」→「暂无行情」
+  // List area states: show the list when there's data; without data "loading" → "load failed, tap to retry" → "no market data"
   const filterKey = view === 'stocks' ? 'all' : chainFilter
   const stateLoading = pools ? feedLoading(pools, 'all') : feedLoading(feed, filterKey)
   const stateError = pools ? pools.error : feedFailed(feed, filterKey)
@@ -193,7 +193,7 @@ export default function Discover() {
     if (pools) void loadPools(poolKind, chainFilter, true)
   }
   const busy = query ? searching : view === 'favorites' ? favoritesLoading : state === 'loading'
-  /** 有列表但这次刷新失败：顶部小条提示，列表照常显示 */
+  /** List present but this refresh failed: small top banner, list shown as usual */
   const refreshNotice = state === 'list' && (pools?.error
     ? <LoadError text={t('{chain} 的榜单暂时拿不到', { chain: moreLabel(chainFilter) })} onRetry={retryLoad} compact />
     : feed.error ? <LoadError text={t('刷新失败，显示上次行情')} onRetry={retryLoad} compact /> : null)
@@ -223,7 +223,7 @@ export default function Discover() {
           <button className="view-tab shrink-0" aria-pressed={view === 'stocks'} onClick={() => setView('stocks')}>{t('股票')}</button>
         </div>}
         {!query && (view === 'market' || view === 'hot' || view === 'new') && (
-          // 一行放得下、不用左右滑（2026-09-25 goat）：全部 + BSC / Solana / Base 常驻，选了别的链就顶替最后一个位置，其余都在「更多」里
+          // Fits in one row, no horizontal swipe (2026-09-25 goat): All + BSC / Solana / Base resident; picking another chain takes the last slot, the rest live in "More"
           <div className="page-gutter flex flex-wrap gap-2 py-2.5" role="group" aria-label={t('按链筛选')}>
             {visibleChips.map((c) => (
               <button key={c.value} onClick={() => setChainFilter(c.value)} aria-pressed={chainFilter === c.value}
@@ -291,7 +291,7 @@ export default function Discover() {
       <AddTokenSheet open={adding} onClose={() => setAdding(false)} />
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t('更多链')} center>
         <p className="mb-3 text-[13px] text-muted">{t('这些链都能在 App 里直接买卖')}</p>
-        {/* 按钮不带 glass-lite 的大模糊阴影：几十个模糊阴影让弹层第一次上屏那一帧画得很慢（2026-09-26 模拟器实测） */}
+        {/* Buttons skip the glass-lite heavy blur shadow: dozens of blur shadows made the sheet's first on-screen frame render very slowly (2026-09-26 simulator test) */}
         <div className="grid grid-cols-2 gap-2 pb-2">
           {[...MARKET_PRIMARY.slice(3), ...MARKET_MORE].map((c) => {
             const info = chainByDexKey(c.dexKey)
@@ -307,19 +307,19 @@ export default function Discover() {
           })}
         </div>
       </Sheet>
-      {/* 手机浏览器打开网页版：底部状态栏不显示，法律文件和下载中心放在行情页最底下（2026-10-04 走查）。手机 App 里在「我 → 关于」 */}
+      {/* Web opened in a phone browser: bottom status bar hidden, legal docs and download center sit at the bottom of the market page (2026-10-04 walkthrough). In the mobile app they're under "Me → About" */}
       {WEB_SURFACE && <LegalFooter className="page-gutter mt-6 mb-2" />}
     </div>
   )
 }
 
-/** 底部「加载更多（还有 N 个）」；全部显示完就不出现 */
+/** Bottom "load more (N remaining)"; disappears once everything is shown */
 function LoadMore({ total, shown, onMore }: { total: number; shown: number; onMore: () => void }) {
   if (total <= shown) return null
   return <div className="page-gutter pt-3 pb-2"><button onClick={onMore} className="glass-lite h-11 w-full rounded-full text-sm font-semibold">{t('加载更多（还有 {n} 个）', { n: total - shown })}</button></div>
 }
 
-/** 榜单没数据时显示什么：正在读取中（转圈 + 骨架）/ 读取失败，点击重试 / 暂无行情；有数据时什么都不显示 */
+/** What shows when a list has no data: loading (spinner + skeleton) / load failed, tap to retry / no market data; nothing shown when there's data */
 function ListStatus({ state, onRetry }: { state: ListState; onRetry: () => void }) {
   if (state === 'loading') return (
     <div role="status">

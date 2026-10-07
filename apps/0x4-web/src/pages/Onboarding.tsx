@@ -1,4 +1,4 @@
-// 新用户引导：创建钱包 / 导入钱包
+// New-user onboarding: create wallet / import wallet
 import { useId, useState } from 'react'
 import { CatMark, PixelTitle, T, timelineFor, useIntroPlay } from '@/components/welcome/WelcomeIntro'
 import FluidBackground from '@/components/welcome/FluidBackground'
@@ -14,12 +14,12 @@ import { isValidMnemonic, classifySecret } from '@/lib/wallet'
 import { copyText } from '@/lib/native'
 import { t } from '@/lib/i18n'
 import { errorText } from '@/lib/errors'
-// 建好钱包后回到扫码登录 / 分享的直播（lib/afterUnlock.ts，2026-10-04 走查）
+// After creating a wallet, return to the scan login / shared livestream (lib/afterUnlock.ts, 2026-10-04 walkthrough)
 import { takeAfterUnlock } from '@/lib/afterUnlock'
 
-// 欢迎页（没有钱包时）：像素开场，背景是全局液态流体，时间线与效果见 components/welcome/WelcomeIntro.tsx
+// Welcome page (no wallet): pixel intro, global liquid-fluid background — timeline and effects in components/welcome/WelcomeIntro.tsx
 function Welcome() {
-  // 本次打开 App 第一次进欢迎页才完整播开场；从创建 / 导入页返回时直接在位（WelcomeIntro useIntroPlay）
+  // The full intro only plays on the first welcome-page visit per app open; returning from the create / import pages lands directly in place (WelcomeIntro useIntroPlay)
   const intro = useIntroPlay(T)
   return (
     <div className={`welcome-stage safe-top${intro.play ? '' : ' is-replay'}`} style={timelineFor(intro.tl)}>
@@ -127,7 +127,7 @@ function Backup() {
         {t('我已经完成备份')}
       </label>
       <Button size="lg" className="mt-6 w-full" disabled={!agree} onClick={() => { setBackedUp(true); nav(takeAfterUnlock(), { replace: true }) }}>{t('进入钱包')}</Button>
-      {/* 借鉴 DeBox：允许先进钱包，首页会持续提醒直到备份完成 */}
+      {/* Borrowed from DeBox: allow entering the wallet first; home keeps reminding until backup is done */}
       <Button size="md" variant="ghost" className="mt-2 w-full text-muted" onClick={() => { setBackedUp(false); nav(takeAfterUnlock(), { replace: true }) }}>{t('先跳过，稍后在「我」里备份')}</Button>
     </Page>
   )
@@ -138,10 +138,10 @@ function Import() {
   const { importMnemonic, importSecret } = useWallet()
   const [mode, setMode] = useState<'mnemonic' | 'secret'>('mnemonic')
   const [text, setText] = useState('')
-  const [complete, setComplete] = useState(false) // 助记词格子是否已填满，没填满不提前报错
+  const [complete, setComplete] = useState(false) // Whether the mnemonic grid is filled — no premature error before it's full
   const [loading, setLoading] = useState(false)
   const id = useId()
-  // 私钥：识别是 EVM 还是 Solana，识别不出就不让提交
+  // Private key: detect EVM vs Solana; block submit when it can't be identified
   const secretKind = mode === 'secret' ? classifySecret(text) : null
   const valid = mode === 'mnemonic' ? complete && isValidMnemonic(text) : !!secretKind
   const showError = mode === 'mnemonic' ? complete && !valid : !!text && !valid
@@ -177,7 +177,7 @@ function Import() {
             try {
               if (mode === 'mnemonic') await importMnemonic(text, pw)
               else await importSecret(text, pw)
-              useSettings.getState().setBackedUp(true) // 导入的钱包用户已持有助记词 / 私钥
+              useSettings.getState().setBackedUp(true) // Imported wallets: the user already holds the mnemonic / private key
               nav(takeAfterUnlock(), { replace: true })
             } catch (e) {
               toast.error(errorText(e, t('导入失败')))

@@ -1,4 +1,4 @@
-// 选币搜索结果排序（lib/tokenRank.ts rankPicked，2026-10-03 goat：小精灵搜 uni 出来好多、没有「官方」）
+// Token picker search ranking (lib/tokenRank.ts rankPicked; 2026-10-03 goat: the sprite searching "uni" returned many results with no "official")
 import { describe, expect, it } from 'vitest'
 import { rankPicked, isOfficial } from './tokenRank'
 import type { ChainToken } from '@/lib/chains'

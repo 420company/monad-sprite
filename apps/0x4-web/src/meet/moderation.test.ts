@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 会议管理前端判断（meet/moderation.ts）：和服务器 meetAuth.ts 同一规则
+// Frontend meeting-moderation judgments (meet/moderation.ts): same rules as the server's meetAuth.ts
 import { describe, expect, it } from 'vitest'
 import { canManage, parseModState, roleIn, speakOk } from './moderation'
 import { accessBody, accessOk, DEFAULT_ACCESS } from './access'
@@ -26,7 +26,7 @@ describe('角色与能否说话', () => {
     expect(speakOk(S, 'H')).toBe(true); expect(speakOk(S, 'A')).toBe(true); expect(speakOk(S, 'S')).toBe(true)
     expect(speakOk(S, 'M')).toBe(false)
     expect(speakOk({ ...S, muteAll: false }, 'M')).toBe(true)
-    expect(speakOk(null, 'M')).toBe(true)   // 还没拿到状态：不拦（服务器令牌才是准的）
+    expect(speakOk(null, 'M')).toBe(true)   // State not yet fetched: don't block (the server token is authoritative)
   })
   it('管理范围：主持人管所有人；管理员只管成员；谁都不能管自己和主持人', () => {
     expect(canManage(S, 'H', 'A')).toBe(true); expect(canManage(S, 'H', 'M')).toBe(true)

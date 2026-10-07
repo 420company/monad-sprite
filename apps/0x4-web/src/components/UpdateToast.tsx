@@ -1,5 +1,5 @@
-// 网页版有新版本时底部的一条提示（逻辑见 lib/pwaUpdate）。不自动消失、不挡操作，点了才刷新，右边可以关掉。
-// 放在底部导航上面；原生 App 里永远不会出现（没有 Service Worker）。
+// A bottom strip on web when a new version is available (logic in lib/pwaUpdate). Never auto-dismisses, never blocks interaction; refreshes only when tapped, dismissible on the right.
+// Sits above the bottom nav; never appears in the native app (no Service Worker).
 import { useState } from 'react'
 import { RefreshCw, X } from 'lucide-react'
 import { reloadForUpdate, usePwaUpdate } from '@/lib/pwaUpdate'

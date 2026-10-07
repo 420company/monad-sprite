@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 发现页榜单：数据源陆续回来的合并、切链状态（正在读取中 / 读取失败 / 暂无行情）、本地快照。
+// Discover page rankings: merging data sources as they return, per-chain status (loading / failed / no market data), local snapshots.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarketToken } from './types'
 import {
@@ -10,7 +10,7 @@ import {
 const tk = (chain: string, address: string, extra: Partial<MarketToken> = {}): MarketToken =>
   ({ chain, chainId: 1, address, symbol: address, name: address, logo: '', priceUsd: 1, liquidityUsd: 10_000, ...extra })
 
-/** 手动控制什么时候回来的数据源 */
+/** A data source whose return timing is controlled manually */
 function deferred() {
   let resolve!: (v: FeedPart) => void, reject!: (e: Error) => void
   const promise = new Promise<FeedPart>((res, rej) => { resolve = res; reject = rej })
@@ -28,11 +28,11 @@ describe('runFeed：谁先回来先显示', () => {
     await flush()
     expect(updates).toHaveLength(1)
     expect(updates[0].done).toBe(false)
-    expect(addrs(updates[0].list)).toEqual(['r1', 'dup'])   // 慢的还没回来，已经能显示
+    expect(addrs(updates[0].list)).toEqual(['r1', 'dup'])   // The slow one hasn't returned, but it can already display
     slow.resolve({ list: [tk('solana', 'DUP', { priceUsd: 9 }), tk('solana', 's1')] })
     const final = await done
     expect(final.done).toBe(true)
-    // 排在前面的源优先：dup 用慢源（第 0 个）给的那条
+    // Earlier sources win: dup uses the one the slow source (index 0) gave
     expect(addrs(final.list)).toEqual(['DUP', 's1', 'r1'])
     expect(final.list[0].priceUsd).toBe(9)
     expect(final.failed).toBe(false)
@@ -139,10 +139,10 @@ describe('本地快照', () => {
     expect(f.at).toBe(1_000)
     expect(f.loading).toBe(false)
     expect(f.fromSnapshot).toBe(true)
-    // 有快照直接显示列表；快照里没有的链在刷新回来前算正在读取中（快照只存了前几百条），不是暂无行情
+    // With a snapshot, show the list directly; chains missing from the snapshot count as loading until the refresh returns (snapshots only keep the first few hundred) — not "no market data"
     expect(listState({ count: filterChain(f.list, 'bsc').length, loading: feedLoading(f, 'bsc'), error: false })).toBe('list')
     expect(listState({ count: filterChain(f.list, 'robinhood').length, loading: feedLoading(f, 'robinhood'), error: feedFailed(f, 'robinhood') })).toBe('loading')
-    expect(isFresh(f, 2_000)).toBe(false)   // 快照一定要刷新一次
+    expect(isFresh(f, 2_000)).toBe(false)   // The snapshot must be refreshed once
   })
 
   it('太旧的快照不拿出来', () => {

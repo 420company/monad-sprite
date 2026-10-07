@@ -1,18 +1,18 @@
-// 多语言（2026-09-25）：简体中文（原文）/ 繁體中文 / English。
+// Multi-language (2026-09-25): Simplified Chinese (source) / Traditional Chinese / English.
 //
-// 用法：界面文字写成 t('发送')、带变量的写成 t('还有 {n} 个', { n })。
-//   · 字典用简体原文当索引（src/locales/en.json 里是 "发送": "Send"），不用给每句话另起代号；
-//     查不到翻译就原样显示简体，不会出现空白或代号。
-//   · 繁体不存字典：用 OpenCC 按台湾用词即时转换（只有选了繁体才下载那 1.1MB 转换表）。
-//   · ⚠️ t() 必须在渲染时调用。写在模块顶层的常量（比如导航标签数组）只存简体原文，渲染时再 t(label)，
-//     否则切换语言后它们不会变。
-//   · 切换语言时 App 外壳用 key={lang} 整体重挂一次（见 App.tsx），所有页面重新渲染。
+// Usage: UI strings as t('send'), with variables as t('n left: {n}', { n }).
+//   - Dictionaries key off the Simplified source text (src/locales/en.json has "send": "Send") — no separate message IDs;
+//     missing translations fall back to the Simplified original — never blank, never an ID.
+//   - Traditional has no dictionary: converted on the fly with OpenCC using Taiwan wording (the 1.1MB table downloads only when Traditional is selected).
+//   - ⚠️ t() must be called at render time. Module-level constants (e.g. nav label arrays) store only the Simplified source; t(label) at render,
+//     otherwise they won't change on language switch.
+//   - On language switch the app shell remounts wholesale via key={lang} (see App.tsx), re-rendering every page.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import en from '@/locales/en.json'
 
 export type Lang = 'zh-Hans' | 'zh-Hant' | 'en'
-/** auto = 跟随系统语言 */
+/** auto = follow the system language */
 export type LangSetting = Lang | 'auto'
 
 export const LANG_OPTIONS: { value: LangSetting; label: string }[] = [
@@ -22,7 +22,7 @@ export const LANG_OPTIONS: { value: LangSetting; label: string }[] = [
   { value: 'en', label: 'English' },
 ]
 
-/** 系统语言 → 我们支持的三种之一：港澳台 / Hant 走繁体，其余中文走简体，别的一律英文 */
+/** System language → one of our three: HK/MO/TW / Hant → Traditional, other Chinese → Simplified, everything else → English */
 export function systemLang(list: readonly string[] = typeof navigator !== 'undefined' ? navigator.languages || [navigator.language] : []): Lang {
   for (const raw of list) {
     const l = (raw || '').toLowerCase()
@@ -39,7 +39,7 @@ const hantCache = new Map<string, string>()
 interface LangState {
   setting: LangSetting
   lang: Lang
-  /** 繁体转换表加载好了没有（没好之前先显示简体） */
+  /** Whether the Traditional conversion table has loaded (Simplified shown until then) */
   ready: boolean
   setLang: (s: LangSetting) => void
 }
@@ -62,22 +62,22 @@ export const useLang = create<LangState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return
         const lang = state.setting === 'auto' ? systemLang() : state.setting
-        // ⚠️ 注水在 create() 里同步发生，那一刻 useLang 还没赋值，直接调 prepare / setState 会抛错并被吞掉
-        //    （2026-09-25 实测：选了繁体，转换表从没加载）。放到微任务里等 store 建好再做
+        // ⚠️ Hydration happens synchronously inside create(); useLang isn't assigned yet at that moment — calling prepare / setState directly throws and gets swallowed
+        //    (verified 2026-09-25: selecting Traditional never loaded the table). Deferred to a microtask so the store exists first
         queueMicrotask(() => { useLang.setState({ lang }); void prepare(lang) })
       },
     },
   ),
 )
 
-/** 选了繁体才去加载 OpenCC（简→台湾繁体，含台湾常用词） */
+/** Load OpenCC only when Traditional is selected (Simplified → Taiwan Traditional, Taiwan wording included) */
 async function prepare(lang: Lang): Promise<void> {
   if (lang !== 'zh-Hant' || toHant) return
   useLang.setState({ ready: false })
   try {
     const OpenCC = await import('opencc-js/cn2t')
     toHant = OpenCC.Converter({ from: 'cn', to: 'twp' })
-  } catch { /* 加载失败就先显示简体 */ }
+  } catch { /* Show Simplified first when loading fails */ }
   useLang.setState({ ready: true })
 }
 
@@ -87,9 +87,10 @@ function fill(s: string, vars?: Record<string, string | number>): string {
 }
 
 /**
- * 翻译一句界面文字。src 是简体原文。
- * 同一个中文词在不同地方意思不同时，加语境标记：t('开||ohlc')。中文界面只显示 || 前面的「开」，
- * 英文字典里 "开||ohlc": "O"、"开": "Open" 各管各的（查不到带标记的就退回不带标记的）。
+ * Translate one UI string. src is the Simplified source text.
+ * When the same Chinese word means different things in different places, add a context tag: t('open||ohlc').
+ * The Chinese UI shows only "open" (before ||); the English dictionary keeps "open||ohlc": "O" and "open": "Open"
+ * separate (falls back to the untagged key when the tagged one is missing).
  */
 export function t(src: string, vars?: Record<string, string | number>): string {
   const { lang } = useLang.getState()
@@ -105,7 +106,7 @@ export function t(src: string, vars?: Record<string, string | number>): string {
 }
 
 
-/** 日期 / 数字格式用的地区标签：toLocaleString(locale()) —— 别再写死 'zh-CN'，英文界面会显示「2026年9月」 */
+/** Locale tag for date/number formatting: toLocaleString(locale()) — never hardcode 'zh-CN' again, or the English UI renders dates in Chinese format */
 export function locale(): string {
   const { lang } = useLang.getState()
   return lang === 'en' ? 'en-US' : lang === 'zh-Hant' ? 'zh-TW' : 'zh-CN'

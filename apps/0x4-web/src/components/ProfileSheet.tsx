@@ -1,4 +1,4 @@
-// 我的资料编辑弹层：昵称、用户名、简介；头像只能用链上验证过的 NFT（没有就是默认像素头像）
+// My-profile edit sheet: nickname, username, bio; avatar must be a chain-verified NFT (default pixel avatar otherwise)
 import { useEffect, useState } from 'react'
 import Sheet from './Sheet'
 import Button from './Button'
@@ -13,15 +13,15 @@ import { t } from '@/lib/i18n'
 import { nameError } from '@/lib/names'
 import { errorText } from '@/lib/errors'
 
-/** 老服务器存的默认昵称（EVM 地址前 5 后 3，带「…」）：同样当作没起名 */
+/** Default nickname from old servers (EVM address first-5/last-3 with "…"): also treated as unnamed */
 const isLegacyDefault = (p: { nickname?: string | null; evmAddress?: string | null } | null | undefined) =>
   !!p?.nickname && !!p.evmAddress && p.evmAddress.length === 42 && p.nickname === `${p.evmAddress.slice(0, 5)}…${p.evmAddress.slice(-3)}`
 
 export default function ProfileSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { me, updateProfile } = useSocial()
   const { address, evmAddress } = useWallet()
-  // 昵称还是默认的（User + 编号）就不填进输入框，只当提示文字（2026-09-29 goat：默认昵称填在框里，以前带「…」过不了校验，连用户名都存不了）。
-  // 留空保存 = 保持默认昵称；只在用户自己输入了昵称时才检查格式
+  // A still-default nickname (User + number) isn't prefilled into the input — placeholder only (2026-09-29 goat: prefilled defaults used to fail validation with "…", blocking even the username save).
+  // Saving empty = keep the default nickname; format checked only when the user typed a nickname
   const ownNick = (p: typeof me) => (p?.nickname && p.nickname !== p.defaultNickname && !isLegacyDefault(p) ? p.nickname : '')
   const [nickname, setNickname] = useState(ownNick(me))
   const nickBad = nickname.trim() && nickname.trim() !== ownNick(me) ? nameError(nickname.trim(), true) : null
@@ -36,14 +36,14 @@ export default function ProfileSheet({ open, onClose }: { open: boolean; onClose
     if (nickBad) return toast.error(nickBad)
     setBusy(true)
     try {
-      // 先存用户名（唯一，可能被别人用了），过了再存昵称和简介（2026-10-02 goat：以前先存昵称再报「用户名已被占用」，
-      // 昵称其实存上了、窗口却报错，看起来像昵称被占用）。用户名不过就什么都不存，错误写在用户名框下面
+      // Save the username first (unique, may be taken), then nickname and bio (2026-10-02 goat: previously the nickname saved first and then "username taken" errored,
+      // making it look like the nickname was taken when it had actually saved). If the username fails, nothing saves; the error shows under the username field
       if (handle.trim() && handle.trim().toLowerCase() !== me?.handle) {
         try { await api('/api/me/handle', { method: 'PUT', body: JSON.stringify({ handle: handle.trim() }) }) }
         catch (e) { setHandleErr(errorText(e, t('用户名没有保存'))); return }
       }
-      await updateProfile({ nickname: nickname.trim(), bio })   // 空 = 用默认昵称
-      // 以前保存用户名后没刷新本地资料，再打开还是旧值，看起来像「没保存」（2026-09-25 goat 反馈）
+      await updateProfile({ nickname: nickname.trim(), bio })   // Empty = use the default nickname
+      // Previously the local profile wasn't refreshed after saving the username — reopening showed the old value, looking "unsaved" (2026-09-25 goat feedback)
       await useSocial.getState().refreshMe()
       toast.success(t('已保存')); onClose()
     } catch (e) { toast.error(errorText(e, t('保存失败'))) } finally { setBusy(false) }

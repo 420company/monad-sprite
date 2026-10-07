@@ -1,4 +1,4 @@
-// 通知中心：新粉丝、入群申请、申请结果、礼物、@ 提及、私信
+// Notification center: new followers, group join requests, request results, gifts, @ mentions, DMs
 import { useEffect } from 'react'
 import { pathForNotif } from '@/lib/notifRef'
 import { useNavigate } from 'react-router-dom'
@@ -11,19 +11,19 @@ import type { Notification } from '@/lib/social'
 import { t } from '@/lib/i18n'
 import { useBack } from '@/lib/useBack'
 
-// 通知类型图标：线条图标，和 App 其它地方一致（2026-09-25 从 emoji 换过来）
+// Notification type icons: line icons, consistent with the rest of the app (switched from emoji on 2026-09-25)
 const ICON: Record<string, LucideIcon> = { friend: Users, follow: UserPlus, join_request: Mail, join_approved: CircleCheck, join_rejected: Ban, gift: Gift, mention: AtSign, dm: Lock, packet: Gift, system: Megaphone, live: Radio }
 
 export default function Notifications() {
   const nav = useNavigate()
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /
+  // Back: return to the previous page when there is one (its state / scroll are restored); pages opened directly from pushes / deep links go to /
   const back = useBack('/')
   const { notifications, unreadNotifs, loadNotifications, markNotifsRead } = useSocial()
   useEffect(() => { loadNotifications() }, [loadNotifications])
 
   const open = (n: Notification) => {
     markNotifsRead(n.id)
-    // 与点系统推送走同一套规则
+    // Same rules as tapping a system push
     const path = pathForNotif(n)
     if (path !== '/notifications') nav(path)
   }

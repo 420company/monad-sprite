@@ -1,10 +1,10 @@
-// 买入 / 卖出弹层（支持任意链上的代币）
-// 买入：
-//   - Solana 代币 + 用 SOL 支付 → Jupiter 聚合器，秒级成交
-//   - 其它任何情况（用任意链的任意资产买任意链的代币）→ LI.FI 路由，桥 + 兑换一笔完成
-// 卖出：
-//   - Solana 代币 → SOL（Jupiter）
-//   - EVM 代币 → 所在链原生币（LI.FI）
+// Buy / sell sheet (supports tokens on any chain)
+// Buy:
+//   - Solana token + paying with SOL → Jupiter aggregator, settles in seconds
+//   - everything else (any asset on any chain buying any chain's token) → LI.FI routing, bridge + swap in one tx
+// Sell:
+//   - Solana tokens → SOL (Jupiter)
+//   - EVM tokens → the chain's native coin (LI.FI)
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Check, ChevronDown, Clock, ExternalLink, RefreshCw } from 'lucide-react'
 import Button from '@/components/Button'
@@ -43,11 +43,11 @@ import { errorText } from '@/lib/errors'
 
 export type Side = 'buy' | 'sell'
 
-export interface TradeFormInput { open: boolean; side: Side; token: MarketToken; onFilled?: (tx: string) => void; /** 打开时预填余额的百分之几（翻倍出本的卖一半 = 50） */ initialPct?: number; /** 打开时按美元金额预填（小精灵申请「买入约 $10」，2026-10-05 goat：原来点确认后数量是 0 要自己填） */ initialUsd?: number }
+export interface TradeFormInput { open: boolean; side: Side; token: MarketToken; onFilled?: (tx: string) => void; /** Prefill a percentage of balance on open (sell half to take principal at 2x = 50) */ initialPct?: number; /** Prefill by USD amount on open (sprite requests "buy ~$10"; 2026-10-05 goat: the amount used to be 0 after confirming, forcing manual entry) */ initialUsd?: number }
 
 /**
- * 买卖的全部状态和逻辑（支付资产、精度、余额、报价、燃料费检查、下单）。
- * 手机弹层（下面的 TradeSheet）和网页版交易终端的下单面板（src/desktop/trade/SpotOrderForm.tsx，2026-09-29）共用这一份，只是界面不同。
+ * All buy/sell state and logic (payment asset, decimals, balance, quotes, gas checks, order placement).
+ * Shared between the mobile sheet (TradeSheet below) and the web trading terminal's order panel (src/desktop/trade/SpotOrderForm.tsx, 2026-09-29) — same logic, different UI.
  */
 export function useTradeForm({ open, side, token, onFilled, initialPct, initialUsd }: TradeFormInput) {
   const fees = useFees((s) => s.fees)
@@ -66,7 +66,7 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
 
   const [amount, setAmount] = useState('')
   const [decimals, setDecimals] = useState<number | null>(holding?.decimals ?? favDecimals ?? token.decimals ?? null)
-  /** 支付币种：null 表示用 Solana 上的 SOL（Jupiter） */
+  /** Payment asset: null means SOL on Solana (Jupiter) */
   const [payWith, setPayWith] = useState<PickedToken | null>(null)
   const [picking, setPicking] = useState(false)
   const [evmBalance, setEvmBalance] = useState<number | null>(null)
@@ -81,13 +81,13 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
   const [retry, setRetry] = useState(0)
   const busy = phase !== 'idle'
 
-  // 买入是否走 LI.FI：非 Solana 代币，或者用非 SOL 资产支付
+  // Whether buying routes via LI.FI: non-Solana token, or paying with a non-SOL asset
   const useLifiBuy = isBuy && (!isSolToken || !!payWith)
   const useLifiSell = !isBuy && !isSolToken
   const useLifi = useLifiBuy || useLifiSell
   const amt = Number(amount)
   const tokenBalance = holding?.amount ?? evmBalance ?? 0
-  // 燃料费预存（2026-09-27）：开了自动补充时，用 BNB 付款不能动预存的那部分
+  // Gas reserve (2026-09-27): with auto-top-up on, paying with BNB must not touch the reserved portion
   const { autoRefuel, gasReserveUsd } = useSettings()
   const payIsBnb = !!payWith && payWith.chainId === GAS_BSC && isNative(payWith.address)
   const bnbPx = payWith?.priceUsd || 0
@@ -102,20 +102,20 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
   const receiveDecimals = isBuy ? decimals ?? 0 : isSolToken ? 9 : 18
   const quoteKey = JSON.stringify([side, token.chainId, token.address, amount, payWith?.chainId, payWith?.address, decimals, slippageBps, address, evmAddress])
   const currentQuote = quotedFor === quoteKey && valid && !quoting && !metadataError
-  // 下单前检查燃料费：付款那条链、以及买到的币所在链（以后卖出要用）；缺哪样说哪样
+  // Pre-order gas check: the payment chain and the bought token's chain (needed for future sells); each missing piece is reported by name
   const payChainId = isBuy ? (payWith?.chainId ?? SOLANA_CHAIN_ID) : token.chainId
   const gasProblems = useMemo(() => {
     if (!open || !(amt > 0)) return [] as GasProblem[]
     const payToken = isBuy ? (payWith?.address ?? NATIVE_SOL) : token.address
-    const bundled = isBuy && token.chainId !== SOLANA_CHAIN_ID && payChainId !== token.chainId   // 跨链买 EVM 币时兑换会顺带换目标链燃料费
+    const bundled = isBuy && token.chainId !== SOLANA_CHAIN_ID && payChainId !== token.chainId   // Cross-chain buys of EVM tokens swap in some destination-chain gas along the way
     return checkGas({ holdings, pay: { chainId: payChainId, token: payToken, usd: isBuy ? amt * payPrice : 0, balanceUsd: isBuy ? (payBalance + reservedNative) * payPrice : 0 }, targetChainId: isBuy ? token.chainId : payChainId, bundledTargetGas: bundled, reserveUsd: autoRefuel ? gasReserveUsd : 0 })
-      .filter((p) => p.kind === 'gas')   // 付款余额不足已经在按钮上提示
+      .filter((p) => p.kind === 'gas')   // Insufficient payment balance is already flagged on the button
   }, [open, amt, isBuy, payWith, token.chainId, token.address, payChainId, holdings, payPrice, payBalance, reservedNative, autoRefuel, gasReserveUsd])
   const blockingGas = gasProblems.filter((p) => p.chainId === payChainId && !(autoRefuel && p.refillable))
   const refuel = useRefuel()
 
-  // 打开时重置。买入默认用 BSC 上的 USDT 支付（2026-09-25 goat）：有余额就用它；
-  // 没有的话用价值最高的持仓；什么都没有时仍然显示 BSC USDT（余额 0），让用户知道该充什么
+  // Reset on open. Buys default to paying with USDT on BSC (2026-09-25 goat): use it when there's balance;
+  // otherwise the highest-value holding; when there's nothing at all, still show BSC USDT (balance 0) so users know what to top up
   useEffect(() => {
     if (!open) return
     setAmount(''); setJupQuote(null); setLifiQuote(null); setQuoteErr(null); setResult(null); setPhase('idle'); setPicking(false); setQuotedFor('')
@@ -128,7 +128,7 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
     } else setPayWith(null)
   }, [open, side, token.chainId, token.address]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 精度：Solana 读 mint，EVM 读 decimals()
+  // Decimals: Solana reads the mint, EVM reads decimals()
   useEffect(() => {
     if (!open) return
     let alive = true
@@ -141,7 +141,7 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
     return () => { alive = false }
   }, [open, holding?.decimals, favDecimals, token.decimals, isSolToken, rpcUrl, token.address, token.chainId, retry])
 
-  // EVM 代币不在持仓扫描范围内时，卖出前单独读一次余额
+  // When an EVM token is outside the holdings scan range, read its balance once separately before selling
   useEffect(() => {
     setEvmBalance(null)
     if (!open || isBuy || isSolToken || holding || !evmAddress || decimals === null) return
@@ -150,7 +150,7 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
     return () => { alive = false }
   }, [open, isBuy, isSolToken, holding, evmAddress, token.chainId, token.address, decimals])
 
-  // 报价（防抖）
+  // Quotes (debounced)
   useEffect(() => {
     if (busy) return
     setJupQuote(null); setLifiQuote(null); setQuoteErr(null); setQuotedFor(''); setQuoting(false)
@@ -165,12 +165,12 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
           const to: ChainToken = isBuy
             ? { chainId: token.chainId, address: token.address, symbol: token.symbol, name: token.name, decimals }
             : tokenChain!.native
-          // 每条链用各自的地址（用 BTC 付款时是 bc1q，lib/btcSwap.ts）
+          // Each chain uses its own address (bc1q when paying with BTC, lib/btcSwap.ts)
           const fromAddr = swapAddressFor(from.chainId, { address, evmAddress, btcAddress })
           const toAddr = swapAddressFor(to.chainId, { address, evmAddress, btcAddress })
           if (!fromAddr || !toAddr) throw new Error(t('缺少地址'))
-          // 目标是 EVM 链且那条链上没有原生币时，顺便换约 3 美元的 Gas，否则到账后卖不掉
-          // 从比特币出发不支持顺便换燃料费（跨链服务的比特币路线不带这个参数）
+          // When the destination is an EVM chain with no native coin there, swap in ~$3 of gas too, or the received tokens can't be sold
+          // Swaps starting from Bitcoin can't bundle gas (the cross-chain service's BTC route doesn't take that parameter)
           const needGas = !isBtcChain(from.chainId) && to.chainId !== SOLANA_CHAIN_ID && from.chainId !== to.chainId && !holdings.some((h) => h.chainId === to.chainId && isGasToken(to.chainId, h.mint) && h.amount > 0)
           const gasUnits = needGas && payPrice > 0 ? toBaseUnits((3 / payPrice).toFixed(from.decimals), from.decimals) : undefined
           const fees = await currentFees()
@@ -199,7 +199,7 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
   const outAmount = jupQuote ? fromBaseUnits(jupQuote.outAmount, receiveDecimals) : summary ? fromBaseUnits(summary.toAmount, receiveDecimals) : null
   const impact = jupQuote ? Number(jupQuote.priceImpactPct) * 100 : 0
   const receivePrice = isBuy ? token.priceUsd : isSolToken ? solPrice : 0
-  // 按可用余额的百分比选数量（替代原来的 0.1 / 0.5 / 1 / 2 快捷按钮）
+  // Pick the amount as a percentage of available balance (replaces the old 0.1 / 0.5 / 1 / 2 quick buttons)
   const pct = payBalance > 0 && amt > 0 ? Math.min(100, Math.round((amt / payBalance) * 100)) : 0
   const setPct = (p: number) => {
     if (payBalance <= 0) return
@@ -207,13 +207,13 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
     const v = p >= 100 ? payBalance : (payBalance * p) / 100
     setAmount(p <= 0 ? '' : String(Math.floor(v * 10 ** places) / 10 ** places))
   }
-  // 预填百分比：余额拿到后填一次，之后用户自己改
+  // Prefill percentage: fill once when the balance arrives; the user edits after that
   const prefilled = useRef(false)
   useEffect(() => { if (!open) prefilled.current = false }, [open])
   useEffect(() => {
     if (!open || prefilled.current) return
     if (initialPct) { if (payBalance > 0) { prefilled.current = true; setPct(initialPct) } return }
-    // 按美元预填：买入等付款币定下来（打开时先清空再选 BSC USDT）、有价格再算；余额不够就填余额，一点没有也照填金额让按钮提示余额不足
+    // Prefill by USD: for buys, wait until the payment asset settles (cleared on open, then BSC USDT is picked) and a price exists; fill the balance when it's short, and fill the amount even at zero so the button flags insufficient balance
     if (initialUsd && initialUsd > 0 && payPrice > 0 && (!isBuy || payWith)) {
       prefilled.current = true
       const want = initialUsd / payPrice
@@ -222,13 +222,13 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
       setAmount(String(Math.floor(v * 10 ** places) / 10 ** places))
     }
   }, [open, initialPct, initialUsd, payBalance, payPrice, payWith]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 报价出来之前先按现价粗算能买到多少（报价出来后以「预计获得」为准）
+  // Before quotes arrive, rough-estimate the receivable amount from the spot price (once quotes arrive, "estimated receive" wins)
   const roughOut = isBuy && amt > 0 && payPrice > 0 && token.priceUsd > 0 ? (amt * payPrice) / token.priceUsd : null
 
   const confirm = async () => {
     if (!currentQuote || busy || result || blockingGas.length) return
     try {
-      // 开了自动补充燃料费：缺的先从 BNB 预存补上；付款那条链缺的要等到账才能下单
+      // With gas auto-top-up on: shortfalls are covered from the BNB reserve first; shortfalls on the payment chain must wait for the top-up to land before ordering
       if (autoRefuel) {
         for (const p of gasProblems.filter((x) => x.refillable)) {
           setPhase('signing')
@@ -258,7 +258,7 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
         const sig = await executeSwap(rpcUrl, wallet, jupQuote)
         setResult({ sig, crossChain: false, fromChain: SOLANA_CHAIN_ID })
         reportFeeReceipt('jupiter', sig)
-        // 交易即社交：成交后上报，自动生成「买入 / 卖出」动态并计入盈亏
+        // Trading is social: filled trades are reported, auto-generating a "buy / sell" post and counting toward PnL
         reportTrade({ side: isBuy ? 'buy' : 'sell', chainId: token.chainId, token: token.address, symbol: token.symbol, name: token.name, logo: token.logo, qty: isBuy ? outAmount || 0 : amt, usd: isBuy ? amt * payPrice : (outAmount || 0) * receivePrice, marketCap: token.marketCap ?? token.fdv, tx: sig }); onFilled?.(sig)
         toast.success(isBuy ? t('买入成功') : t('卖出成功'))
       }
@@ -270,13 +270,13 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
     }
   }
 
-  // 网页版明说「请在 0x4 插件窗口里确认」，发出后「已发出，等待链上确认」（lib/execPhase.ts，2026-10-05）
+  // Web explicitly says "confirm in the 0x4 extension window", then "sent, awaiting on-chain confirmation" after broadcast (lib/execPhase.ts, 2026-10-05)
   const progress = phase === 'idle' ? null : execPhaseText(phase, signerOf(kind))
   const phaseText = progress?.main ?? ''
   const phaseHint = phase !== 'sent' ? progress?.hint : undefined
   const resultLink = result ? (result.crossChain && !isBtcChain(result.fromChain) ? `https://scan.li.fi/tx/${result.sig}` : result.fromChain === SOLANA_CHAIN_ID ? explorerTx(result.sig) : chainById(result.fromChain)?.explorerTx(result.sig) || '#') : '#'
 
-  /** 选了支付资产（手机选币弹层 / 网页版下拉面板共用）：Solana 代币 + 选了 Solana 上的 SOL → 回到 Jupiter 路径 */
+  /** Payment asset picked (shared by the mobile token picker sheet / web dropdown panel): Solana token + SOL on Solana selected → back to the Jupiter path */
   const selectPay = (picked: PickedToken) => {
     if (isSolToken && picked.chainId === SOLANA_CHAIN_ID && picked.address === NATIVE_SOL) setPayWith(null)
     else setPayWith(picked)
@@ -288,14 +288,14 @@ export function useTradeForm({ open, side, token, onFilled, initialPct, initialU
     jupQuote, lifiQuote, quoting, quoteErr, phase, result, metadataError, setRetry, busy, amt, payBalance, valid, paySymbol, payPrice,
     receiveSymbol, receiveDecimals, currentQuote, gasProblems, blockingGas, refuel, autoRefuel, slippageBps, summary, outAmount, impact,
     receivePrice, pct, setPct, roughOut, confirm, phaseText, phaseHint, resultLink,
-    /** 用 BTC 付款（卖出 BTC）：手续费只有服务方固定费，到账约 10~30 分钟（2026-09-30 比特币闪兑） */
+    /** Paying with BTC (selling BTC): only the service's flat fee applies; arrival takes ~10–30 min (2026-09-30 BTC instant swap) */
     payBtc: isBuy && !!payWith && isBtcChain(payWith.chainId),
   }
 }
 export type TradeForm = ReturnType<typeof useTradeForm>
 
-export default function TradeSheet({ open, side, token, onClose, onFilled, initialPct, initialUsd, inline = false }: { open: boolean; side: Side; token: MarketToken; onClose: () => void; onFilled?: (tx: string) => void; /** 打开时预填余额的百分之几（翻倍出本的卖一半 = 50） */ initialPct?: number; initialUsd?: number
-  /** 网页版交易终端（2026-09-29）：直接画在右栏下单面板里，不弹层；逻辑和弹层完全同一份 */
+export default function TradeSheet({ open, side, token, onClose, onFilled, initialPct, initialUsd, inline = false }: { open: boolean; side: Side; token: MarketToken; onClose: () => void; onFilled?: (tx: string) => void; /** Prefill a percentage of balance on open (sell half to take principal at 2x = 50) */ initialPct?: number; initialUsd?: number
+  /** Web trading terminal (2026-09-29): rendered directly in the right-column order panel, no sheet; logic is exactly the same as the sheet */
   inline?: boolean }) {
   const {
     fees, holdings, isBuy, isSolToken, amount, setAmount, payWith, setPayWith, selectPay, picking, setPicking,
@@ -304,13 +304,13 @@ export default function TradeSheet({ open, side, token, onClose, onFilled, initi
     pct, setPct, roughOut, confirm, phaseText, phaseHint, resultLink, payBtc,
   } = useTradeForm({ open, side, token, onFilled, initialPct, initialUsd })
   const amountId = useId()
-  // 网页版用只有 EVM 的外部钱包（MetaMask 等）买卖 Solana 上的币：没有 Solana 地址，给一句话 + 获取 0x4 Wallet（和宽屏交易终端一致，2026-09-30）
+  // Web with an EVM-only external wallet (MetaMask etc.) trading Solana tokens: no Solana address exists, so show a one-liner + get-0x4-Wallet prompt (same as the widescreen trading terminal, 2026-09-30)
   const noSolana = useWallet((w) => w.kind === 'external' && !w.wallet)
   if (noSolana && isSolToken && !result) {
     const notice = (
       <div className="py-8 text-center">
         <p className="text-sm text-muted">{t('这个币在 Solana 上，用 0x4 Wallet 就能买卖')}</p>
-        {/* 动态导入：手机 App 包里不带网页版的钱包连接代码 */}
+        {/* Dynamic import: the mobile app bundle excludes the web wallet-connect code */}
         <Button className="mt-5 w-full" onClick={() => void import('@/desktop/walletGate').then((m) => m.getOx4Wallet())}>{t('获取 0x4 Wallet')}</Button>
       </div>
     )
@@ -382,7 +382,7 @@ export default function TradeSheet({ open, side, token, onClose, onFilled, initi
               </span>
             </div>
             <div className="mt-2 flex justify-between"><span className="text-muted">{t('滑点上限')}</span><span>{(slippageBps / 100).toFixed(2)}%</span></div>
-            {/* 2026-09-28 goat：不显示兑换经过哪些平台（路线 / 路由），对用户没有用，只放到账、费用、耗时 */}
+            {/* 2026-09-28 goat: don't show which venues a swap routes through (path / routing) — useless to users; show only arrival amount, fees, and time */}
             {currentQuote && jupQuote && (
               <>
                 <div className="mt-2 flex justify-between"><span className="text-muted">{t('价格影响')}</span><span className={impact > 5 ? 'text-down' : impact > 1 ? 'text-yellow-400' : ''}>{impact.toFixed(2)}%</span></div>

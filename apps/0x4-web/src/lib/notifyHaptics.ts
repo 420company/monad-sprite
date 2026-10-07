@@ -1,37 +1,40 @@
-// 通知震动（2026-09-29 goat：「震动最好做细点，可以在通知里也能设置哪些通知可以有震动，用户自己选开关」）。
+// Notification haptics (2026-09-29 goat: "make vibration granular — let users pick which notifications may buzz, their own toggles").
 //
-// 管的是 App 开着的时候（前台）收到提醒要不要震：私信、群里 @ 我、群聊新消息、评论、礼物和红包、新粉丝、
-// 小精灵（交易确认请求、成交、停机提醒）、官方公告、其他通知。每类一个开关，存在本机（useSettings.notifyHaptics）。
-// App 在后台时手机上弹的推送，声音和震动由手机系统设置决定，这里不管。
+// Covers whether foreground (app open) alerts buzz: DMs, group @-mentions, group messages, comments, gifts and red packets, new followers,
+// fly sprites (trade confirm requests, fills, downtime alerts), official announcements, other notifications. One toggle per category, stored locally (useSettings.notifyHaptics).
+// Background push notifications on phones: sound and vibration follow the OS settings, not managed here.
 //
-// 震动手感用系统的「提醒」震动（UINotificationFeedbackGenerator warning），和点按时的轻震、操作成功 / 失败的震动都不一样，
-// 一摸就知道是来了新消息。同一时间段收到一串（群里刷屏、私信和它的通知一起到）只震一次。
+// The buzz uses the system's "notification" haptic (UINotificationFeedbackGenerator warning) — distinct from tap ticks and success/failure buzzes,
+// so one touch tells you a new message arrived. A burst in the same window (group spam, a DM plus its notification) buzzes only once.
 import { isNative, hapticNotice, setResultHapticsGate } from '@/lib/native'
 import { useSettings } from '@/store/settings'
 
-// 操作成功 / 失败的震动跟「按键震动」一个开关（2026-09-29 goat 合并）。本模块由社交 store 在启动时加载，接上后全 App 生效
+// Success/failure buzzes share the "key haptics" toggle (merged by goat 2026-09-29). Loaded at startup by the social store; app-wide once wired
 setResultHapticsGate(() => useSettings.getState().pressHaptics !== false)
 
 export type VibeKind = 'dm' | 'mention' | 'group' | 'comment' | 'gift' | 'follow' | 'like' | 'fly' | 'official' | 'other'
 
 /**
- * 默认值：和自己直接相关、需要尽快处理的默认开（私信、@ 我、小精灵要你确认的交易、礼物红包、评论、官方公告、其他系统提醒）；
- * 群聊普通消息量大，默认关；新粉丝、点赞不急，默认关，和推送的默认值一致。
+ * Defaults: categories directly about me that need prompt action default on (DMs, @-mentions, trade confirms
+ * from sprites, gift red packets, comments, official announcements, other system alerts); group chatter is
+ * high-volume — default off; new followers and likes aren't urgent — default off, matching push defaults.
  */
 export const VIBE_DEFAULTS: Record<VibeKind, boolean> = {
   dm: true, mention: true, group: false, comment: true, gift: true, follow: false, like: false, fly: true, official: true, other: true,
 }
 
-/** 设置页的顺序和文字（文字存简体原文，显示时 t() 翻译） */
+/** Settings-page order and labels (labels stored as Simplified source, t()-translated at display) */
 export const VIBE_ROWS: [VibeKind, string][] = [
   ['dm', '私信'], ['mention', '群里 @ 我'], ['group', '群聊新消息'], ['fly', '小精灵'], ['comment', '评论'],
   ['gift', '礼物和红包'], ['follow', '新粉丝'], ['like', '点赞'], ['official', '官方公告'], ['other', '其他通知'],
 ]
 
 /**
- * 这一类 App 开着时震不震（2026-09-29 goat：通知和震动合成一个开关，开通知 = 声音和震动都有）：
- * 本机单独存过就用存的（老版本里单独关过震动的类别保留他的选择，再动一次这个开关就和通知对齐）；
- * 没存过就跟这一类的推送开关走；推送开关也还没拉到过就用默认值
+ * Whether this category buzzes while the app is open (2026-09-29 goat: notification and haptics merged into
+ * one toggle — notifications on = sound and buzz):
+ * a locally stored choice wins (categories whose buzz was toggled off individually in old versions keep the
+ * user's choice; touching the toggle again aligns it with notifications);
+ * otherwise follow this category's push toggle; fall back to defaults when the push toggle was never fetched
  */
 export function vibeOn(kind: VibeKind): boolean {
   const s = useSettings.getState()
@@ -41,7 +44,7 @@ export function vibeOn(kind: VibeKind): boolean {
   return typeof push === 'boolean' ? push : VIBE_DEFAULTS[kind]
 }
 
-/** 站内通知的类型 → 震动类别。小精灵发来的系统通知带 fly: 开头的链接 */
+/** In-app notification type → haptic category. System notifications from sprites carry fly:-prefixed links */
 export function vibeKindOfNotif(type: string, ref?: string | null): VibeKind {
   switch (type) {
     case 'dm': return 'dm'
@@ -54,14 +57,14 @@ export function vibeKindOfNotif(type: string, ref?: string | null): VibeKind {
   }
 }
 
-/** 一串提醒挤在一起时只震一次 */
+/** One buzz for a clustered burst of alerts */
 export const NOTICE_GAP_MS = 1500
 let lastNoticeAt = -Infinity
 
-/** 前台收到一条提醒：这一类开着、App 在前台，才震 */
+/** A foreground alert buzzes only when its category is on and the app is foregrounded */
 export function notifyHaptic(kind: VibeKind): void {
   if (!isNative) return
-  if (typeof document !== 'undefined' && document.hidden) return   // 在后台：交给系统推送
+  if (typeof document !== 'undefined' && document.hidden) return   // In background: handed to system push
   if (!vibeOn(kind)) return
   const now = Date.now()
   if (now - lastNoticeAt < NOTICE_GAP_MS) return
@@ -69,5 +72,5 @@ export function notifyHaptic(kind: VibeKind): void {
   hapticNotice()
 }
 
-/** 测试用 */
+/** Test only */
 export function resetNoticeThrottle() { lastNoticeAt = -Infinity }

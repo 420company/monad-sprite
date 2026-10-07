@@ -1,6 +1,6 @@
-// 网页版「流媒体」页头（2026-10-03 goat：直播和会议合成一个入口，两个功能不变）。
-// 标题「流媒体」+ 直播 / 会议切换（各自的地址 /live、/meetings，以前的链接照常能打开）；
-// 右上「创建流媒体」→ 弹窗二选一：直播（你来讲，大家看）或会议（大家都能说话），选完走各自原来的创建流程。
+// Web "streaming" page header (2026-10-03 goat: live and meetings merged into one entry, both features unchanged).
+// "Streaming" title + live / meeting switch (their own URLs /live, /meetings; old links still open);
+// Top-right "create stream" → a two-choice sheet: live (you present, everyone watches) or meeting (everyone can talk); each continues its original creation flow.
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Plus } from 'lucide-react'
@@ -40,7 +40,7 @@ export function StreamHead({ mode, sub, extra }: { mode: 'live' | 'meet'; sub: s
       </div>
       <Sheet open={choosing} center onClose={() => setChoosing(false)} title={t('创建流媒体')}>
         <div className="sm-pick">
-          {/* 图标是生成的玻璃图（2026-10-03 goat：「图标要生成」），原图和提示词在 docs/art-src/stream-icons */}
+          {/* Icons are generated glass art (2026-10-03 goat: "icons must be generated"); sources and prompts in docs/art-src/stream-icons */}
           <button type="button" className="sm-opt is-live" onClick={() => pick('live')} disabled={avDown} data-testid="stream-pick-live">
             <img className="sm-ic" src={liveIcon} alt="" width={64} height={64} />
             <span className="sm-t"><b>{t('直播')}</b><small>{t('面向所有人开播')}</small>

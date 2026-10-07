@@ -1,9 +1,9 @@
-// 网页版（VITE_SURFACE=web）钱包相关的界面：
-// · Need：需要钱包的页面（我的资产、合约、闪兑、群聊、私信、会议、设置……）没连钱包时换成占位；
-// · WalletGateHost：点「连接钱包」或任何要签名的操作时弹出的连接面板（2026-09-30 goat：外部钱包也能连）——
-//   最上面大卡片是 0x4 Wallet（推荐，全部功能），下面是浏览器里发现的其它钱包，最后是手机钱包扫码；
-//   以及「获取 0x4 Wallet」（插件还没上架时写「即将上线」）。
-// 文案给普通用户看：字少，不出现技术名词。手机 App 用不到这里（路由守卫保证那边一定有钱包）。
+// Web (VITE_SURFACE=web) wallet-related UI:
+// · Need: pages that need a wallet (my assets, perps, swap, group chat, DMs, meetings, settings…) swap to a placeholder when no wallet is connected;
+// · WalletGateHost: the connect panel that pops when tapping "Connect wallet" or any operation needing a signature (2026-09-30 goat: external wallets can connect too) —
+//   the top big card is 0x4 Wallet (recommended, full features), below it other wallets found in the browser, and finally phone-wallet QR scan;
+//   plus "Get 0x4 Wallet" (reads "coming soon" while the extension isn't listed yet).
+// Copy is for ordinary users: short, no technical terms. The mobile app never reaches here (the route guard guarantees a wallet there).
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { ChevronRight, QrCode, Smartphone, Wallet, X } from 'lucide-react'
@@ -21,7 +21,7 @@ import { QrLoginBody, ScanLoginCard, type ScanMode } from './QrLoginCard'
 import { useSocial } from '@/store/social'
 import LegalFooter from '@/components/LegalFooter'
 
-/** 占位：说明这一页要连钱包，给一个「连接钱包」按钮；app = 这一页用手机 App 扫码登录也行（会议、直播、群聊等，2026-10-01） */
+/** Placeholder: explains the page needs a wallet, with a "Connect wallet" button; app = this page also works with a phone-app QR login (meetings, live rooms, group chat…, 2026-10-01) */
 export function WalletRequired({ compact = false, app = false }: { compact?: boolean; app?: boolean }) {
   const connecting = useWalletGate((s) => s.connecting)
   const showAppQr = useWalletGate((s) => s.showAppQr)
@@ -30,7 +30,7 @@ export function WalletRequired({ compact = false, app = false }: { compact?: boo
       <span className="desk-need-ic" aria-hidden="true"><Wallet size={22} strokeWidth={1.75} /></span>
       <h2 className="desk-need-title">{app ? t('登录 0x4') : t('连接钱包')}</h2>
       <p className="desk-need-text">{app ? t('连接钱包，或者用手机扫码登录。') : t('连接后就能交易、发动态和聊天。')}</p>
-      {/* 电脑端按钮规范（docs/WEB_DESIGN.md）：高 44、圆角 8、珍珠渐变黑字，不用手机的胶囊发光按钮 */}
+      {/* Desktop button spec (docs/WEB_DESIGN.md): 44 tall, radius 8, pearl gradient with dark text — not the mobile capsule glow button */}
       <button type="button" className="wc-btn is-primary is-lg desk-need-btn" disabled={connecting} aria-busy={connecting} onClick={connectWallet}>{connecting ? t('正在连接') : t('连接钱包')}</button>
       {app && <button type="button" className="wc-btn is-lg desk-need-btn" onClick={showAppQr} data-testid="need-app-qr"><Smartphone size={16} />{t('扫码登录')}</button>}
     </div>
@@ -38,8 +38,8 @@ export function WalletRequired({ compact = false, app = false }: { compact?: boo
 }
 
 /**
- * 需要钱包的页面：网页版没连钱包时换成占位；手机 App 直接渲染。
- * app：这一页手机 App 扫码登录（没有钱包）也能用（会议、直播间、群聊、通知……，2026-10-01 goat：meet.420.meme 下线，会议只留网页版）
+ * Pages needing a wallet: web swaps to a placeholder when no wallet is connected; the mobile app renders directly.
+ * app: this page also works with a phone-app QR login (no wallet) (meetings, live rooms, group chat, notifications…, 2026-10-01 goat: meet.420.meme retired, meetings are web-only)
  */
 export function Need({ children, app = false }: { children: React.ReactNode; app?: boolean }) {
   const ok = useWallet(isWalletConnected)
@@ -48,7 +48,7 @@ export function Need({ children, app = false }: { children: React.ReactNode; app
   return <WalletRequired app={app} />
 }
 
-/** 连接面板 + 「获取 0x4 Wallet」卡片（深色，Esc / 点空白处关闭） */
+/** Connect panel + "Get 0x4 Wallet" card (dark, closes on Esc / tapping outside) */
 export function WalletGateHost() {
   const open = useWalletGate((s) => s.open)
   const getOx4Open = useWalletGate((s) => s.getOx4)
@@ -68,7 +68,7 @@ function Backdrop({ onClose, children }: { onClose: () => void; children: React.
   return <div className="desk-gate" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>{children}</div>
 }
 
-/** 「获取 0x4 Wallet」：插件还没上架时的小卡片 */
+/** "Get 0x4 Wallet": the small card shown while the extension isn't listed yet */
 function ComingSoon({ onClose }: { onClose: () => void }) {
   return (
     <div className="desk-gate-card cw-soon" role="dialog" aria-modal="true" aria-labelledby="cw-soon-title">
@@ -81,20 +81,20 @@ function ComingSoon({ onClose }: { onClose: () => void }) {
   )
 }
 
-/** 选钱包：0x4 Wallet（推荐）→ 浏览器里的其它钱包 → 手机钱包扫码 */
+/** Pick a wallet: 0x4 Wallet (recommended) → other in-browser wallets → phone-wallet QR scan */
 function ConnectPanel({ onClose }: { onClose: () => void }) {
   const wallets = useWalletDiscovery((s) => s.wallets)
   const connecting = useWalletGate((s) => s.connecting)
   const connectingName = useWalletGate((s) => s.connectingName)
   const [hasOx4, setHasOx4] = useState(() => !!getOx4())
   const [qr, setQr] = useState<{ img: string | null; cancel: () => void } | null>(null)
-  // 「扫码登录」那一页（从占位页按钮进来时直接打开）；里面切换 0x4 App / 其他钱包
+  // The "QR login" page (opened directly when entering from a placeholder-page button); switches between 0x4 App / other wallets inside
   const [scan, setScan] = useState<ScanMode | null>(() => (useWalletGate.getState().appQr ? 'app' : null))
   useEffect(() => { if (!hasOx4) void waitForOx4(800).then((p) => setHasOx4(!!p)) }, [hasOx4])
   const cancelRef = useRef<(() => void) | null>(null)
   useEffect(() => () => cancelRef.current?.(), [])
 
-  // 手机钱包扫码：动态加载连接模块，出二维码，手机上确认后挂上
+  // Phone-wallet QR scan: dynamically loads the connect module, renders a QR code, attaches after confirmation on the phone
   const startQr = async () => {
     cancelRef.current?.(); cancelRef.current = null
     setQr({ img: null, cancel: () => {} })
@@ -114,7 +114,7 @@ function ConnectPanel({ onClose }: { onClose: () => void }) {
     }
   }
   const stopQr = () => { qr?.cancel(); cancelRef.current = null; setQr(null) }
-  // 切到「其他钱包」就发起连接；切回 0x4 App 或离开就撤掉
+  // Switching to "other wallets" starts a connection; switching back to 0x4 App or leaving tears it down
   const setMode = (m: ScanMode | null) => {
     if (m === 'wc') { setScan('wc'); void startQr(); return }
     stopQr()
@@ -140,19 +140,19 @@ function ConnectPanel({ onClose }: { onClose: () => void }) {
       <button type="button" className="desk-gate-x" onClick={onClose} aria-label={t('关闭')}><X size={18} /></button>
       <h2 id="cw-title" className="cw-title">{t('连接钱包')}</h2>
 
-      {/* 0x4 Wallet：永远第一个、最大，标「推荐」 */}
+      {/* 0x4 Wallet: always first and largest, marked "recommended" */}
       <button type="button" className={`cw-ox4 ${wallets.length ? '' : 'is-solo'}`} onClick={() => void connectOx4()}>
         <span className="cw-ox4-glow" aria-hidden="true" />
         <span className="cw-cat" aria-hidden="true"><img src={catUrl} alt="" width={52} height={38} /></span>
         <span className="cw-ox4-main">
-          {/* 2026-09-30 goat：名字一行不折行，下面那句说明去掉，「推荐」放到名字下面 */}
+          {/* 2026-09-30 goat: the name stays on one line, the description line below is dropped, "recommended" moves under the name */}
           <b>{t('0x4 Wallet')}</b>
           <em>{t('推荐')}</em>
         </span>
         <span className="cw-ox4-act">{hasOx4 ? t('连接') : t('获取')}</span>
       </button>
 
-      {/* 正在等某个钱包确认：说清楚在等谁，可以取消；直接点别的钱包也行（旧请求作废） */}
+      {/* Waiting on a wallet's confirmation: say clearly who's being waited on, allow cancelling; tapping another wallet directly also works (old request voided) */}
       {connecting && connectingName && <div className="cw-waiting" role="status"><span className="tx-spin" aria-hidden="true" /><span>{t('请在 {name} 中确认', { name: connectingName })}</span><button type="button" onClick={cancelConnect}>{t('取消')}</button></div>}
       {wallets.length > 0 && <p className="cw-sec">{t('其它钱包')}</p>}
       <div className="cw-list">
@@ -166,15 +166,15 @@ function ConnectPanel({ onClose }: { onClose: () => void }) {
             </button>
           )
         })}
-        {/* 扫码登录（2026-10-03 goat：原来「0x4 手机 App 扫码登录」「其他钱包扫码登录」两行合成一行，卡片里再切换）：
-            0x4 App 扫 = 只能开会、看直播、聊天；其他钱包扫 = 连那个钱包，能交易 */}
+        {/* QR login (2026-10-03 goat: the old "0x4 mobile app QR login" / "other wallet QR login" rows merged into one, switching inside the card):
+            0x4 App scan = meetings, watching live, chatting only; other-wallet scan = connects that wallet, can trade */}
         <button type="button" className="cw-item" onClick={() => setMode('app')} data-testid="cw-app-qr">
           <span className="cw-item-ic is-blank" aria-hidden="true"><QrCode size={16} /></span>
           <span className="cw-item-name">{t('扫码登录')}</span>
           <ChevronRight size={16} className="cw-item-chev" aria-hidden="true" />
         </button>
       </div>
-      {/* 法律文件和下载中心：手机浏览器和「空间」外观的底部没有这几个链接，访客在这里也能找到（2026-10-04 走查） */}
+      {/* Legal docs and download center: phone browsers and the "space" appearance lack these links at the bottom, so guests can still find them here (2026-10-04 walkthrough) */}
       <LegalFooter className="mt-4" />
     </div>
   )

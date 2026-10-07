@@ -1,10 +1,10 @@
-// 合约交易页的 K 线。用 TradingView 的 lightweight-charts（45KB gzip），数据来自 Aster 公开 K 线接口。
+// Perp page K-line chart. Uses TradingView's lightweight-charts (45KB gzip); data from Aster's public candle API.
 //
-// 为什么不自己用 canvas 画：十字线、缩放、自适应刻度、时间轴对齐这些
-// 全都要重做一遍，而且做不到同样的手感。图表是交易页的主体，不是装饰。
+// Why not hand-rolled canvas: crosshair, zoom, adaptive scales, time-axis alignment —
+// all would need rebuilding, and never feel the same. The chart is the trade page's core, not decoration.
 //
-// 2026-09-24 重做：加 MA7 / MA25 均线、按住显示开高低收、价格精度跟币种走
-// （以前默认两位小数，0.004354 的币整张图刻度都是 0.00）。
+// 2026-09-24 rework: MA7 / MA25 lines, press-and-hold OHLC, price precision follows the coin
+// (previously fixed 2 decimals — a 0.004354 coin rendered every axis label as 0.00).
 import { useEffect, useRef, useState } from 'react'
 import { createChart, CandlestickSeries, HistogramSeries, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts'
 import { loadCandles, type Candle, type Interval } from '@/lib/aster'
@@ -21,7 +21,7 @@ const INTERVALS: { key: Interval; label: string }[] = [
 const MA7 = '#e9ba72'
 const MA25 = '#7aa2ff'
 
-/** 价格精度：优先用交易所给的，拿不到就按价格量级估，保证小币至少有 4 位有效数字 */
+/** Price precision: prefer the exchange's; estimate by price magnitude when unavailable, guaranteeing ≥4 significant digits for small coins */
 function precisionOf(pxDecimals: number | undefined, sample: number) {
   if (pxDecimals !== undefined) return Math.max(1, Math.min(10, pxDecimals))
   if (!(sample > 0)) return 2
@@ -39,7 +39,7 @@ function movingAverage(data: Candle[], n: number) {
   return out
 }
 
-// 行情是公开数据，永远显示真实 K 线，钱包锁没锁都一样。
+// Market data is public: always show real candles, locked wallet or not.
 export default function PerpChart({ coin, pxDecimals }: { coin: string; pxDecimals?: number }) {
   const box = useRef<HTMLDivElement>(null)
   const chart = useRef<IChartApi | null>(null)
@@ -52,12 +52,12 @@ export default function PerpChart({ coin, pxDecimals }: { coin: string; pxDecima
   const [interval, setInterval] = useState<Interval>('1h')
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  /** 顶部那一行开高低收：手指按住时显示按住的那根，松开显示最新一根 */
+  /** Top OHLC row: shows the pressed candle while touching, the latest on release */
   const [ohlc, setOhlc] = useState<Candle | null>(null)
 
   const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: digits.current, maximumFractionDigits: digits.current })
 
-  // 建图表：只建一次，切币种和周期只换数据
+  // Build the chart once; coin/interval switches only swap data
   useEffect(() => {
     if (!box.current) return
     const css = getComputedStyle(document.documentElement)
@@ -82,9 +82,9 @@ export default function PerpChart({ coin, pxDecimals }: { coin: string; pxDecima
     candles.current = chartApi.addSeries(CandlestickSeries, {
       upColor: up, downColor: down, borderVisible: false, wickUpColor: up, wickDownColor: down,
     })
-    // 成交量不要最新值标签和横线：它画在价格轴上会被当成第二个价格
+    // Volume gets no last-value label or line: drawn on the price axis it would read as a second price
     volume.current = chartApi.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', lastValueVisible: false, priceLineVisible: false })
-    // 成交量压在底部五分之一，不抢蜡烛的地方
+    // Volume squeezed into the bottom fifth, out of the candles' way
     chartApi.priceScale('').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } })
     const line = { lineWidth: 1 as const, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }
     ma7.current = chartApi.addSeries(LineSeries, { ...line, color: MA7 })
@@ -97,7 +97,7 @@ export default function PerpChart({ coin, pxDecimals }: { coin: string; pxDecima
     return () => { chartApi.remove(); chart.current = null; candles.current = null; volume.current = null; ma7.current = null; ma25.current = null }
   }, [])
 
-  // 取数据：切币种或周期时重新拉，并按周期定时刷新最后一根
+  // Fetch: refetch on coin/interval switch, and refresh the last candle on the interval timer
   useEffect(() => {
     let dead = false
     const pull = async (first: boolean) => {
@@ -115,7 +115,7 @@ export default function PerpChart({ coin, pxDecimals }: { coin: string; pxDecima
         ma25.current?.setData(movingAverage(data, 25))
         last.current = data[data.length - 1]
         setOhlc((cur) => (first || !cur || cur.time === last.current?.time ? last.current : cur))
-        // 默认只看最近 60 根，蜡烛才不会挤成一条线；可以左右拖看更早的
+        // Default to the latest 60 candles so they don't squeeze into a line; drag sideways for older ones
         if (first) chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, data.length - 60), to: data.length + 3 })
         setErr(null)
       } catch (e) {
@@ -125,7 +125,7 @@ export default function PerpChart({ coin, pxDecimals }: { coin: string; pxDecima
       }
     }
     pull(true)
-    // 15 分钟的图刷得勤一点，日线没必要
+    // 15m charts refresh more often; dailies don't need it
     const every = interval === '15m' ? 20_000 : interval === '1h' ? 60_000 : 300_000
     const timer = window.setInterval(() => pull(false), every)
     return () => { dead = true; window.clearInterval(timer) }

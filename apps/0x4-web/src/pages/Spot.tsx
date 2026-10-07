@@ -1,6 +1,6 @@
-// 网页版「现货」（2026-09-29 goat：导航里要有现货和合约两个真功能）。
-// 左边：我的持仓和自选，点进去就是币详情（左 K 线、右买卖面板）；右边：闪兑 / 跨链面板，任意链任意币直接换。
-// 两块都是手机 App 的同一份代码，不是预览。
+// Web "Spot" (2026-09-29 goat: the nav needs two real features — spot and perps).
+// Left: my positions and favorites — tapping in opens the coin detail (K-lines left, buy/sell panel right); right: swap / cross-chain panel, any coin on any chain swaps directly.
+// Both blocks are the phone app's same code — not previews.
 import { Link } from 'react-router-dom'
 import { Star, Wallet } from 'lucide-react'
 import Swap from '@/pages/Swap'
@@ -21,7 +21,7 @@ import { WalletRequired } from '@/desktop/WalletRequired'
 
 export default function Spot() {
   const { holdings, btc, lastUpdated } = usePortfolio()
-  // 网页版没连钱包：持仓区给一句说明，右边闪兑换成「连接 0x4 Wallet」占位；自选照常能看
+  // Web with no wallet connected: show an explainer in the positions area, swap the right-side panel for a "Connect 0x4 Wallet" placeholder; favorites still viewable
   const connected = useWallet(isWalletConnected)
   const favorites = useFavorites((s) => s.items)
   const cache = useMarket((s) => s.cache)
@@ -38,7 +38,7 @@ export default function Spot() {
           {connected && !lastUpdated && <div className="page-gutter space-y-3 py-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-14" />)}</div>}
           {connected && lastUpdated > 0 && !positions.length && <div className="page-gutter flex items-center gap-3 py-3"><Wallet size={20} strokeWidth={1.5} className="shrink-0 text-muted" /><p className="text-sm text-muted">{t('钱包里还没有资产')}</p></div>}
           {positions.map((h) => (
-            <Link key={`${h.chainId}:${h.mint}`} to={h.chainId === BTC_CHAIN_ID ? `/swap?from=${BTC_CHAIN_ID}:bitcoin` /* 比特币闪兑（2026-09-30）：点 BTC 直接去兑换，预选卖出 BTC */ : h.chainId !== SOLANA_CHAIN_ID && isNative(h.mint) ? '/swap' : `/token/${chainById(h.chainId)?.dexKey || 'solana'}/${h.mint}`} {...(h.chainId !== BTC_CHAIN_ID ? pressPrefetchHandlers({ chain: chainById(h.chainId)?.dexKey || 'solana', address: h.mint }) : {})} className="token-row list-row page-gutter">
+            <Link key={`${h.chainId}:${h.mint}`} to={h.chainId === BTC_CHAIN_ID ? `/swap?from=${BTC_CHAIN_ID}:bitcoin` /* Bitcoin swap (2026-09-30): tapping BTC goes straight to the swap, pre-selecting sell-BTC */ : h.chainId !== SOLANA_CHAIN_ID && isNative(h.mint) ? '/swap' : `/token/${chainById(h.chainId)?.dexKey || 'solana'}/${h.mint}`} {...(h.chainId !== BTC_CHAIN_ID ? pressPrefetchHandlers({ chain: chainById(h.chainId)?.dexKey || 'solana', address: h.mint }) : {})} className="token-row list-row page-gutter">
               <TokenLogo src={h.logo} symbol={h.symbol} chain={h.chainId === SOLANA_CHAIN_ID ? 'solana' : chainById(h.chainId)?.dexKey} address={h.mint} />
               <div className="token-identity">
                 <div className="truncate text-[15px] font-semibold">{h.symbol}</div>

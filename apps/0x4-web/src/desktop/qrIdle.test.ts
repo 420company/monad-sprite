@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// 扫码登录的公共电脑（仅本次登录）没人在用就自动退出（2026-10-01 goat）：
-// 30 分钟没有活动弹窗「是否停止当前服务？」，2 分钟内不点自动退出；点、按键、滚轮、触摸、自己说话、发消息、送礼都算在用，只是开着看 / 听不算
+// QR-logged public computers ("this session only") auto-exit when idle (2026-10-01 goat):
+// 30 idle minutes pops "stop the current session?"; no tap within 2 minutes = auto-exit. Clicks, keys, scroll, touch, speaking, messaging, gifting all count as active; merely watching / listening doesn't
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GRACE_MS, IDLE_MS, PING_GAP_MS, idleStage, reportActivity, shouldPing, watchIdle, type ActivityKind, type IdleStage } from './qrIdle'
 
@@ -37,7 +37,7 @@ describe('扫码登录（仅本次）自动退出', () => {
     s.at(IDLE_MS); expect(s.stages).toEqual(['warn'])
     s.at(IDLE_MS + GRACE_MS); expect(s.stages).toEqual(['warn', 'out'])
     expect(s.ping).not.toHaveBeenCalled()
-    s.target.dispatchEvent(new Event('pointerdown'))   // 退出以后再动也不复活
+    s.target.dispatchEvent(new Event('pointerdown'))   // Once exited, activity doesn't revive it
     reportActivity('speak')
     expect(s.stages).toEqual(['warn', 'out'])
     s.w.stop()
@@ -49,10 +49,10 @@ describe('扫码登录（仅本次）自动退出', () => {
     s.target.dispatchEvent(new Event('pointerdown'))
     s.target.dispatchEvent(new Event('keydown'))
     expect(s.stages).toEqual(['warn'])
-    s.w.touch('input')   // 「继续使用」
+    s.w.touch('input')   // "Keep using"
     expect(s.stages).toEqual(['warn', 'ok'])
     expect(s.ping).toHaveBeenCalledWith('input')
-    // 续上以后重新计 30 分钟
+    // Resuming restarts the 30-minute clock
     s.at(s.now + IDLE_MS - 1000); expect(s.stages).toEqual(['warn', 'ok'])
     s.w.stop()
   })
@@ -64,7 +64,7 @@ describe('扫码登录（仅本次）自动退出', () => {
     expect(s.ping).not.toHaveBeenCalled()
     s.target.dispatchEvent(new Event('keydown'))
     expect(s.ping).toHaveBeenCalledTimes(1)
-    s.target.dispatchEvent(new Event('wheel'))          // 一分钟内再动：本地续期，不再发请求
+    s.target.dispatchEvent(new Event('wheel'))          // Activity within a minute: renew locally, no request sent
     expect(s.ping).toHaveBeenCalledTimes(1)
     s.w.stop()
   })
@@ -76,7 +76,7 @@ describe('扫码登录（仅本次）自动退出', () => {
       reportActivity(kind)
       expect(s.ping).toHaveBeenLastCalledWith(kind)
     }
-    // 讲了一个小时话，一次都没碰电脑：每 20 秒报一次「在说话」，不弹窗
+    // An hour of talking without touching the computer: "speaking" reported every 20s, no popup
     const start = s.now
     for (let t = 20_000; t <= 60 * 60_000; t += 20_000) { s.at(start + t); reportActivity('speak') }
     expect(s.stages).toEqual([])

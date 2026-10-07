@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// 直连 LI.FI 被限流时改走服务器备用通道（2026-10-05 goat 截图：闪兑报 HTTP 429 Rate limit exceeded）。
-// 核对：平时直连；直连 429 自动换服务器、这次就拿到报价；之后一小时直接走服务器；两边都 429 给一句中文；别的错误（没路线 404）照旧往外抛不换通道。
+// When direct LI.FI is rate-limited, switch to the server's fallback channel (2026-10-05 goat's screenshot: the swap reported HTTP 429 Rate limit exceeded).
+// Verify: direct connection normally; on direct 429 auto-switch to the server and get the quote this time; go straight to the server for the next hour; if both 429, give one line of Chinese; other errors (no-route 404) still throw outward without switching channels.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const API = 'https://api.test'
@@ -43,7 +43,7 @@ describe('LI.FI 被限流时改走服务器', () => {
     expect((q as unknown as { id: string }).id).toBe('proxy')
     expect(seen[0]).toMatch(/^https:\/\/li\.quest\/v1\/quote\?/)
     expect(seen[1].startsWith(`${API}/api/lifi/quote?`)).toBe(true)
-    expect(seen[1].split('?')[1]).toBe(seen[0].split('?')[1])   // 参数原样带过去
+    expect(seen[1].split('?')[1]).toBe(seen[0].split('?')[1])   // Pass the params through as-is
     seen = []
     script = [(u) => ({ url: u, status: 200, body: { chainId: 56, address: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT', decimals: 18, name: 'USDT', priceUSD: '1' } })]
     await getLifiToken(56, '0x55d398326f99059fF775485246999027B3197955')
@@ -59,7 +59,7 @@ describe('LI.FI 被限流时改走服务器', () => {
     const { t } = await import('./i18n')
     script = [rateLimited, (u) => ({ url: u, status: 429, body: { message: '请求太频繁，请稍后再试', code: 'BUSY' } })]
     const err = await getLifiQuote(quoteArgs as never).catch((e: Error) => e)
-    expect((err as Error).message).toBe(t('报价服务繁忙，请过几分钟再试'))   // 测试环境可能是英文界面，按当前语言比
+    expect((err as Error).message).toBe(t('报价服务繁忙，请过几分钟再试'))   // The test env may be in English — compare per current language
     expect((err as Error).message).not.toMatch(/HTTP 429|Rate limit/)
   })
 

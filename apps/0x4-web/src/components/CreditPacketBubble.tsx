@@ -1,4 +1,4 @@
-// 余额红包气泡：点开抢，领到的钱直接进余额
+// Balance red-packet bubble: tap to grab; claimed money lands straight in the balance
 import { useState } from 'react'
 import { Crown } from 'lucide-react'
 import PacketGlyph from './PacketGlyph'

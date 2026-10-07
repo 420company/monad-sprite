@@ -1,5 +1,5 @@
-// 排行榜：社区战绩、盈亏排名（24h / 7d / 30d / 全部）、我的排名、关注按钮。
-// 固定只显示前 50；我在前 50 里就把自己那行标亮，不在就在底部（Tab 栏上方）钉一行显示我的名次（2026-09-25）
+// Leaderboard: community records, PnL rankings (24h / 7d / 30d / all), my rank, follow button.
+// Always shows only the top 50; if I'm in the top 50 my row is highlighted, otherwise a pinned row above the tab bar shows my rank (2026-09-25)
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, Lock, Medal, Trophy, Users } from 'lucide-react'
@@ -23,7 +23,7 @@ const winRate = (r: { closed?: number; wins?: number }) => r.closed ? t('胜率 
 interface Alliance { id: string; name: string; avatar: string | null; members: number; pnl: number; official?: number | boolean }
 const periods = [['24h', '24小时'], ['7d', '7天'], ['30d', '30天'], ['all', '全部']] as const
 
-// 前三名奖牌颜色：金 / 银 / 铜（线条图标上色，亮暗主题都看得清）
+// Top-3 medal colors: gold / silver / bronze (line icons tinted, readable in both light and dark themes)
 const MEDAL = ['#e0a526', '#9aa3ad', '#c27a45']
 
 export const pnlText = (v: number) => `${v >= 0 ? '+' : '-'}${fmtUsd(Math.abs(v))}`
@@ -31,21 +31,21 @@ export const pnlClass = (v: number) => (v > 0 ? 'text-up' : v < 0 ? 'text-down' 
 
 export default function Leaderboard() {
   const { me, status } = useSocial()
-  // 周期记在会话里：点进某人主页再返回还是原来的周期（lib/pageState）
+  // The period is remembered in the session: tapping into someone's profile and back keeps the same period (lib/pageState)
   const [period, setPeriod] = usePageState<(typeof periods)[number][0]>('rank.period', '24h', oneOf(...periods.map((p) => p[0])))
   const [data, setData] = useState<{ list: Row[]; myRank: number | null; myPnl: number | null } | null>(null)
   const inTop = !!me && !!data?.list.some((r) => r.address === me.address)
   const [alliances, setAlliances] = useState<Alliance[]>([])
   const myGroups = useSocial((s) => s.myGroups)
   const [detail, setDetail] = useState<{ a: Alliance; rows: Row[] | null } | null>(null)
-  // 社区内的成员排行只给成员看；不是成员就提示加入
+  // In-community member rankings are members-only; non-members get a join prompt
   const openDetail = (a: Alliance) => {
     if (!myGroups.some((g) => g.id === a.id)) return toast.info(t('加入这个社区后才能看成员排行'))
     setDetail({ a, rows: null })
     api<Row[]>(`/api/communities/${a.id}/members`).then((rows) => setDetail((d) => d && d.a.id === a.id ? { a, rows } : d)).catch((e) => { toast.error(errorText(e, t('加载失败'))); setDetail(null) })
   }
 
-  // 每页最多 30 名；名次按全局序号算
+  // At most 30 per page; ranks follow the global sequence number
   const pager = usePager(data?.list, { reset: period })
   const detailPager = usePager(detail?.rows, { reset: detail?.a.id })
   useEffect(() => { api<typeof data>(`/api/leaderboard?period=${period}`).then(setData).catch(() => setData({ list: [], myRank: null, myPnl: null })) }, [period, status])
@@ -55,7 +55,7 @@ export default function Leaderboard() {
     <div>
       <div className="flex items-center justify-between px-4 pt-4">
         <h2 className="flex items-center gap-2 text-lg font-bold">{t('社区')} <span className="rounded bg-social/30 px-1.5 text-[10px]">{t('新')}</span></h2>
-        {/* 查看全部 = 去群组（2026-10-04 走查：以前指向 /community，而排行本来就在社区页里，点了没反应）。手机版 /groups 会切到社区的群组标签 */}
+        {/* "View all" = go to groups (2026-10-04 walkthrough: it used to point at /community, but rankings already live on the community page, so tapping did nothing). On phones /groups switches to the community's groups tab */}
         <Link to="/groups" className="flex items-center text-xs text-muted">{t('查看全部')} <ChevronRight size={14} /></Link>
       </div>
       <div className="no-scrollbar mt-2 flex gap-3 overflow-x-auto px-4 pb-1">
@@ -91,7 +91,7 @@ export default function Leaderboard() {
         {data && !data.list.length && <EmptyState icon={Trophy} title={t('还没有人交易，第一笔就是榜一')} />}
       </div>
       <Pager p={pager} className="page-gutter" />
-      {/* 我不在前 50：底部钉一行我的名次（贴在 Tab 栏上方，滚动时一直看得到） */}
+      {/* When I'm outside the top 50: a pinned row at the bottom shows my rank (stuck above the tab bar, always visible while scrolling) */}
       {me && data && !inTop && (
         <div className="sticky z-10 mx-4 mt-3" style={{ bottom: 'calc(4.25rem + max(8px, env(safe-area-inset-bottom)))' }}>
           <div className="glass flex items-center gap-3 rounded-2xl px-3 py-2.5">

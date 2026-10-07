@@ -1,6 +1,6 @@
-// 会议管理的前端状态（2026-09-30 goat：全员禁言、临时管理员、踢人、举手申请上台）。
-// 状态以服务器为准（server/src/meetAuth.ts）：进会、心跳、每个管理接口都返回一份；服务器也把它写进 LiveKit 房间元数据，
-// 会议里所有人实时收到。这里只负责解析和判断「界面该怎么显示」，权限本身由服务器和 LiveKit 强制，前端藏按钮不算数。
+// Meeting moderation frontend state (2026-09-30 goat: mute-all, temp admins, kick, hand-raise requests).
+// The server is the source of truth for state (server/src/meetAuth.ts): joining, heartbeats, and every admin endpoint return a copy; the server also writes it into the LiveKit room metadata,
+// Everyone in the meeting receives it in real time. This only parses and decides "how the UI should display it" — permissions are enforced by the server and LiveKit; hiding buttons on the client doesn't count.
 
 export type MeetRole = 'host' | 'admin' | 'member'
 export interface HandReq { address: string; name: string; at: number }
@@ -8,7 +8,7 @@ export interface ModState { host: string; admins: string[]; muteAll: boolean; st
 
 const isStr = (x: unknown): x is string => typeof x === 'string' && x.length > 0 && x.length <= 80
 
-/** 解析服务器给的状态（房间元数据是字符串，接口返回是对象）；格式不对返回 null */
+/** Parse the server-provided state (room metadata is a string, the API returns an object); return null on bad format */
 export function parseModState(raw: unknown): ModState | null {
   let o: unknown = raw
   if (typeof raw === 'string') { try { o = JSON.parse(raw) } catch { return null } }
@@ -25,12 +25,12 @@ export function roleIn(s: ModState | null, address: string): MeetRole {
   if (!s) return 'member'
   return s.host === address ? 'host' : s.admins.includes(address) ? 'admin' : 'member'
 }
-/** 能不能说话（和服务器同一规则）：主持人、管理员、没开全员禁言、或者已被批准上台 */
+/** Whether one may speak (same rules as the server): host, admin, no all-mute in effect, or already approved to go on stage */
 export function speakOk(s: ModState | null, address: string): boolean {
   if (!s) return true
   return roleIn(s, address) !== 'member' || !s.muteAll || s.stage.includes(address)
 }
-/** 我能不能对某人做管理操作：主持人管所有人；管理员只能管普通成员；谁都不能管自己和主持人 */
+/** Whether I can moderate someone: hosts moderate everyone; admins only regular members; nobody can moderate themselves or the host */
 export function canManage(s: ModState | null, me: string, target: string): boolean {
   if (!s || me === target || target === s.host) return false
   const r = roleIn(s, me)

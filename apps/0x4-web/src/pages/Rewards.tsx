@@ -1,4 +1,4 @@
-// 奖励（预留）：邀请码与积分。规则未定，界面先把入口和数据结构放好
+// Rewards (reserved): invite codes and points. Rules undecided — the UI puts the entry and data structures in place first
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Copy, Gift } from 'lucide-react'
 import Button from '@/components/Button'
@@ -13,7 +13,7 @@ import { errorText } from '@/lib/errors'
 interface Me { enabled: boolean; code: string; inviter: string | null; invitees: number; points: number; ledger: { amount: number; reason: string; created_at: number }[] }
 
 export default function Rewards() {
-  // 返回：有上一页退回上一页（上一页的状态 / 滚动都会还原），推送 / 深链直接打开的去 /settings
+  // Back: return to the previous page when there is one (its state / scroll restored); opened directly from a push / deep link goes to /settings
   const back = useBack('/settings')
   const [me, setMe] = useState<Me | null>(null)
   const [code, setCode] = useState('')

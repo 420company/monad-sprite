@@ -1,14 +1,14 @@
-// 燃料费（gas）检查与「自动补充燃料费」（2026-09-27 goat）
+// Gas checks and "auto gas top-up" (2026-09-27 goat)
 //
-// 小精灵找的 meme 币分布在不同链上，每条链的燃料费币种不一样（Solana 用 SOL，BSC 用 BNB，Base / 以太坊 / Arbitrum / Robinhood 用 ETH）。
-// 下单前检查三样：付款的币够不够、付款那条链有没有燃料费、目标链有没有燃料费（以后卖出要用），缺哪样说哪样。
+// Meme coins the sprite finds live on different chains, each with its own gas token (Solana uses SOL, BSC uses BNB, Base / Ethereum / Arbitrum / Robinhood use ETH).
+// Check three things before ordering: is the payment token enough, does the payment chain have gas, does the target chain have gas (needed later to sell) — say exactly what's missing.
 //
-// 自动补充燃料费：用户设一个燃料预算（最少 10 美元，默认 20），以 BNB 的形式放在自己钱包的 BSC 上 ——
-//   · BNB 本身就是 BSC 的燃料费，我们的主力链不用换；
-//   · 其它链缺燃料费时，从 BNB 一步换过去（LI.FI）。2026-09-27 实测约 2.35 美元的 BNB 换到 Solana / Base / Robinhood / Arbitrum / 以太坊，
-//     到账 2.30~2.33 美元，手续费合计约 0.05 美元，2~9 秒到账；
-//   · 「预存」只是账面上留出来：钱一直在用户自己的钱包里，App 买币时不动这部分 BNB，只拿它补燃料费。
-// 补燃料费不收平台手续费。
+// Auto gas top-up: the user sets a gas budget (min $10, default $20), kept as BNB on BSC in their own wallet —
+//   · BNB is BSC's gas already, and BSC is our main chain — no swap needed;
+//   · when other chains run low, swap from BNB in one step (LI.FI). Tested 2026-09-27: ~$2.35 of BNB to Solana / Base / Robinhood / Arbitrum / Ethereum,
+//     arrived $2.30–2.33, total fees ~$0.05, arrived in 2–9 seconds;
+//   · the "reserve" is only earmarked on paper: the money stays in the user's own wallet; the app never touches this BNB when buying coins, only uses it for gas top-ups.
+// Gas top-ups carry no platform fee.
 import { BTC_CHAIN_ID, chainById, isGasToken, SOLANA_CHAIN_ID } from './chains'
 import { getLifiQuote, executeLifiStep, type ExecPhase, type LiFiStep } from './lifi'
 import { REFUEL_FROM_CHAIN, REFUEL_FROM_TOKEN, REFUEL_ORDER, REFUEL_SLIPPAGE, refuelQuoteProblem, type RefuelQuoteLike } from './refuelQuote'
@@ -25,25 +25,25 @@ export const RESERVE_MIN_USD = 10
 export const RESERVE_DEFAULT_USD = 20
 
 /**
- * 每条链：低于 minUsd 就算「缺燃料费」，补的时候补 topUpUsd。
- * Solana 按我们设的优先费上限（0.005 SOL）留 1 美元；L2 一笔几美分；以太坊主网一笔兑换就要几美元，留得多、补得多。
+ * Per chain: below minUsd counts as "low on gas"; top-ups bring it to topUpUsd.
+ * Solana keeps $1 based on our priority-fee cap (0.005 SOL); L2s cost cents per tx; Ethereum mainnet swaps cost dollars per tx, so it keeps and tops up more.
  */
 const GAS_RULE: Record<number, { minUsd: number; topUpUsd: number }> = {
-  [SOLANA_CHAIN_ID]: { minUsd: 0.5, topUpUsd: 5 },   // 第一次买新币要开代币账户，押金约 0.4 美元
-  56: { minUsd: 0.1, topUpUsd: 0 },                  // BSC：燃料费就是 BNB 预存本身，不用换
+  [SOLANA_CHAIN_ID]: { minUsd: 0.5, topUpUsd: 5 },   // First-time buys of a new token need a token account, deposit ≈ $0.4
+  56: { minUsd: 0.1, topUpUsd: 0 },                  // BSC: gas is the BNB reserve itself, no swap needed
   1: { minUsd: 0.5, topUpUsd: 5 },
 }
 const DEFAULT_RULE = { minUsd: 0.1, topUpUsd: 5 }
-/** 一次补充最少 5 美元（2026-09-29 goat：补 2 美元太少）。服务器算出来更少也按 5 美元补 */
+/** Minimum $5 per top-up (2026-09-29 goat: $2 is too little). Even if the server computes less, top up $5 */
 export const MIN_TOPUP_USD = 5
-/** 服务器下发的「标准补充量 / 警戒线」最多这么多（美元）。以太坊主网一笔兑换几美元，补 10 美元够用很多次；超过就不信，用本地默认 */
+/** Max for the server-pushed "standard top-up / warning line" (USD). Ethereum mainnet swaps cost dollars each; $10 covers many times; beyond this, don't trust it — use local defaults */
 export const MAX_TOPUP_USD = 10
-/** 实际一次补充的硬上限：下单前按「这笔需要的 × 1.2」补，最多约 12 美元；超过 50 美元的补充一定不正常 */
+/** Hard cap per actual top-up: before ordering, top up "what this tx needs × 1.2", at most ~$12; any top-up over $50 is definitely abnormal */
 export const MAX_REFUEL_USD = 50
 const okNum = (x: unknown, max: number) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= max
 /**
- * 服务器按各链最近 24 小时实测的燃料费定的标准（GET /api/gas/rules，每 3 小时更新）：警戒线 = 平均一笔 × 3，补充量 = × 10（最少 5 美元）。
- * 上面的固定值只在拿不到服务器数据时兜底。
+ * Server-set standards from measured gas per chain over the last 24h (GET /api/gas/rules, refreshed every 3h): warning line = avg tx × 3, top-up amount = × 10 (min $5).
+ * The fixed values above are only a fallback when the server data is unavailable.
  */
 let liveRules: Record<number, { minUsd: number; topUpUsd: number }> = {}
 let rulesAt = 0
@@ -58,12 +58,12 @@ export async function loadGasRules(): Promise<void> {
 export const gasRule = (chainId: number) => {
   const local = GAS_RULE[chainId] || DEFAULT_RULE
   const live = liveRules[chainId]
-  // 服务器数据只在都是合理数字时才用：补充量 0 < x ≤ 10 美元、警戒线不超过补充量；否则用本地默认值，防止服务器出错或被篡改让 App 一次换走一大笔 BNB（审查 #12）
+  // Server data is used only when all numbers are sane: top-up 0 < x ≤ $10, warning line not above the top-up; otherwise use local defaults, so a server bug or tamper can't make the app swap away a large BNB chunk at once (review #12)
   const r = live && okNum(live.minUsd, MAX_TOPUP_USD) && okNum(live.topUpUsd, MAX_TOPUP_USD) && live.topUpUsd > 0 && live.minUsd <= live.topUpUsd ? live : local
   return chainId === 56 ? { ...r, topUpUsd: 0 } : { ...r, topUpUsd: Math.max(MIN_TOPUP_USD, r.topUpUsd) }
 }
 
-/** 这条链上的原生币（燃料费）值多少美元 */
+/** What the native (gas) token on this chain is worth in USD */
 export function nativeUsd(holdings: Holding[], chainId: number): number {
   return holdings.filter((h) => h.chainId === chainId && isGasToken(chainId, h.mint)).reduce((s, h) => s + (h.valueUsd || 0), 0)
 }
@@ -71,19 +71,19 @@ export function nativeAmount(holdings: Holding[], chainId: number): number {
   return holdings.filter((h) => h.chainId === chainId && isGasToken(chainId, h.mint)).reduce((s, h) => s + h.amount, 0)
 }
 /**
- * 这条链有燃料费币、但这次没拿到价格（价格接口失败时 priceUsd 记成 0）：值多少不知道，不能当成 0 去补（2026-09-29 审查 P2）。
- * 只有「确实没有燃料费币」才算 0。
+ * The chain has a gas token but this round got no price (priceUsd recorded as 0 when the price API fails): unknown value must not be treated as 0 for top-ups (2026-09-29 review P2).
+ * Only "truly no gas token" counts as 0.
  */
 export function nativePriceUnknown(holdings: Holding[], chainId: number): boolean {
   return holdings.some((h) => h.chainId === chainId && isGasToken(chainId, h.mint) && h.amount > 0 && !(h.priceUsd > 0))
 }
-/** 网络问题（超时、断网、请求被中止）：不代表这条路线没了，不该打「暂不可补」 */
+/** Network problems (timeout, offline, aborted request): don't mean the route is gone — must not be marked "temporarily untoppable" */
 export function isNetworkError(e: unknown): boolean {
   if (!(e instanceof Error)) return false
   if (e.name === 'AbortError' || e.name === 'TimeoutError') return true
   return /timeout|timed out|abort|Failed to fetch|NetworkError|network|Load failed/i.test(e.message)
 }
-/** 自动补充只在钱包已解锁时进行：锁着就跳过，不为自动补充弹验证框（2026-09-29 审查 P2，手动补充不受影响） */
+/** Auto top-ups only run while the wallet is unlocked: skip while locked, never pop a verification dialog for auto top-ups (2026-09-29 review P2; manual top-ups unaffected) */
 export const canAutoRefuel = (o: { enabled: boolean; hasAccount: boolean; keysUnlocked: boolean; portfolioReady: boolean }) =>
   o.enabled && o.hasAccount && o.keysUnlocked && o.portfolioReady
 const gasSymbol = (chainId: number) => chainById(chainId)?.native.symbol || ''
@@ -92,18 +92,18 @@ const chainName = (chainId: number) => chainById(chainId)?.name || ''
 export interface GasProblem {
   kind: 'pay' | 'gas'
   chainId: number
-  /** 缺的币（付款币或燃料费币） */
+  /** The missing token (payment token or gas token) */
   symbol: string
-  /** 大约还差多少美元 */
+  /** Roughly how many USD short */
   needUsd: number
-  /** 能不能从 BNB 预存里自动补（只有燃料费能补） */
+  /** Whether it can be auto-topped from the BNB reserve (gas only) */
   refillable: boolean
 }
 
 /**
- * 下单前检查。pay：付什么、付多少（美元）；targetChainId：买到的币在哪条链（以后卖出要那条链的燃料费）；
- * bundledTargetGas：跨链买入时兑换已经顺带换了目标链燃料费（TradeSheet 对 EVM 目标会这么做），目标链就不算缺；
- * reserveUsd：BNB 预存（开了自动补充才传），付款用 BNB 时这部分不能动
+ * Pre-order check. pay: what and how much (USD); targetChainId: which chain the bought coin lands on (selling later needs that chain's gas);
+ * bundledTargetGas: for cross-chain buys the swap already bundled target-chain gas (TradeSheet does this for EVM targets), so the target chain doesn't count as low;
+ * reserveUsd: the BNB reserve (passed only when auto top-up is on) — untouchable when paying with BNB
  */
 export function checkGas(o: {
   holdings: Holding[]
@@ -116,9 +116,9 @@ export function checkGas(o: {
   const { holdings, pay, targetChainId } = o
   const payNative = isGasToken(pay.chainId, pay.token)
   const reserve = pay.chainId === BSC && payNative ? o.reserveUsd || 0 : 0
-  // 1. 付款的币够不够（用 BNB 付时，预存的那部分不算可用）
+  // 1. Is the payment token enough (when paying with BNB, the reserved portion doesn't count as available)
   if (pay.usd > pay.balanceUsd - reserve + 1e-9) out.push({ kind: 'pay', chainId: pay.chainId, symbol: '', needUsd: Math.max(0, pay.usd - (pay.balanceUsd - reserve)), refillable: false })
-  // 比特币没有单独的燃料费：矿工费直接从这笔 BTC 里出（跨链服务给的交易已经算好），不检查、也不去「补燃料费」（2026-09-30 比特币闪兑）
+  // Bitcoin has no separate gas: miner fees come straight out of the BTC (the cross-chain service's tx already accounts for them) — don't check, don't "top up gas" (2026-09-30 Bitcoin flash-swap)
   if (pay.chainId === BTC_CHAIN_ID) {
     if (targetChainId !== BTC_CHAIN_ID && !o.bundledTargetGas) {
       const rule = gasRule(targetChainId)
@@ -127,11 +127,11 @@ export function checkGas(o: {
     }
     return out
   }
-  // 2. 付款那条链的燃料费：付原生币时，付完还要剩下燃料费
+  // 2. Gas on the payment chain: when paying with the native token, gas must remain after paying
   const rulePay = gasRule(pay.chainId)
   const havePay = nativeUsd(holdings, pay.chainId) - (payNative ? pay.usd : 0)
   if (havePay < rulePay.minUsd) out.push({ kind: 'gas', chainId: pay.chainId, symbol: gasSymbol(pay.chainId), needUsd: rulePay.minUsd - Math.max(0, havePay), refillable: pay.chainId !== BSC })
-  // 3. 目标链的燃料费（同链已经在第 2 条查过）
+  // 3. Gas on the target chain (same-chain already covered in step 2)
   if (targetChainId !== pay.chainId && targetChainId !== BTC_CHAIN_ID && !o.bundledTargetGas) {
     const rule = gasRule(targetChainId)
     const have = nativeUsd(holdings, targetChainId)
@@ -140,23 +140,23 @@ export function checkGas(o: {
   return out
 }
 
-/** 给用户看的提示：缺哪样说哪样 */
+/** User-facing message: say exactly what's missing */
 export function describeProblem(p: GasProblem): string {
   if (p.kind === 'pay') return t('付款余额不足，还差约 ${usd}', { usd: p.needUsd.toFixed(2) })
   return t('{chain} 上缺少 {symbol} 作为燃料费（约 ${usd}）', { chain: chainName(p.chainId), symbol: p.symbol, usd: Math.max(0.5, p.needUsd).toFixed(2) })
 }
 
-/** 从 BSC 上的 BNB 补多少美元（按规则补一次，最少补够缺口） */
+/** How many USD to top up from BSC BNB (one top-up per the rules, at least covering the shortfall) */
 export const topUpUsd = (p: GasProblem) => Math.max(gasRule(p.chainId).topUpUsd, Math.ceil(p.needUsd * 1.2 * 100) / 100)
 
 /**
- * 补燃料费的报价（只报价，不签名）：从 BSC 的 BNB 换目标链的原生燃料费币，参数见 refuelQuote.ts（实测脚本用的同一套）。
- * 拿不到路线、或报价不对（到账不是燃料费币、数量为 0）就把这条链记成「暂不可补」并报一句清楚的话；拿到了就清掉这个记号。
+ * Gas top-up quote (quote only, no signature): swap BSC BNB into the target chain's native gas token — params per refuelQuote.ts (same set the measurement scripts use).
+ * No route, or a bad quote (payout isn't the gas token, amount is 0) → mark the chain "temporarily untoppable" with a clear message; clear the mark when a quote succeeds.
  */
 export async function quoteRefuel(o: { chainId: number; usd: number; bnbPriceUsd: number; evmAddress: string; solanaAddress: string }): Promise<LiFiStep> {
   const target = chainById(o.chainId)
   if (!target || o.chainId === BSC) throw new Error(t('这条链不需要补燃料费'))
-  // 最后一道：金额必须是合理的正数，且不超过硬上限（手动补、自动补、下单前补都经过这里）
+  // Last line of defense: the amount must be a sane positive number within the hard cap (manual, auto, and pre-order top-ups all pass through here)
   if (!(Number.isFinite(o.usd) && o.usd > 0 && o.usd <= MAX_REFUEL_USD)) throw new Error(t('补充金额不对'))
   if (!(o.bnbPriceUsd > 0)) throw new Error(t('暂时拿不到 BNB 价格，稍后再试'))
   const toAddress = o.chainId === SOLANA_CHAIN_ID ? o.solanaAddress : o.evmAddress
@@ -170,21 +170,21 @@ export async function quoteRefuel(o: { chainId: number; usd: number; bnbPriceUsd
       fromAmount, fromAddress: o.evmAddress, toAddress, slippage: REFUEL_SLIPPAGE, order: REFUEL_ORDER,
     })
   } catch (e) {
-    // 网络断了、超时不算路线没了：原样报网络问题，不打「暂不可补」
+    // Dropped network / timeout doesn't mean the route is gone: report the network problem as-is, don't mark "temporarily untoppable"
     if (isNetworkError(e)) throw e
     markRouteDown(o.chainId)
     throw unavailable()
   }
-  // 报价逐项核对：从 BNB Chain 的 BNB 出、金额和我们要的一致、钱打回本人地址、到账是这条链的燃料费币（审查 P3，不全信报价接口）
+  // Verify the quote item by item: sourced from BNB Chain's BNB, amount matches what we asked, funds go back to the user's own address, payout is this chain's gas token (review P3 — never fully trust the quote API)
   if (refuelQuoteProblem(quote as unknown as RefuelQuoteLike, o.chainId, target.native.address, { fromAmount: fromAmount.toString(), fromAddress: o.evmAddress, toAddress })) { markRouteDown(o.chainId); throw unavailable() }
   markRouteUp(o.chainId)
   return quote
 }
 
 /**
- * 从 BSC 的 BNB 换目标链的燃料费（不收平台手续费）。需要：BNB 够 usd + BSC 自己的一点燃料费。
- * 顺序：先报价（拿不到路线就停，不会弹密码、不会发出注定失败的交易）→ beforeSign（燃料费页用它请用户验证身份，面板上写着金额）→ 签名发送。
- * 返回 BSC 上的交易哈希。
+ * Swap BSC BNB into the target chain's gas (no platform fee). Needs: enough BNB for usd + a little BSC gas of its own.
+ * Order: quote first (stop if no route — no password prompt, no doomed tx sent) → beforeSign (the gas page uses it to ask the user to verify identity, amount shown on the panel) → sign and send.
+ * Returns the BSC tx hash.
  */
 export async function refuel(o: {
   chainId: number; usd: number; bnbPriceUsd: number; bnbUsd: number
@@ -199,8 +199,8 @@ export async function refuel(o: {
 }
 
 /**
- * 燃料费预警（2026-09-27 goat）：这条链上还有币（非原生币合计 ≥ 1 美元），但燃料费低于安全线 —— 卖出时会失败。
- * 比特币链没有「燃料费币」的概念（手续费从 BTC 里扣），不查。
+ * Gas warning (2026-09-27 goat): this chain still holds tokens (non-native total ≥ $1) but gas is below the safety line — selling would fail.
+ * Bitcoin has no "gas token" concept (fees come out of the BTC), so it's not checked.
  */
 export interface LowGas { chainId: number; symbol: string; holdingsUsd: number; gasUsd: number; minUsd: number }
 export function lowGasChains(holdings: Holding[]): LowGas[] {
@@ -216,11 +216,11 @@ export function lowGasChains(holdings: Holding[]): LowGas[] {
 }
 
 /**
- * 燃料费油量表的三档（2026-09-29 goat：像汽车仪表盘的油量表，low / middle / high，红 / 黄 / 绿）。
- * 其他链：低于这条链的警戒线（minUsd，约够 3 笔交易）是 low，卖出都可能失败；
- *   到警戒线 3 倍（约够 9 笔）之前是 middle；再往上是 high。
- * BNB Chain：BNB 既付这条链自己的燃料费，也是给其他链补燃料费的预存。
- *   连这条链的警戒线都不到是 low；够付燃料费、但没到预存金额（开了自动补充用用户设的金额，否则按最少预存 RESERVE_MIN_USD）是 middle；到了是 high。
+ * The gas gauge's three levels (2026-09-29 goat: like a car dashboard gauge, low / middle / high, red / yellow / green).
+ * Other chains: below this chain's warning line (minUsd, ≈ 3 txs worth) is low — even selling may fail;
+ *   up to 3× the warning line (≈ 9 txs) is middle; above that is high.
+ * BNB Chain: BNB pays this chain's own gas and is also the reserve for topping up other chains.
+ *   Below this chain's warning line is low; enough for gas but below the reserve amount (user-set amount when auto top-up is on, else the minimum reserve RESERVE_MIN_USD) is middle; at/above is high.
  */
 export type FuelLevel = 'low' | 'middle' | 'high'
 export function fuelLevel(chainId: number, usd: number, reserveUsd = RESERVE_MIN_USD): FuelLevel {
@@ -231,9 +231,9 @@ export function fuelLevel(chainId: number, usd: number, reserveUsd = RESERVE_MIN
 }
 
 /**
- * 自动补充这一轮补哪条链（GasWatch 调用，纯函数便于测试）：
- * 候选 = 有币却缺燃料费的链（low）+ 用户在燃料费页添加的链里余额低于警戒线的（fuelChains，只看这次成功读到余额的链，读失败不当成 0）；
- * 去掉 BNB Chain 本身、6 小时内补过的、路线暂不可用的；BNB 要够这次补充 + BNB Chain 自己的燃料费；24 小时累计不超过预存金额。
+ * Which chain this auto top-up round covers (called by GasWatch, pure function for testability):
+ * candidates = chains with tokens but low gas (low) + chains the user added on the gas page whose balance is below the warning line (fuelChains — only chains whose balance was successfully read this round; a failed read doesn't count as 0);
+ * exclude BNB Chain itself, chains topped up within 6h, and routes marked temporarily unavailable; BNB must cover this top-up + BNB Chain's own gas; 24h cumulative must not exceed the reserve amount.
  */
 export function autoRefuelDue(o: {
   holdings: Holding[]; low: number[]; fuelChains: readonly number[]; scannedChains: readonly number[]

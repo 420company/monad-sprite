@@ -1,4 +1,4 @@
-// 链标识小徽章
+// Chain identifier badge
 import { chainById } from '@/lib/chains'
 
 export default function ChainBadge({ chainId, className = '' }: { chainId: number; className?: string }) {

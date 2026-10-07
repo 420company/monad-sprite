@@ -1,4 +1,4 @@
-// 果蝇提案确认弹层（真金 · 确认下单模式）：果蝇想买 / 卖 → 推送到手机 → 一键打开下单，用自己的钱包签名
+// Fly proposal confirm sheet (real money · confirm-order mode): the fly wants to buy / sell → pushed to the phone → one tap opens the order, signed with your own wallet
 import { useEffect, useState } from 'react'
 import Sheet from './Sheet'
 import Button from './Button'
@@ -20,14 +20,14 @@ export default function ProposalSheet() {
   const [left, setLeft] = useState(0)
   useEffect(() => {
     if (!p) { setToken(null); return }
-    // 拉一次行情把提案里的币补全成可下单的代币对象；拉不到就用最小信息
+    // One market fetch completes the proposal's coin into an orderable token object; minimal info when the fetch fails
     const fallback: MarketToken = { chain: p.chain, chainId: chainByDexKey(p.chain)?.id || 0, address: p.token, symbol: p.symbol, name: p.symbol, priceUsd: p.price || 0 } as MarketToken
-    // 名字用小精灵自己的叫法（BNB），不露出行情里的 WBNB，和行情自选一样（2026-10-04）
+    // Names use the sprite's own wording (BNB), never leaking the market's WBNB — same as the market watchlist (2026-10-04)
     lookupAnyChain(p.token).then((l) => { const hit = l.find((t) => t.chain === p.chain) || l[0]; setToken(hit ? { ...hit, symbol: p.symbol } : fallback) }).catch(() => setToken(fallback))
   }, [p?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!p) return; const t = setInterval(() => setLeft(Math.max(0, p.expiresAt - Date.now())), 1000); return () => clearInterval(t) }, [p])
   if (!p) return null
-  const finish = async (action: 'done' | 'skip', tx?: string) => { try { await api(`/api/fly/proposals/${p.id}/${action}`, { method: 'POST', body: JSON.stringify({ tx }) }) } catch { /* 过期或已处理 */ } dismissProposal(p.id) }
+  const finish = async (action: 'done' | 'skip', tx?: string) => { try { await api(`/api/fly/proposals/${p.id}/${action}`, { method: 'POST', body: JSON.stringify({ tx }) }) } catch { /* Expired or already handled */ } dismissProposal(p.id) }
   return (
     <>
       <Sheet open={!trading} onClose={() => finish('skip')} title={t('交易建议')}>

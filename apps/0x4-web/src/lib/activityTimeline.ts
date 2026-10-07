@@ -1,38 +1,38 @@
-// 活动页时间线（2026-09-26）：EVM（服务端 /api/me/activity/evm）、Solana、比特币、闪兑 / 跨链记录合成一条按时间倒序的列表。
-// 这个文件只放纯逻辑（归并、分组、Solana 交易解析），不碰网络和 store，方便单测；数据源在 activitySources.ts。
+// Activity-page timeline (2026-09-26): EVM (server /api/me/activity/evm), Solana, Bitcoin, and swap/bridge records merged into one reverse-chronological list.
+// Pure logic only here (merging, grouping, Solana tx parsing) — no network, no store — for easy unit tests; data sources live in activitySources.ts.
 //
-// · 每个数据源各自分页、各自按时间倒序。合并用 k 路归并：只有每个还没读完的源都有缓冲时，最前面那条才一定是全局最新，
-//   哪个源的缓冲空了就再拉它一页。这样「加载更多」时老的比特币记录不会插到还没拉到的新 EVM 记录前面。
-// · 某个源失败不拖垮整个列表：先显示其它源的，记下失败的源，页面上给「部分记录读取失败，点击重试」。
-// · 一笔交易可能有好几条（兑换 = 一出一进），列表显示时按「链 + 哈希」合成一行（groupTimeline）。
+// - Each source paginates independently, each in reverse-chronological order. Merging is k-way: only when every unfinished source has a buffered item is the front item guaranteed globally newest;
+//   whichever source's buffer runs dry gets another page fetched. So "load more" never inserts old Bitcoin records ahead of not-yet-fetched new EVM ones.
+// - One failing source doesn't sink the whole list: show the others, remember the failed source, and offer "some records failed to load, tap to retry" on the page.
+// - One transaction may yield several entries (a swap = one out + one in); the list merges them into one row by "chain + hash" (groupTimeline).
 import { BTC_CHAIN_ID, SOLANA_CHAIN_ID, chainById, sameAddr } from './chains'
 
 export type Direction = 'in' | 'out' | 'self'
-/** 一条收发（一笔交易里的一条腿） */
+/** One leg of a transaction (a single send/receive entry) */
 export interface TimelineEntry {
   id: string
   chainId: number
   hash: string
-  /** 毫秒；比特币未确认的记成拉取时刻，排在最前 */
+  /** Milliseconds; unconfirmed Bitcoin entries use the fetch time and sort first */
   time: number
   direction: Direction
   asset: { symbol: string; address: string; decimals: number; logo?: string }
-  /** 十进制字符串；认不出金额的（没解析的 Solana 交易）是空串 */
+  /** Decimal string; empty when the amount is unrecognized (unparsed Solana tx) */
   amount: string
   counterparty?: string
   status: 'success' | 'failed' | 'pending'
   source: 'evm' | 'sol' | 'btc' | 'bridge'
-  /** 闪兑 / 跨链记录（App 里自己发起的，本机保存） */
+  /** Swap / bridge records (initiated in-app, saved locally) */
   bridge?: BridgeLike
 }
 
-/** store/bridge 的 Transfer 里用得到的字段（不直接引 store，保持这里是纯逻辑） */
+/** Fields used by store/bridge's Transfer (store not imported directly — keeps this file pure logic) */
 export interface BridgeLike {
   txHash: string; fromChain: number; toChain: number; fromSymbol: string; toSymbol: string; fromAmount: number; toAmount: number
   status: 'PENDING' | 'DONE' | 'FAILED'; createdAt: number; explorerLink?: string; receivingTxLink?: string
 }
 
-/** 同一时刻多条记录的先后：BSC 最前（用户的钱主要在 BSC），然后其它 EVM、Solana、比特币 */
+/** Tie-break for same-timestamp entries: BSC first (users' money is mostly on BSC), then other EVMs, Solana, Bitcoin */
 const CHAIN_RANK = [56, 1, 8453, 42161, 137, 10]
 export function chainRank(chainId: number): number {
   const i = CHAIN_RANK.indexOf(chainId)
@@ -40,7 +40,7 @@ export function chainRank(chainId: number): number {
   return chainId === SOLANA_CHAIN_ID ? 20 : chainId === BTC_CHAIN_ID ? 21 : 10
 }
 
-/** a 排在 b 前面返回负数：时间新的在前 → 链排序 → 哈希 → id（同一笔交易的几条挨在一起） */
+/** Negative when a sorts before b: newer first → chain order → hash → id (legs of one tx stay adjacent) */
 export function compareEntries(a: TimelineEntry, b: TimelineEntry): number {
   if (a.time !== b.time) return b.time - a.time
   const r = chainRank(a.chainId) - chainRank(b.chainId)
@@ -49,12 +49,12 @@ export function compareEntries(a: TimelineEntry, b: TimelineEntry): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
 
-// ── 归并 ──
+// ── Merging ──
 export interface SourcePage { items: TimelineEntry[]; next: string | null; unavailable?: number[] }
 export interface TimelineSource { id: string; fetch: (cursor: string | null, signal: AbortSignal) => Promise<SourcePage> }
 export interface MergedPage { items: TimelineEntry[]; done: boolean; failed: string[]; unavailable: number[] }
 
-/** 单个源连着拿到空页（全被过滤掉了）最多再追几页，免得死循环 */
+/** How many extra pages to chase when one source keeps returning empty (all filtered out) — guards against infinite loops */
 const MAX_ROUNDS = 6
 
 export function createMerger(sources: TimelineSource[], opts: { pageSize: number; skip?: (e: TimelineEntry) => boolean }) {
@@ -80,7 +80,7 @@ export function createMerger(sources: TimelineSource[], opts: { pageSize: number
     }
   }
 
-  /** 下一页。所有源都失败（而且一条都没拿到过）时抛错，交给页面显示「读取失败」 */
+  /** Next page. Throws when all sources failed (and nothing was ever fetched), so the page can show "failed to load" */
   async function page(signal: AbortSignal): Promise<MergedPage> {
     const out: TimelineEntry[] = []
     for (let round = 0; round < MAX_ROUNDS && out.length < opts.pageSize; round++) {
@@ -107,7 +107,7 @@ export function createMerger(sources: TimelineSource[], opts: { pageSize: number
   return { page }
 }
 
-// ── 分组成一行 ──
+// ── Grouping into one row ──
 export type RowKind = 'receive' | 'send' | 'self' | 'swap' | 'bridge' | 'other'
 export interface Leg { symbol: string; amount: string; address: string; chainId: number }
 export interface TimelineRow {
@@ -117,19 +117,21 @@ export interface TimelineRow {
   time: number
   kind: RowKind
   status: 'success' | 'failed' | 'pending'
-  /** 转出 / 兑换付出的那条 */
+  /** The leg paid out (send / swap out) */
   out?: Leg
-  /** 收到 / 兑换得到的那条 */
+  /** The leg received (receive / swap in) */
   in?: Leg
   counterparty?: string
-  /** 同一笔里另外还有几条（空投一次收好几个币之类） */
+  /** Other legs in the same tx (e.g. an airdrop paying several coins at once) */
   more: number
   bridge?: BridgeLike
 }
 
 /**
- * 假币：符号冒充本链原生币或常用币（USDT / USDC…）但合约地址不对。BSC / Polygon 上「地址投毒」天天有人发这种币，
- * 列表里显示「收到 1000 USDT」会误导人，直接不显示。只看收款方向（自己转出的不可能是被人塞的）。
+ * Scam tokens: symbols impersonating the chain's native coin or common coins (USDT / USDC…) with the wrong
+ * contract address. BSC / Polygon get "address poisoning" drops of these daily; showing "received 1000 USDT"
+ * in the list would mislead, so they're hidden outright. Only the receive direction is checked (my own
+ * sends can't be planted on me).
  */
 export function isSpoofToken(e: TimelineEntry): boolean {
   if (e.direction !== 'in' || e.source !== 'evm') return false
@@ -145,7 +147,7 @@ export function isSpoofToken(e: TimelineEntry): boolean {
 const legOf = (e: TimelineEntry): Leg => ({ symbol: e.asset.symbol, amount: e.amount, address: e.asset.address, chainId: e.chainId })
 const big = (e: TimelineEntry) => Number(e.amount) || 0
 
-/** 按「链 + 哈希」把几条腿合成一行，保持时间倒序 */
+/** Merge legs into one row by "chain + hash", keeping reverse-chronological order */
 export function groupTimeline(entries: TimelineEntry[]): TimelineRow[] {
   const sorted = entries.filter((e) => !isSpoofToken(e)).sort(compareEntries)
   const groups = new Map<string, TimelineEntry[]>()
@@ -169,7 +171,7 @@ export function groupTimeline(entries: TimelineEntry[]): TimelineRow[] {
     const outs = legs.filter((e) => e.direction === 'out').sort((a, b) => big(b) - big(a))
     const ins = legs.filter((e) => e.direction === 'in').sort((a, b) => big(b) - big(a))
     const selfs = legs.filter((e) => e.direction === 'self')
-    // 兑换：同一笔里付出一种、得到另一种
+    // Swap: paid one kind, got another, in the same tx
     const swapOut = outs[0], swapIn = ins.find((e) => !swapOut || e.asset.symbol !== swapOut.asset.symbol || !sameAddr(e.asset.address, swapOut.asset.address))
     if (swapOut && swapIn) {
       rows.push({ ...base, kind: 'swap', out: legOf(swapOut), in: legOf(swapIn), more: legs.length - 2 })
@@ -184,8 +186,8 @@ export function groupTimeline(entries: TimelineEntry[]): TimelineRow[] {
   return rows.sort((a, b) => b.time - a.time || chainRank(a.chainId) - chainRank(b.chainId))
 }
 
-// ── Solana 交易解析 ──
-/** getParsedTransaction 结果里用得到的部分（结构兼容 @solana/web3.js 的 ParsedTransactionWithMeta） */
+// ── Solana tx parsing ──
+/** The used subset of getParsedTransaction results (structurally compatible with @solana/web3.js's ParsedTransactionWithMeta) */
 export interface SolParsedTx {
   meta: {
     err: unknown; fee: number; preBalances: number[]; postBalances: number[]
@@ -198,9 +200,9 @@ interface SolTokenBalance { accountIndex: number; mint: string; owner?: string; 
 interface SolIx { program?: string; parsed?: { type?: string; info?: Record<string, unknown> } | string }
 
 export const SOL_NATIVE = '11111111111111111111111111111111'
-/** 不到这么多 lamports 的 SOL 变动算零头（账户租金、优先费之类） */
+/** SOL moves below this many lamports count as dust (account rent, priority fees, etc.) */
 const SOL_DUST = 10_000n
-/** 有代币变动时，SOL 变动小于这个（0.003 SOL）当成开代币账户的租金，不单独列 */
+/** When tokens moved too, a SOL move under this (0.003 SOL) is treated as token-account rent, not listed separately */
 const RENT_LIKE = 3_000_000n
 
 function units(raw: bigint, decimals: number): string {
@@ -212,8 +214,9 @@ function units(raw: bigint, decimals: number): string {
 }
 
 /**
- * 从 owner 的角度看一笔 Solana 交易：SOL 与各代币的净变化 → 收 / 发的腿。认不出（没有余额变化、交易失败）返回一条空金额的「Solana 交易」。
- * owner 付的手续费不算进「发送」金额里。
+ * One Solana transaction from the owner's perspective: net SOL and token changes → send/receive legs.
+ * Unrecognized (no balance change, failed tx) returns an empty-amount "Solana transaction".
+ * Fees paid by the owner aren't counted in the "sent" amount.
  */
 export function parseSolanaTx(sig: string, blockTime: number | null | undefined, tx: SolParsedTx | null, owner: string, symbolOf: (mint: string) => string): TimelineEntry[] {
   const time = (blockTime || 0) * 1000
@@ -224,7 +227,7 @@ export function parseSolanaTx(sig: string, blockTime: number | null | undefined,
   const keys = tx.transaction.message.accountKeys.map((k) => (typeof k.pubkey === 'string' ? k.pubkey : k.pubkey.toString()))
   const idx = keys.indexOf(owner)
   const legs: { mint: string; decimals: number; delta: bigint }[] = []
-  // 代币：同一个 mint 可能有好几个账户，按 mint 汇总
+  // Tokens: one mint may own several accounts; aggregate by mint
   const tok = new Map<string, { decimals: number; delta: bigint }>()
   for (const [list, sign] of [[tx.meta.preTokenBalances, -1n], [tx.meta.postTokenBalances, 1n]] as const) {
     for (const b of list || []) {
@@ -237,7 +240,7 @@ export function parseSolanaTx(sig: string, blockTime: number | null | undefined,
   for (const [mint, v] of tok) if (v.delta !== 0n) legs.push({ mint, ...v })
   if (idx >= 0) {
     let d = BigInt(tx.meta.postBalances[idx] ?? 0) - BigInt(tx.meta.preBalances[idx] ?? 0)
-    if (idx === 0) d += BigInt(tx.meta.fee || 0) // 手续费不算「发送」
+    if (idx === 0) d += BigInt(tx.meta.fee || 0) // Fees don't count as "sent"
     const abs = d < 0n ? -d : d
     if (abs > SOL_DUST && !(legs.length && abs < RENT_LIKE)) legs.push({ mint: SOL_NATIVE, decimals: 9, delta: d })
   }
@@ -250,7 +253,7 @@ export function parseSolanaTx(sig: string, blockTime: number | null | undefined,
   }))
 }
 
-/** 对方地址：系统转账 / 代币转账指令里，和 owner 相对的那一方（代币账户换成它的主人）；找不到返回 undefined */
+/** Counterparty address: in system/token transfer instructions, the side opposite the owner (token accounts resolved to their owners); undefined when not found */
 function counterpartyOf(tx: SolParsedTx, owner: string): string | undefined {
   const keys = tx.transaction.message.accountKeys.map((k) => (typeof k.pubkey === 'string' ? k.pubkey : k.pubkey.toString()))
   const ownerOfAcct = new Map<string, string>()

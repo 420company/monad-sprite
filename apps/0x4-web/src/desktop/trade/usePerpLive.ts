@@ -1,10 +1,10 @@
-// 合约终端的实时数据：盘口、最新成交、合约头部（标记价 / 指数价 / 资金费率 / 下次结算 / 24h 统计 / 持仓量）。
-// · 优先 websocket 合并流（lib/asterBook.ts）；连不上或断了就先 1.5 秒轮询一次 REST，同时按 5 秒、10 秒……最长 60 秒重连
-// · 标签页切到后台：关掉连接、停掉轮询；切回来先拉一次快照再重连
-// · 推送很密（热门币逐笔一秒十几条），攒 200 毫秒刷新一次界面
-// · 持仓量没有推送，15 秒拉一次
-// · 大单（2026-10-02，lib/perpFlow.ts）：打开时回补最近 1000 笔成交、据此定这个币的大单门槛，之后推送 / 轮询来的成交过了门槛就记下
-// 全是真实数据：拿不到的项就是 undefined，页面显示 --。
+// Perp terminal live data: order book, latest trades, contract header (mark / index price, funding rate, next settlement, 24h stats, open interest).
+// · Prefer the websocket combined stream (lib/asterBook.ts); when it can't connect or drops, poll REST every 1.5 s first, while reconnecting with 5 s, 10 s, … backoff up to 60 s
+// · Tab backgrounded: close the connection, stop polling; on return, pull one snapshot before reconnecting
+// · Pushes are dense (a dozen+ trades/sec on hot tokens) — batch them into one UI refresh every 200 ms
+// · Open interest has no push — pull every 15 s
+// · Whale trades (2026-10-02, lib/perpFlow.ts): on open, backfill the latest 1000 trades to set this token's whale threshold; later pushed / polled trades above the threshold get recorded
+// All real data: unavailable fields stay undefined, shown as -- on the page.
 import { useEffect, useState } from 'react'
 import { loadBook, loadOpenInterestUsd, loadPerpStats, loadTape, mergeTape, parseStream, streamUrl, type OrderBook, type PerpStats, type TapeTrade } from '@/lib/asterBook'
 import { bigThreshold, mergeBig, pickBig, type BigTrade } from '@/lib/perpFlow'
@@ -12,7 +12,7 @@ import { bigThreshold, mergeBig, pickBig, type BigTrade } from '@/lib/perpFlow'
 export type LiveMode = 'loading' | 'live' | 'poll' | 'error'
 export interface PerpLive {
   book: OrderBook | null; tape: TapeTrade[]; stats: PerpStats; mode: LiveMode
-  /** 大单（按时间从早到晚）、大单门槛（美元，0 = 还没回补到）、从什么时候起有记录（毫秒） */
+  /** Whale trades (oldest first), whale threshold (USD; 0 = backfill not done yet), records-since timestamp (ms) */
   big: BigTrade[]; bigMin: number; bigSince: number
 }
 
@@ -37,9 +37,9 @@ export function usePerpLive(coin: string, retry = 0): PerpLive {
     const soon = () => { if (!flushId) flushId = window.setTimeout(flush, 200) }
     const setMode = (m: LiveMode) => { if (mode !== m) { mode = m; flush() } }
 
-    /** 新来的成交里过了门槛的记成大单（门槛还没定时不记，回补会把它们一起带回来） */
+    /** Incoming trades above the threshold are recorded as whale trades (nothing recorded before the threshold is set — the backfill brings them along) */
     const noteBig = (trades: TapeTrade[]) => { if (bigMin > 0) big = mergeBig(big, pickBig(trades, bigMin)) }
-    /** 回补最近 1000 笔：定门槛 + 把这段时间里的大单找出来。失败了下次切回页面 / 重连时再试 */
+    /** Backfill the latest 1000 trades: set the threshold + find that window's whale trades. On failure, retry next time the page is revisited / reconnected */
     const backfill = async () => {
       if (bigMin > 0 || backfilling) return
       backfilling = true
@@ -48,13 +48,13 @@ export function usePerpLive(coin: string, retry = 0): PerpLive {
         if (!alive || !rows.length) return
         bigMin = bigThreshold(rows)
         bigSince = rows[rows.length - 1].time
-        // 请求在路上的这一小段时间里推送来的成交不在 rows 里：从手上的最新成交里补一遍
+        // Trades pushed while the request was in flight aren't in rows: patch them in from the latest trades on hand
         big = mergeBig(mergeBig(big, pickBig(rows, bigMin)), pickBig(tape, bigMin))
         soon()
-      } catch { /* 大单是锦上添花：拿不到就不画，不影响盘口 */ } finally { backfilling = false }
+      } catch { /* Whale trades are a nice-to-have: skip drawing when unavailable — the book is unaffected */ } finally { backfilling = false }
     }
 
-    /** REST 快照：盘口 + 逐笔 + 头部。返回盘口拿没拿到 */
+    /** REST snapshot: book + trades + header. Returns whether the book was obtained */
     const snapshot = async (withStats: boolean) => {
       const [b, tp, st] = await Promise.allSettled([loadBook(coin), loadTape(coin), withStats ? loadPerpStats(coin) : Promise.resolve(null)])
       if (!alive) return false
@@ -71,7 +71,7 @@ export function usePerpLive(coin: string, retry = 0): PerpLive {
       if (book) setMode('poll')
       pollId = window.setInterval(() => { if (!document.hidden) void snapshot(false) }, 1500)
     }
-    const closeWs = () => { if (ws) { ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null; try { ws.close() } catch { /* 已经关了 */ } ws = null } }
+    const closeWs = () => { if (ws) { ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null; try { ws.close() } catch { /* Already closed */ } ws = null } }
     const connect = () => {
       window.clearTimeout(reconnectId); reconnectId = 0
       if (!alive || document.hidden) return
@@ -87,7 +87,7 @@ export function usePerpLive(coin: string, retry = 0): PerpLive {
         if (m.stats) stats = { ...stats, ...Object.fromEntries(Object.entries(m.stats).filter(([, v]) => v !== undefined)) }
         soon()
       }
-      // 出错后浏览器一定会接着触发 close，统一在 close 里退回轮询、排队重连
+      // Browsers always fire close after an error, so falling back to polling and queueing reconnects is unified in close
       ws.onclose = () => {
         ws = null
         if (!alive || document.hidden) return
@@ -99,7 +99,7 @@ export function usePerpLive(coin: string, retry = 0): PerpLive {
     const pullOi = () => {
       const mark = stats.mark || stats.last || 0
       if (document.hidden || !(mark > 0)) return
-      loadOpenInterestUsd(coin, mark).then((v) => { if (alive && v !== undefined) { stats = { ...stats, openInterest: v }; soon() } }).catch(() => { /* 持仓量拿不到就显示 -- */ })
+      loadOpenInterestUsd(coin, mark).then((v) => { if (alive && v !== undefined) { stats = { ...stats, openInterest: v }; soon() } }).catch(() => { /* Show -- when open interest is unavailable */ })
     }
     const onVisible = () => {
       if (document.hidden) { closeWs(); stopPoll(); window.clearTimeout(reconnectId); reconnectId = 0; return }

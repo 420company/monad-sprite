@@ -1,12 +1,12 @@
 /**
  * @vitest-environment jsdom
  */
-// 自动锁定的测试。
+// Auto-lock tests.
 //
-// 这块逻辑一旦退化，后果分两种，都很难在日常使用里发现：
-//   锁得太松 —— 手机放桌上别人拿起来就能花钱
-//   锁得太紧 —— X 授权走到一半回来被锁在门外，用户以为 App 坏了
-// 所以两个方向都要钉住。
+// If this logic regresses, two failure modes — both hard to notice in daily use:
+//   Too loose — someone picking up the phone off the desk can spend
+//   Too tight — returning mid-X-auth finds the door locked, looking like a broken app
+// So both directions are pinned down.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const lock = vi.fn()
@@ -20,7 +20,7 @@ vi.mock('@/store/wallet', () => ({ useWallet: { getState: () => ({ wallet, lock 
 
 const { initAutoLock, suspendAutoLock, resumeAutoLock, __testing } = await import('./autolock')
 
-/** 让 document.hidden 可控，并派发 visibilitychange */
+/** Make document.hidden controllable, and dispatch visibilitychange */
 function setHidden(hidden: boolean) {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
   document.dispatchEvent(new Event('visibilitychange'))
@@ -40,7 +40,7 @@ beforeEach(() => {
 
 afterEach(() => {
   teardown()
-  // suspend 的计数是模块级的，用例之间必须归零，否则互相污染
+  // The suspend counter is module-level; it must reset between cases or they contaminate each other
   while (__testing.state().suspendDepth > 0) resumeAutoLock()
   vi.useRealTimers()
 })
@@ -120,8 +120,8 @@ describe('外部浏览器流程豁免', () => {
 })
 
 describe('前台闲置', () => {
-  // ★ 假时钟必须在 initAutoLock 之前装好，否则它内部的 setInterval 是真定时器，
-  //   advanceTimersByTime 拨不动（外层 beforeEach 先跑，所以这里要拆了重装一次）。
+  // ★ The fake clock must be installed before initAutoLock, or its internal setInterval is a real timer
+  //   that advanceTimersByTime can't move (the outer beforeEach runs first, so it's uninstalled and reinstalled here).
   beforeEach(() => {
     teardown()
     vi.useFakeTimers()

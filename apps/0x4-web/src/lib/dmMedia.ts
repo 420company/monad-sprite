@@ -1,15 +1,16 @@
-// 私信媒体端到端加密：文件先用随机 AES-GCM 密钥在本机加密再上传，密钥放在（本身已加密的）私信正文里，服务器只见到密文二进制
+// DM media end-to-end encryption: files are encrypted locally with a random AES-GCM key before upload; the key travels inside the (itself encrypted) DM body — the server only ever sees ciphertext bytes
 import { SOCIAL_API, uploadFile } from './social'
 import { t } from '@/lib/i18n'
 import { makeImageVariants } from './imageCompress'
 import { cachedMediaBlob } from './mediaCache'
 
-/** thumb / w / h 是后加的：老消息没有，显示时回退用 url 那份。
- *  items 是多图消息（2026-09-26）：每张各自一把密钥、各自上传；外层字段就是第一张，旧版 App 至少能看到第一张 */
+/** thumb / w / h were added later: old messages lack them, fall back to the url copy at display.
+ *  items is multi-image messages (2026-09-26): each image gets its own key and upload; the outer fields are
+ *  the first image, so old app versions see at least that one */
 export interface DmMedia { t: 'media'; kind: 'image' | 'video' | 'voice'; url: string; key: string; iv: string; mime: string; duration?: number; size: number; thumb?: { url: string; iv: string; mime: string }; w?: number; h?: number; items?: DmMedia[] }
-// 正文前缀：一个不可见控制字符 + dm:，普通文字不会以它开头
+// Body prefix: one invisible control char + dm: — plain text never starts with it
 const MARK = String.fromCharCode(1) + 'dm:'
-/** 媒体地址 → 解密后的本地 object URL（只在内存里） */
+/** Media URL → decrypted local object URL (memory only) */
 const cache = new Map<string, Promise<string>>()
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u))
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
@@ -25,15 +26,17 @@ async function encryptUpload(key: CryptoKey, data: Blob, upload: Upload, onProgr
 }
 
 /**
- * 加密并上传一个文件，返回媒体描述。图片先在本机压成大图 + 缩略图两份（同一把密钥、各自的 iv），原图不上传。
- * 上传完把本机那份登记进解密缓存，自己发的消息回显时直接显示，不用再下载解密。
+ * Encrypt and upload one file, returning the media descriptor. Images are first compressed locally into a
+ * large copy + thumbnail (same key, separate ivs); the original is never uploaded.
+ * After upload, register the local copy in the decrypt cache so my own message echo displays immediately,
+ * no download-decrypt round trip.
  */
 export async function encryptMedia(file: Blob, kind: DmMedia['kind'], opts: { duration?: number; onProgress?: (f: number) => void; upload?: Upload } = {}): Promise<DmMedia> {
   const upload = opts.upload || defaultUpload
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt'])
   const v = kind === 'image' ? await makeImageVariants(file) : null
   const main = v ? v.large : file
-  // 进度：大图占 85%，缩略图 15%
+  // Progress: large image 85%, thumbnail 15%
   const up = await encryptUpload(key, main, upload, opts.onProgress && ((f) => opts.onProgress!(v ? f * 0.85 : f)))
   const thumb = v ? { ...(await encryptUpload(key, v.thumb, upload, opts.onProgress && ((f) => opts.onProgress!(0.85 + f * 0.15)))), mime: v.thumb.type } : undefined
   const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key))
@@ -45,15 +48,15 @@ export async function encryptMedia(file: Blob, kind: DmMedia['kind'], opts: { du
   return m
 }
 
-/** 加密并上传，返回可放进私信正文的字符串（单个文件，老格式） */
+/** Encrypt and upload; returns the string embeddable in a DM body (single file, legacy format) */
 export async function encryptAndUpload(file: Blob, kind: DmMedia['kind'], duration?: number): Promise<string> {
   return mediaText(await encryptMedia(file, kind, { duration }))
 }
 
-/** 单个媒体描述 → 私信正文 */
+/** One media descriptor → DM body */
 export const mediaText = (m: DmMedia) => MARK + JSON.stringify(m)
 
-/** 多张 → 一条私信正文：外层是第一张（旧版 App 只认得这一张），items 带全部 */
+/** Many → one DM body: outer is the first image (old app versions only know this one), items carries all */
 export function albumText(items: DmMedia[]): string {
   if (items.length === 1) return mediaText(items[0])
   const first = { ...items[0] }
@@ -65,7 +68,7 @@ const validItem = (x: unknown): x is DmMedia => {
   const m = x as DmMedia | null
   return !!m && m.t === 'media' && (m.kind === 'image' || m.kind === 'video') && typeof m.url === 'string' && typeof m.key === 'string' && typeof m.iv === 'string'
 }
-/** 一条私信里的全部媒体：多图消息取 items（最多 9 个），老消息就是它自己 */
+/** All media in one DM: multi-image messages use items (max 9); legacy messages are just themselves */
 export function dmMediaItems(m: DmMedia): DmMedia[] {
   const list = Array.isArray(m.items) ? m.items.filter(validItem).slice(0, 9) : []
   return list.length ? list : [m]
@@ -77,24 +80,24 @@ export function parseDmMedia(text: string): DmMedia | null {
 }
 
 async function decryptFile(url: string, keyB64: string, ivB64: string, mime: string) {
-  // 密文走本机媒体缓存：服务器上的文件过期后，看过的照样能解开
+  // Ciphertext goes through the local media cache: still decryptable after the server's files expire, once viewed
   const ct = await (await cachedMediaBlob(SOCIAL_API + url)).arrayBuffer()
   const key = await crypto.subtle.importKey('raw', unb64(keyB64), { name: 'AES-GCM' }, false, ['decrypt'])
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(ivB64) }, key, ct)
   return URL.createObjectURL(new Blob([plain], { type: mime }))
 }
-/** 清掉内存里的解密结果（测试用；每天清空模式也可以调） */
+/** Clear in-memory decrypt results (test use; daily-clear mode may call it too) */
 export function clearDecryptCache() { cache.clear() }
 const cached = (url: string, run: () => Promise<string>) => {
   let hit = cache.get(url)
   if (!hit) { hit = run(); cache.set(url, hit); hit.catch(() => cache.delete(url)) }
   return hit
 }
-/** 下载密文并解密成本地 object URL（只存在内存里） */
+/** Download ciphertext and decrypt to a local object URL (memory only) */
 export function decryptToUrl(m: DmMedia): Promise<string> {
   return cached(m.url, () => decryptFile(m.url, m.key, m.iv, m.mime))
 }
-/** 气泡里用的缩略图；老消息没有缩略图就解原图 */
+/** Thumbnail for bubbles; legacy messages without one decrypt the original */
 export function decryptThumbUrl(m: DmMedia): Promise<string> {
   const th = m.thumb
   return th && typeof th.url === 'string' && typeof th.iv === 'string' ? cached(th.url, () => decryptFile(th.url, m.key, th.iv, th.mime || 'image/webp')) : decryptToUrl(m)

@@ -62,7 +62,7 @@ describe('进到一条记录时怎么滚', () => {
 describe('恢复的每一帧', () => {
   it('内容够高：一次滚到位', () => {
     expect(restoreStep(1500, 3000, 0)).toBe('apply')
-    expect(restoreStep(1500, 1499.5, 0)).toBe('apply')   // 差不到 1px 当作够
+    expect(restoreStep(1500, 1499.5, 0)).toBe('apply')   // Within 1px counts as close enough
   })
   it('内容还没长出来（数据异步加载中）：等，不滚到半截', () => {
     expect(restoreStep(1500, 600, 100)).toBe('wait')
@@ -79,7 +79,7 @@ describe('恢复的每一帧', () => {
 describe('返回按钮有没有上一页', () => {
   it('HashRouter 的 idx > 0 才有上一页', () => {
     expect(canGoBack({ idx: 3, key: 'k' })).toBe(true)
-    expect(canGoBack({ idx: 0, key: 'k' })).toBe(false)   // 推送 / 深链 / 冷启动直接打开的第一页
+    expect(canGoBack({ idx: 0, key: 'k' })).toBe(false)   // The first page opened directly from a push / deep link / cold start
     expect(canGoBack(null)).toBe(false)
     expect(canGoBack({ idx: '2' })).toBe(false)
   })
@@ -91,7 +91,7 @@ describe('分页缓存（后退时保留已加载的几页）', () => {
     putPagedCache('feed|global', { items: [1, 2, 3], next: 'c3', done: false }, 1000)
     expect(takePagedCache('feed|global', 1000 + 5_000)?.items).toEqual([1, 2, 3])
     expect(takePagedCache('feed|global', 1000 + PAGED_CACHE_TTL + 1)).toBeNull()
-    expect(takePagedCache('feed|global', 1000)).toBeNull()   // 过期的已删掉
+    expect(takePagedCache('feed|global', 1000)).toBeNull()   // Expired ones are deleted
   })
   it('不同的数据（全球 / 关注）分开存', () => {
     clearPagedCache()

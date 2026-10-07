@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-// 证明 EVM 地址的关联消息（lib/evmLink）与登录时顺带签名（lib/social loginWithWallet）
+// The linkage message proving EVM addresses (lib/evmLink) and the sign-on-login signature (lib/social loginWithWallet)
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Keypair } from '@solana/web3.js'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
@@ -35,7 +35,7 @@ describe('EVM 地址关联消息', () => {
 describe('登录时顺带签 EVM', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  /** 拦下 fetch：nonce 接口回固定 nonce，verify 接口记下请求体 */
+  /** Intercepts fetch: the nonce endpoint returns a fixed nonce; the verify endpoint records the request body */
   function stubServer() {
     const bodies: Record<string, unknown>[] = []
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// K 线取数设置（2026-09-29 goat：换 K 线商家不用发 App）：服务器下发的设置怎么规整、存本机、拉不到用上次的；
-// App 按设置选路：完整历史先问服务器还是直连、首屏快速图走哪条、预取跟着设置走、服务器说自己用不了就不问。
+// Candle-fetch settings (2026-09-29 goat: switching candle vendors must not require an app release): how server-pushed settings are normalized, stored on-device, and fall back to the last copy when unreachable;
+// the app routes per settings: full history asks the server first or goes direct, the first-screen fast chart's route, prefetch follows settings, and the server isn't asked once it declares itself unavailable.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { candleConfig, refreshCandleConfig, resetCandleConfig, sanitizeCandleConfig, DEFAULT_CANDLE_CONFIG } from './candleConfig'
 import { loadDexCandles, loadFastCandles, prefetchDexCandles, prefetchServerCandles, resetCandleCache, resetServerCandleChannel } from './candles'
@@ -40,9 +40,9 @@ describe('设置怎么规整', () => {
     expect(candleConfig()).toEqual(DEFAULT_CANDLE_CONFIG)
     await use(conf({ fast: ['server'], full: ['server', 'geckoterminal'] }))
     expect(candleConfig().full).toEqual(['server', 'geckoterminal'])
-    resetCandleConfig()   // 模拟 App 重开：内存没了，本机还有
+    resetCandleConfig()   // Simulate app restart: memory gone, device copy remains
     expect(candleConfig().full).toEqual(['server', 'geckoterminal'])
-    config = null   // 服务器这次出错
+    config = null   // The server errors this time
     await refreshCandleConfig()
     expect(candleConfig().v).toBe(5)
     expect(JSON.stringify(localStorage)).not.toMatch(/key|secret/i)
@@ -105,7 +105,7 @@ describe('按设置选路', () => {
   })
 })
 
-// 2026-09-29 goat 网页版现货页 BTCB 空白：本机存着服务器开通前的旧设置（ready:false），新设置还在路上时第一张图就跳过了服务器通道
+// 2026-09-29 goat, web spot page BTCB blank: the device held pre-provisioning settings (ready:false), and the first chart skipped the server channel while the new settings were still in flight
 describe('本机存的旧设置', () => {
   it('设置正在从服务器拉：服务器通道等它拉完再决定，用新设置（旧的说没开、新的说开了 → 照样问服务器）', async () => {
     await use(conf({ fast: ['server'], full: ['geckoterminal'] }, false))

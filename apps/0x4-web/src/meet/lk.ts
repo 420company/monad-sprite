@@ -1,5 +1,5 @@
-// 会议音视频连接的薄封装（2026-09-29 从 meet/src/lib/lk.ts 搬进 App，网页版「流媒体」里的会议用）：一个 Room + 参与者快照。
-// 写法参考主 App 的 Room.tsx：所有房间事件都触发重建快照，页面按快照渲染。
+// Thin wrapper around the meeting A/V connection (moved from meet/src/lib/lk.ts into the app on 2026-09-29; for meetings in the web "Streaming" section): one Room + a participant snapshot.
+// Modeled on the main app's Room.tsx: every room event triggers a snapshot rebuild, and the page renders from the snapshot.
 import { useEffect, useRef, useState } from 'react'
 import { Room, RoomEvent, Track, ConnectionState, type Participant, type RemoteTrack } from 'livekit-client'
 import type { AnnMsg } from './annotate'
@@ -29,7 +29,7 @@ export type LkState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'di
 
 export function useLkRoom() {
   const roomRef = useRef<Room | null>(null)
-  // 回声消除写死开着：礼物音效（如哈基米）在主播这端播放时，不会被麦克风再收进去传给观众变成双声
+  // Echo cancellation hardcoded on: gift sound effects (like the hakimi meme sound) played on the streamer's side won't be re-captured by the mic and doubled to viewers
   if (!roomRef.current) roomRef.current = new Room({ adaptiveStream: true, dynacast: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
   const room = roomRef.current
   const [parts, setParts] = useState<PSnap[]>([])
@@ -55,7 +55,7 @@ export function useLkRoom() {
     }
   }, [room])
 
-  // 离开页面一定断开（关摄像头灯）
+  // Always disconnect when leaving the page (camera light off)
   useEffect(() => () => { void room.disconnect() }, [room])
 
   const connect = async (url: string, token: string) => {
@@ -72,7 +72,7 @@ export function useLkRoom() {
   return { room, parts, state, audioBlocked, connect, refresh, startAudio: () => room.startAudio().then(() => setAudioBlocked(false)) }
 }
 
-/** 数据消息（聊天 / 举手 / 表情 / 画笔标注）：会议里走 LiveKit 数据通道，不经过我们的 WebSocket */
+/** Data messages (chat / hand-raise / reactions / annotations): travel over the LiveKit data channel in meetings — not our WebSocket */
 export type MeetData = { t: 'chat'; text: string; id: string } | { t: 'hand'; up: boolean } | { t: 'react'; emoji: string } | { t: 'end' } | AnnMsg
 const enc = new TextEncoder(), dec = new TextDecoder()
 export const packData = (d: MeetData) => enc.encode(JSON.stringify(d))
@@ -80,7 +80,7 @@ export function unpackData(b: Uint8Array): MeetData | null {
   try { const d = JSON.parse(dec.decode(b)) as MeetData; return d && typeof d === 'object' && 't' in d ? d : null } catch { return null }
 }
 
-/** 设备列表（授权前 label 为空，所以要在拿到媒体权限之后再读一次） */
+/** Device list (labels are empty before authorization, so re-read after media permission is granted) */
 export async function listDevices() {
   const all = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[])
   return { cams: all.filter((d) => d.kind === 'videoinput'), mics: all.filter((d) => d.kind === 'audioinput'), spks: all.filter((d) => d.kind === 'audiooutput') }

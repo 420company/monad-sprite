@@ -1,4 +1,4 @@
-// 信息流里的帖子正文：最多 6 行，超出显示「全文」进详情；点正文区域进详情，点里面的链接、按钮、图片不跳
+// Feed post body: max 6 lines, "full text" opens the detail when exceeded; tapping the body opens the detail, but links, buttons, and images inside don't navigate
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import PostImages from './PostImages'

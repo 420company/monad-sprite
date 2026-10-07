@@ -4,7 +4,7 @@ import { LoaderCircle } from 'lucide-react'
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'up' | 'down'
 
 const styles: Record<Variant, string> = {
-  // 液态玻璃改版：主按钮珍珠渐变，次按钮半透明玻璃
+  // Liquid-glass redesign: primary buttons get the pearl gradient, secondary buttons translucent glass
   primary: 'pearl-button hover:brightness-105',
   secondary: 'glass-lite text-fg hover:bg-card2',
   ghost: 'bg-transparent text-muted hover:text-fg',
@@ -30,7 +30,7 @@ export default function Button({
       className={`ui-button ${sz} ${styles[variant]} ${className}`}
       {...rest}
     >
-      {/* 保留标签尺寸，加载图标不挤动按钮及相邻控件。 */}
+      {/* Preserve the label size — the loading icon must not jostle the button or neighboring controls. */}
       <span className={`ui-button-content ${loading ? 'opacity-0' : ''}`}>{children}</span>
       {loading && <LoaderCircle size={18} className="absolute animate-spin" aria-hidden="true" />}
     </button>

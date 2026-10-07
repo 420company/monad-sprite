@@ -1,9 +1,9 @@
-// 社区 → 会议（/meetings，2026-10-01 社区合并，设计稿「3-社区-会议」+ goat 当晚的改动）：
-//   上面一条：粘贴会议链接或输入会议码 · 加入 · 新建会议（申请进入 / 设置密码 / 公开会议 三个开关在「新建会议」弹窗里，
-//            goat：「这些是创建会议时的选项，不该出现在加入会议那里」；默认公开开、申请进入关、不设密码）；
-//   正在进行的会议：公开会议，名称、进行中 N 分钟、申请进入 / 要密码标记、主持人、在线人数、参会人头像和名字，右边按钮；
-//   会议历史记录：我发起和参加过的会议（登录后）。
-// 数据：/api/meet/meetings/active（公开）、/api/meet/meetings/mine（要登录）、POST /api/meet/meetings。
+// Community → Meetings (/meetings, 2026-10-01 community merge, mock "3-community-meetings" + goat's changes that evening):
+//   top bar: paste meeting link or enter meeting code · join · new meeting (the three switches — request-to-join / set password / public meeting — live in the "New meeting" dialog,
+//            goat: "these are options for creating a meeting, they shouldn't appear in the join-meeting spot"; defaults: public on, request-to-join off, no password);
+//   ongoing meetings: public meetings — name, ongoing for N minutes, request-to-join / password-required badges, host, online count, attendee avatars and names, button on the right;
+//   meeting history: meetings I started and joined (after login).
+// Data: /api/meet/meetings/active (public), /api/meet/meetings/mine (login required), POST /api/meet/meetings.
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Copy, Link2, Lock, Plus, Video } from 'lucide-react'
@@ -64,14 +64,14 @@ function MeetingsBody() {
   )
 }
 
-/** 进行了多久：「进行中 18 分钟」，不到 1 分钟写「刚开始」 */
+/** How long it's been going: "ongoing for 18 minutes"; under a minute says "just started" */
 function since(ms: number | null | undefined): string | null {
   if (!ms) return null
   const m = Math.floor((Date.now() - ms) / 60_000)
   return m < 1 ? t('刚开始') : m < 60 ? t('进行中 {n} 分钟', { n: m }) : t('进行中 {h} 小时 {m} 分钟', { h: Math.floor(m / 60), m: m % 60 })
 }
 
-/** 正在进行的会议一行：要密码 → 输入密码；要申请 → 申请进入；都没有 → 加入 */
+/** One ongoing-meeting row: password required → enter password; approval required → request to join; neither → join */
 function ActiveRow({ m, onJoin }: { m: ActiveMeeting; onJoin: () => void }) {
   const host = displayName({ address: m.host, nickname: m.hostNickname })
   const people = m.people ?? []
@@ -99,7 +99,7 @@ function ActiveRow({ m, onJoin }: { m: ActiveMeeting; onJoin: () => void }) {
   )
 }
 
-/** 会议历史记录：我发起和参加过的（最近 30 个） */
+/** Meeting history: started and joined by me (latest 30) */
 function History({ ready }: { ready: boolean }) {
   const nav = useNavigate()
   const [list, setList] = useState<Meeting[] | null>(null)

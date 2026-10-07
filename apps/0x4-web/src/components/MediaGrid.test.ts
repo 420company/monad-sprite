@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 多图气泡：格子数与排版、点开全屏看第几张、发送中的进度圈、失败后点感叹号重发、长按不误开大图
+// Multi-image bubbles: cell count and layout, which image fullscreen opens at, in-progress spinner, retry via the exclamation mark after failure, long-press not accidentally opening the image
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -68,7 +68,7 @@ describe('MediaGrid', () => {
     act(() => root.render(createElement(MediaGrid, { items: items(3), pending: { progress: [1, 0.4, 0], state: 'uploading' } })))
     await flush()
     const rings = [...host.querySelectorAll('[role=progressbar]')]
-    expect(rings.map((r) => r.getAttribute('aria-valuenow'))).toEqual(['40', '0'])   // 传完的那张不再盖进度
+    expect(rings.map((r) => r.getAttribute('aria-valuenow'))).toEqual(['40', '0'])   // Finished uploads no longer overlay progress
     act(() => cells()[1].click())
     expect(document.body.querySelector('[aria-label="查看图片"]')).toBeNull()
 

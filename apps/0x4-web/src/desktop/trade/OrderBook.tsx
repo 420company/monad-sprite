@@ -1,7 +1,7 @@
-// 合约终端右侧「盘口 / 最新成交」（参考 Hyperliquid、Lighter）：交易所公开接口的真实深度和逐笔，数据来自 usePerpLive。
-// · 盘口：卖盘在上（最低价贴中线）、买盘在下，每侧显示能放下的档数（按面板高度算，最多 20 档）；
-//   深色条按累计数量画；中线是最新成交价（按最后一笔方向着色）+ 标记价 + 价差。点某一档把价格填进限价单
-// · 最新成交：价格（主动买绿 / 主动卖红）、数量、时间；大单（金额过了 usePerpLive 算的门槛）整行加底色
+// Right side of the perp terminal: "Order book / Recent trades" (modeled on Hyperliquid, Lighter): real depth and trades from the exchange's public APIs, data from usePerpLive.
+// · Order book: asks on top (lowest ask hugging the midline), bids below; each side shows as many levels as fit (computed from panel height, max 20);
+//   dark bars drawn by cumulative size; the midline is the latest trade price (colored by the last trade's side) + mark price + spread. Tapping a level fills the price into the limit order
+// · Recent trades: price (active buys green / active sells red), size, time; big trades (amount past the usePerpLive-computed threshold) get a full-row background
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, RefreshCw } from 'lucide-react'
 import { t } from '@/lib/i18n'
@@ -14,7 +14,7 @@ const MID = 32
 
 export default function OrderBook({ coin, book, tape, mark, mode, bigMin = 0, pxText, szDecimals, onPickPrice, onRetry }: {
   coin: string; book: Book | null; tape: TapeTrade[]; mark?: number; mode: LiveMode
-  /** 大单门槛（美元，0 = 还不知道）：最新成交里过了门槛的那几笔标出来 */
+  /** Big-trade threshold (USD, 0 = unknown yet): recent trades past it get flagged */
   bigMin?: number
   pxText: (n: number) => string; szDecimals: number
   onPickPrice: (px: number) => void; onRetry: () => void
@@ -32,7 +32,7 @@ export default function OrderBook({ coin, book, tape, mark, mode, bigMin = 0, px
 
   const asks = useMemo(() => (book?.asks ?? []).slice(0, rows), [book, rows])
   const bids = useMemo(() => (book?.bids ?? []).slice(0, rows), [book, rows])
-  // 累计数量：卖盘从中线往上累加，买盘从中线往下累加；深度条按两边最大的累计量归一
+  // Cumulative size: asks accumulate upward from the midline, bids downward; depth bars normalized by the larger side's cumulative max
   const askCum = useMemo(() => { let c = 0; return asks.map((l) => (c += l.sz)) }, [asks])
   const bidCum = useMemo(() => { let c = 0; return bids.map((l) => (c += l.sz)) }, [bids])
   const maxCum = Math.max(askCum[askCum.length - 1] || 0, bidCum[bidCum.length - 1] || 0) || 1
@@ -62,7 +62,7 @@ export default function OrderBook({ coin, book, tape, mark, mode, bigMin = 0, px
         ) : tab === 'book' ? (
           <div className="tx-book-ladder">
             <ol className="tx-book-side is-ask" aria-label={t('卖盘')}>
-              {/* 卖盘倒着画：最贵的在最上面，最低卖价贴着中线 */}
+              {/* Asks drawn in reverse: most expensive at the very top, lowest ask hugging the midline */}
               {asks.map((l, i) => ({ l, i })).reverse().map(({ l, i }) => (
                 <li key={l.px}>
                   <button type="button" className="tx-book-row" onClick={() => onPickPrice(l.px)} title={t('按这个价格挂限价单')}>

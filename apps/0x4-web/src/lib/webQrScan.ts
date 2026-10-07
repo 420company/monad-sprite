@@ -1,6 +1,6 @@
-// 网页版扫码（2026-09-27 goat：App 里要有扫码）。原生 App 用 @capacitor/barcode-scanner；
-// 网页版（手机浏览器打开 app.420.meme）用摄像头：浏览器自带 BarcodeDetector 优先，没有就用 jsQR（点扫码时才加载）。
-// 纯 DOM 实现，返回 Promise：扫到返回内容，用户点取消返回 null，没有摄像头权限抛错。
+// Web QR scanning (2026-09-27 goat: the app needs scanning). The native app uses @capacitor/barcode-scanner;
+// the web version (app.420.meme in a phone browser) uses the camera: the browser's built-in BarcodeDetector first, jsQR when absent (loaded only when scanning starts).
+// Pure-DOM implementation, returns a Promise: resolves with the content on scan, null on user cancel, throws without camera permission.
 import { t } from './i18n'
 
 type Detect = (v: HTMLVideoElement, c: HTMLCanvasElement) => Promise<string | null>
@@ -11,13 +11,13 @@ async function makeDetector(): Promise<Detect> {
     try {
       const d = new BD({ formats: ['qr_code'] })
       return async (v) => { const r = await d.detect(v); return r[0]?.rawValue || null }
-    } catch { /* 不支持 qr_code，退回 jsQR */ }
+    } catch { /* qr_code unsupported, fall back to jsQR */ }
   }
   const { default: jsQR } = await import('jsqr')
   return async (v, c) => {
     const w = v.videoWidth, h = v.videoHeight
     if (!w || !h) return null
-    // 缩到 640 宽以内再识别，手机上够快
+    // Downscale to ≤640 wide before detecting — fast enough on phones
     const s = Math.min(1, 640 / w)
     c.width = Math.round(w * s); c.height = Math.round(h * s)
     const g = c.getContext('2d', { willReadFrequently: true })
@@ -28,7 +28,7 @@ async function makeDetector(): Promise<Detect> {
   }
 }
 
-/** 这个浏览器能不能扫码：有摄像头接口就显示入口（2026-09-27 goat：电脑上也要看得到，原来只在触屏设备上显示） */
+/** Whether this browser can scan: show the entry when camera APIs exist (2026-09-27 goat: must be visible on computers too — previously only shown on touch devices) */
 export const canWebScan = () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
 
 export function webScanQr(hint = t('对准电脑上的二维码')): Promise<string | null> {
@@ -66,7 +66,7 @@ export function webScanQr(hint = t('对准电脑上的二维码')): Promise<stri
         const detect = await makeDetector()
         const loop = async () => {
           if (done) return
-          try { const v = await detect(video, canvas); if (v) return finish(v) } catch { /* 这一帧失败，下一帧再试 */ }
+          try { const v = await detect(video, canvas); if (v) return finish(v) } catch { /* This frame failed; try the next one */ }
           timer = window.setTimeout(loop, 200)
         }
         loop()

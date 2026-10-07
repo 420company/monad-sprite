@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GiftSound, type AudioLike } from './sound'
 import { GiftFxEngine, FX_MS, type GiftFxGift } from './engine'
 
-/** 假播放器：记下 play 次数，手动触发 ended */
+/** Fake player: counts play calls, manually triggers ended */
 class FakeAudio implements AudioLike {
   src = ''; volume = 1; currentTime = 0; preload = ''
   plays = 0
   private fns: Record<string, (() => void)[]> = {}
   play() { this.plays++; return Promise.resolve() }
-  pause() { /* 无 */ }
+  pause() { /* None */ }
   addEventListener(type: 'ended' | 'error', fn: () => void) { (this.fns[type] ??= []).push(fn) }
   end() { for (const f of this.fns.ended || []) f() }
 }
@@ -28,19 +28,19 @@ describe('礼物音效：同一时刻只播一遍', () => {
     expect(s.starts).toBe(1)
     for (let i = 0; i < 10; i++) s.play(HACHIMI)
     expect(s.starts).toBe(1)
-    expect(made).toHaveLength(1)          // 文件只加载一次
+    expect(made).toHaveLength(1)          // The file loads only once
     expect(made[0].plays).toBe(1)
-    expect(made[0].volume).toBe(0.6)      // 默认 60%
+    expect(made[0].volume).toBe(0.6)      // Default 60%
   })
   it('播完之后再送会再播；正在播期间送的不补播', () => {
     const { s, made } = mkSound()
     s.play(HACHIMI); s.play(HACHIMI); s.play(HACHIMI)
     made[0].end()
     expect(s.isPlaying(HACHIMI)).toBe(false)
-    expect(s.starts).toBe(1)              // 播完没有自动补播
+    expect(s.starts).toBe(1)              // No auto-catch-up after playback
     s.play(HACHIMI)
     expect(s.starts).toBe(2)
-    expect(made).toHaveLength(1)          // 还是同一个缓存的播放器
+    expect(made).toHaveLength(1)          // Still the same cached player
   })
   it('两个不同音效互不影响', () => {
     const { s, made } = mkSound()
@@ -99,7 +99,7 @@ describe('礼物动画引擎', () => {
     expect(e.rainCount).toBe(20)
     expect(box.querySelectorAll('.gfx-combo')).toHaveLength(1)
     expect(box.querySelector('.gfx-combo')!.textContent).toContain('×20')
-    expect(box.querySelectorAll('.gfx-coin').length).toBeLessThanOrEqual(24)   // 币数封顶
+    expect(box.querySelectorAll('.gfx-coin').length).toBeLessThanOrEqual(24)   // Coin count capped
     expect(s.starts).toBe(1)
     vi.advanceTimersByTime(FX_MS.coinrain + 5000)
     expect(e.rainCount).toBe(0)
@@ -122,7 +122,7 @@ describe('礼物动画引擎', () => {
     e.play({ gift: gift('supercar', 'car') })
     expect(e.rainCount).toBe(1)
     expect(box.querySelectorAll('.gfx-rocket')).toHaveLength(1)
-    expect(e.pending).toBe(2)             // 跑车排在火箭后面
+    expect(e.pending).toBe(2)             // The sports car queues behind the rocket
     vi.advanceTimersByTime(FX_MS.rocket + 10)
     expect(box.querySelectorAll('.gfx-car')).toHaveLength(1)
     vi.advanceTimersByTime(FX_MS.car + 5000)
@@ -133,7 +133,7 @@ describe('礼物动画引擎', () => {
   it('同一个人连送同一个大礼物：合并成 ×N，不排一长队', () => {
     const e = new GiftFxEngine(box, { sound: null, reducedMotion: false, lowEnd: false })
     const g = gift('yacht', 'yacht')
-    e.play({ gift: g, from: { id: 'a', nickname: 'A' } })          // 第一个立刻开始播
+    e.play({ gift: g, from: { id: 'a', nickname: 'A' } })          // The first one starts playing immediately
     for (let i = 0; i < 9; i++) e.play({ gift: g, from: { id: 'a', nickname: 'A' } })
     expect(e.pending).toBe(2)
     vi.advanceTimersByTime(FX_MS.yacht + 10)
@@ -163,7 +163,7 @@ describe('礼物动画引擎', () => {
     document.dispatchEvent(new Event('visibilitychange'))
     expect(e.pending).toBe(0)
     expect(e.stage.childElementCount).toBe(0)
-    e.play({ gift: gift('rocket', 'rocket') })    // 隐藏期间来的也不播
+    e.play({ gift: gift('rocket', 'rocket') })    // Ones arriving while hidden don't play either
     expect(e.stage.childElementCount).toBe(0)
     e.destroy()
   })

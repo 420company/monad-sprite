@@ -1,7 +1,7 @@
-// 币详情页底部：持币最多的社区（前 3 名）。
-// 以前这里是「XX 社区」自动建群、点进去就自动加入，没有群主没人管，2026-09-25 下线。
-// 官方社区只能由平台在管理后台建，不再单独成块：它和普通群一样按持仓排名，上榜时群名旁带金色认证标。
-// 点进去是正常的群页面，按群自己的规则加入 / 申请。排名在服务端算，只拿汇总数字。
+// Token detail page bottom: communities holding the most (top 3).
+// This used to be auto-created "XX communities" that you joined by tapping in — no owner, no moderation; retired 2026-09-25.
+// Official communities can only be created by the platform in the admin console and no longer get their own section: they rank by holdings like regular groups, with a gold verified badge next to the group name when listed.
+// Tapping in opens a normal group page; join / apply per the group's own rules. Rankings are computed server-side — only aggregates are fetched.
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronRight, Lock, Plus, RefreshCw } from 'lucide-react'
@@ -36,7 +36,7 @@ export default function TokenCommunities({ chain, address, symbol }: { chain: st
   )
 }
 
-/** 榜单本体（纯展示，单独导出方便测试）：最多 3 行；没有就给「建一个群」 */
+/** The list itself (pure display, exported separately for tests): at most 3 rows; "create a group" when empty */
 export function CommunityList({ top, symbol, onCreate }: { top: CommunityCard[]; symbol: string; onCreate: () => void }) {
   if (!top.length) {
     return (

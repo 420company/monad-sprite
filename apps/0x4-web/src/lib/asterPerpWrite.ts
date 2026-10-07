@@ -1,23 +1,25 @@
-// 网页版合约的「写操作」（下单 / 撤单 / 改杠杆 / 改保证金模式）由 0x4 浏览器插件代办（2026-09-30 goat：登录时授权一次，之后网页下单不再逐笔弹窗）。
+// Web perp "write ops" (place / cancel orders, change leverage / margin mode) are executed by the 0x4 browser extension (2026-09-30 goat: authorize once at login, no per-order popups on web afterwards).
 //
-// 为什么插件要自己发请求：交易所的代理签名只覆盖参数、不含请求路径和方法。签名交回网页，网页就能把同样形状的签名拿去调别的写接口。
-// 所以和只读查询（asterPerpRead.ts）一样：网页只说「做哪一种操作、参数是什么」，插件按这里的白名单逐项核对，
-// 自己补上 asterChain / user / signer / nonce、自己签、自己发请求，只把交易所的回复交回网页，签名不离开插件。
-// 这里只有下单、撤单、改杠杆、改保证金模式四种。提现、转账、noop、assetExchange 这类接口不在里面，插件永远不会替网页发。
-// 插件（extension/src/background/ox4.ts 的 perpWrite）和网页（lib/aster.ts）用同一份白名单，规则只有这一份。
-// 手机 App 不走这里（原生金库照旧由 App 自己签）。
+// Why the extension sends requests itself: the exchange's proxy signature covers only params, not the request path and method. Hand the signature back to web and web could reuse a same-shaped signature against other write endpoints.
+// So, same as read-only queries (asterPerpRead.ts): web only declares "which operation, which params"; the extension checks each against the whitelist here,
+// fills in asterChain / user / signer / nonce itself, signs itself, sends the request itself — only the exchange's reply goes back to web; the signature never leaves the extension.
+// Only four ops exist here: place, cancel, leverage, margin mode. Withdraw, transfer, noop, assetExchange etc. are not included — the extension never sends those for web.
+// The extension (perpWrite in extension/src/background/ox4.ts) and web (lib/aster.ts) share this one whitelist — a single source of rules.
+// The phone app doesn't go through here (the native vault keeps signing for itself).
 
-/** 平台收费地址（交易所的 builder）。lib/aster.ts 从这里导出同一个值 */
+/** Platform fee address (the exchange's builder). lib/aster.ts re-exports this same value */
 export const BUILDER = '0x5F472529166c8897E6FfcC5Aa5258620c7bED338'
 /**
- * 用户授权时签的平台费上限（成交额的 0.06%）。插件只替网页下 feeRate 不超过它的单；lib/aster.ts 从这里导出同一个值。
- * ⚠️ 调高要所有人重新授权（lib/aster.ts 的 FEE_REAUTH），而且要同时发新版插件，否则插件会拒掉费率更高的单
+ * The platform-fee cap the user authorized (0.06% of volume). The extension only places web orders with
+ * feeRate at or under it; lib/aster.ts re-exports this same value.
+ * ⚠️ Raising it requires everyone to re-authorize (FEE_REAUTH in lib/aster.ts) AND a new extension release,
+ * or the extension will reject higher-fee orders
  */
 export const BUILDER_FEE = '0.0006'
 
 export type PerpWriteKind = 'order' | 'cancel' | 'leverage' | 'marginType'
 
-/** 每种操作的固定路径和方法 */
+/** Fixed path and method per operation */
 export const PERP_WRITE_ROUTES: Record<PerpWriteKind, { method: 'POST' | 'DELETE'; path: string }> = {
   order: { method: 'POST', path: '/fapi/v3/order' },
   cancel: { method: 'DELETE', path: '/fapi/v3/order' },
@@ -25,32 +27,32 @@ export const PERP_WRITE_ROUTES: Record<PerpWriteKind, { method: 'POST' | 'DELETE
   marginType: { method: 'POST', path: '/fapi/v3/marginType' },
 }
 
-/** 网页交给插件的一个动作：操作种类 + 交易所参数（不含 asterChain / user / signer / nonce，插件自己补） */
+/** One action web hands to the extension: op kind + exchange params (no asterChain / user / signer / nonce — the extension fills those in) */
 export interface PerpWriteAction { action: PerpWriteKind; params: Record<string, string> }
 
-/** 核对之后的一个动作：路径、方法、规范化后的参数，另附插件判断「要不要弹窗」和显示用的几个字段 */
+/** One validated action: path, method, normalized params, plus what the extension needs to decide "popup or not" and display fields */
 export interface PerpWriteOp {
   action: PerpWriteKind
   method: 'POST' | 'DELETE'
   path: string
   params: Record<string, string>
   symbol: string
-  /** order：主单（市价 / 限价）还是止盈止损（触发后平掉整个仓位） */
+  /** order: main order (market / limit) or TP/SL (closes the whole position on trigger) */
   role?: 'main' | 'protect'
 }
 
-/** 一次最多几个动作：改杠杆 + 改保证金模式 + 主单 + 止盈 + 止损 */
+/** Max actions per batch: leverage + margin mode + main order + TP + SL */
 export const PERP_WRITE_MAX_ACTIONS = 5
 
 const SYMBOL = /^[A-Z0-9]{1,20}USDT$/
-/** 十进制正数：最多 18 位整数、18 位小数，不许科学计数法、正负号、空格 */
+/** Positive decimal: max 18 integer and 18 fraction digits; no scientific notation, signs, or spaces */
 const DECIMAL = /^\d{1,18}(\.\d{1,18})?$/
 const INT = /^\d{1,20}$/
 
 const bad = (why: string): never => { throw new Error(`perpWrite: ${why}`) }
 const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
 
-/** 取出参数：一律要字符串（数字也接受，转成字符串），不在 allowed 里的一个都不许带 */
+/** Extract params: strings only (numbers accepted, coerced to string); nothing outside allowed may be present */
 function take(params: unknown, allowed: readonly string[]): Record<string, string> {
   if (!params || typeof params !== 'object' || Array.isArray(params)) bad('params')
   const out: Record<string, string> = {}
@@ -68,15 +70,15 @@ const positive = (s: string | undefined, name: string) => {
 }
 
 /**
- * 核对并规范化一个写操作。通过返回固定路径、方法和按固定顺序排好的参数，不通过抛错。
- * 插件收到网页请求时、网页发出前都用它。
- *   order：symbol / side（BUY / SELL）/ type，另加 builder（必须是平台地址）和 feeRate（不超过 BUILDER_FEE）
- *     · MARKET：quantity，可带 reduceOnly=true
- *     · LIMIT：quantity + price + timeInForce=GTC，可带 reduceOnly=true
- *     · STOP_MARKET / TAKE_PROFIT_MARKET：只能是止盈止损（stopPrice + closePosition=true，触发后平掉整个仓位），不带数量
- *   cancel：symbol + orderId
- *   leverage：symbol + 1~125 的整数
- *   marginType：symbol + CROSSED / ISOLATED
+ * Validate and normalize one write op. Returns the fixed path, method, and params in fixed order on success;
+ * throws on failure. Used both when the extension receives a web request and before web sends one.
+ *   order: symbol / side (BUY / SELL) / type, plus builder (must be the platform address) and feeRate (≤ BUILDER_FEE)
+ *     - MARKET: quantity, optional reduceOnly=true
+ *     - LIMIT: quantity + price + timeInForce=GTC, optional reduceOnly=true
+ *     - STOP_MARKET / TAKE_PROFIT_MARKET: TP/SL only (stopPrice + closePosition=true, closes the whole position on trigger), no quantity
+ *   cancel: symbol + orderId
+ *   leverage: symbol + integer 1–125
+ *   marginType: symbol + CROSSED / ISOLATED
  */
 export function perpWriteOp(input: unknown): PerpWriteOp {
   if (!input || typeof input !== 'object' || Array.isArray(input)) bad('action')
@@ -107,7 +109,7 @@ export function perpWriteOp(input: unknown): PerpWriteOp {
     return { action: kind, ...route, symbol, params: { symbol, marginType: p.marginType } }
   }
 
-  // 下单
+  // Place order
   const p = take(params, ['symbol', 'side', 'type', 'quantity', 'price', 'timeInForce', 'reduceOnly', 'closePosition', 'stopPrice', 'builder', 'feeRate'])
   const symbol = symbolOf(p)
   if (p.side !== 'BUY' && p.side !== 'SELL') bad('side')
@@ -129,7 +131,7 @@ export function perpWriteOp(input: unknown): PerpWriteOp {
     return { action: kind, ...route, symbol, role: 'main', params: { ...out, ...fee } }
   }
   if (p.type === 'STOP_MARKET' || p.type === 'TAKE_PROFIT_MARKET') {
-    // 只收止盈止损：触发后市价平掉整个仓位。带数量的触发单（可以用来开新仓）不收
+    // TP/SL only: market-closes the whole position on trigger. Trigger orders with quantity (which could open new positions) are rejected
     if (has('quantity') || has('price') || has('timeInForce') || has('reduceOnly')) bad('protect')
     if (p.closePosition !== 'true') bad('closePosition')
     const stopPrice = positive(p.stopPrice, 'stopPrice')
@@ -139,8 +141,9 @@ export function perpWriteOp(input: unknown): PerpWriteOp {
 }
 
 /**
- * 核对一批动作（一次用户操作）：1~5 个，全是同一个币；最多一个改杠杆、一个改保证金模式、一个主单、两个止盈止损；
- * 撤单只能单独一个；止盈止损的方向必须和主单相反。返回按执行顺序排好的动作：改杠杆 → 改保证金模式 → 主单 → 止盈止损。
+ * Validate a batch of actions (one user operation): 1–5, all the same coin; at most one leverage change,
+ * one margin-mode change, one main order, two TP/SL; cancels must stand alone; TP/SL must oppose the main
+ * order's side. Returns actions in execution order: leverage → margin mode → main order → TP/SL.
  */
 export function perpWriteBatch(actions: unknown): PerpWriteOp[] {
   if (!Array.isArray(actions) || actions.length < 1 || actions.length > PERP_WRITE_MAX_ACTIONS) bad('actions')
@@ -159,8 +162,8 @@ export function perpWriteBatch(actions: unknown): PerpWriteOp[] {
 }
 
 /**
- * 交易所的回复算不算成功：HTTP 2xx 且没有负数 code。
- * 改保证金模式时交易所回「No need to change margin type」（本来就是这个模式）也算成功。
+ * Whether the exchange's reply counts as success: HTTP 2xx with no negative code.
+ * Margin-mode changes returning "No need to change margin type" (already in that mode) also count as success.
  */
 export function perpWriteOk(op: Pick<PerpWriteOp, 'action'>, status: number, body: unknown): boolean {
   const code = body && typeof body === 'object' && 'code' in body ? Number((body as { code: unknown }).code) : 0
@@ -169,10 +172,10 @@ export function perpWriteOk(op: Pick<PerpWriteOp, 'action'>, status: number, bod
   return op.action === 'marginType' && /No need to change/i.test(msg)
 }
 
-/** 插件交回网页的每个动作的结果：执行了就是交易所的 HTTP 状态码和回复；前面的动作失败了，后面的不执行（skipped） */
+/** Per-action results handed back to web: executed ones carry the exchange's HTTP status and reply; when an earlier action fails, later ones don't run (skipped) */
 export type PerpWriteResult = { action: PerpWriteKind; status: number; body: unknown } | { action: PerpWriteKind; skipped: true }
 
-// ---------- 网页快捷交易会话（登录时授权一次，之后网页下单不再逐笔弹窗） ----------
+// ---------- Web express-trading session (authorize once at login; no per-order popups on web afterwards) ----------
 
-/** 会话最长多久（锁定钱包、断开网站、关浏览器都会提前结束）。2026-09-30 goat 定不设金额 / 杠杆 / 累计上限，会话只有有效期 */
+/** Max session lifetime (wallet lock, site disconnect, or browser close end it early). 2026-09-30 goat: no amount / leverage / cumulative caps — the session has only an expiry */
 export const PERP_SESSION_TTL_MS = 24 * 3600_000

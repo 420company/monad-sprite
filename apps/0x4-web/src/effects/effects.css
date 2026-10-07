@@ -1,6 +1,6 @@
-/* 直播特效面板（2026-10-02）。电脑网页版 = 视频右边的侧栏（.gift-dock，样式在 desktop.css）；
-   手机 = 视频下方的一条面板（.fx-m），视频让出下面一截，主播边调边看自己的画面（goat：送礼弹窗挡视频那次的教训）。
-   颜色先取网页版的 --w-*，手机上没有就用 App 的 --color-*（深浅两套主题都跟着走）。 */
+/* Livestream effects panel (2026-10-02). Desktop web = a sidebar right of the video (.gift-dock, styled in desktop.css);
+   mobile = a strip panel below the video (.fx-m); the video yields its lower part so hosts can see their own feed while adjusting (goat: the lesson from the gift popup covering the video).
+   Colors prefer the web's --w-* variables, falling back to the app's --color-* on mobile (both light and dark themes follow). */
 .fx-card, .fx-bg, .fx-m { --fx-line: var(--w-line, var(--color-line)); --fx-line2: var(--w-line-2, var(--color-line)); --fx-raised: var(--w-raised, var(--color-card2)); --fx-fg: var(--w-fg, var(--color-fg)); --fx-mute: var(--w-mute, var(--color-muted)); --fx-accent: var(--w-accent, var(--color-accent)); }
 
 .fx-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 14px 8px 12px; border-radius: 14px; border: 1px solid var(--fx-line); background: var(--fx-raised); text-align: center; transition: border-color .15s, background-color .15s; }
@@ -21,21 +21,21 @@
 .fx-bg-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 6px 4px; font-size: 10.5px; font-weight: 500; color: #fff; text-align: center; background: linear-gradient(transparent, rgb(0 0 0 / .65)); }
 .fx-blur { width: 100%; height: 100%; background: radial-gradient(circle at 50% 42%, rgb(205 189 255 / .55), transparent 38%), linear-gradient(135deg, #3a3350, #1b1a26); filter: blur(4px); }
 
-/* ---------- 手机：视频下方的一条面板 ---------- */
+/* ---------- Mobile: the strip panel below the video ---------- */
 .fx-m { flex: none; display: flex; flex-direction: column; gap: 14px; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--fx-line); background: var(--color-bg); color: var(--fx-fg); animation: fx-m-in .22s ease-out; }
 @keyframes fx-m-in { from { transform: translateY(12px); opacity: 0 } to { transform: none; opacity: 1 } }
 @media (prefers-reduced-motion: reduce) { .fx-m { animation: none } }
 .fx-m-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .fx-m-label { flex: none; width: 3.2em; font-size: 13px; font-weight: 600; }
-/* 真人 / 猫头：一条两段的切换 */
+/* Human / cat-head: a two-segment toggle */
 .fx-seg { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: 12px; background: var(--fx-raised); }
 .fx-seg button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border-radius: 9px; font-size: 13px; font-weight: 600; color: var(--fx-mute); transition: background-color .15s, color .15s; }
 .fx-seg button[aria-checked="true"] { background: color-mix(in srgb, var(--fx-accent) 18%, transparent); color: var(--fx-fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fx-accent) 55%, transparent); }
-/* 背景：一行横向滑动的缩略图 */
+/* Background: a horizontally scrollable thumbnail row */
 .fx-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding: 2px 16px; scroll-snap-type: x proximity; }
 .fx-strip::-webkit-scrollbar { display: none; }
 .fx-strip .fx-bg { flex: none; width: 76px; scroll-snap-align: start; }
-/* 手机：美颜四项（磨皮 / 美白 / 瘦脸 / 大眼），选中的那项下面一条滑条；开着的项右上角一个小点 */
+/* Mobile: four beauty filters (smoothing / whitening / face slimming / eye enlarging); the selected one gets a slider below; enabled ones show a dot at their top-right */
 .fx-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .fx-chips button { position: relative; min-height: 36px; border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--fx-mute); background: var(--fx-raised); transition: background-color .15s, color .15s; }
 .fx-chips button[aria-checked="true"] { color: var(--fx-fg); background: color-mix(in srgb, var(--fx-accent) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fx-accent) 55%, transparent); }

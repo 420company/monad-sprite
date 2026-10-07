@@ -1,4 +1,4 @@
-// 聊天列表滚动：新消息到了且人在底部（或是自己发的）就滚到底；滚到顶部加载更早的，加载完保持原来看的位置不跳。
+// Chat list scrolling: scroll to the bottom when a new message arrives and the user is at the bottom (or sent it themselves); scroll to the top to load earlier ones, and hold the previous position without jumping once loaded.
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 export function useChatScroll<T extends { id: string; from: string }>(list: T[], hasMore: boolean, loadOlder: () => Promise<unknown>, me?: string) {
@@ -6,7 +6,7 @@ export function useChatScroll<T extends { id: string; from: string }>(list: T[],
   const atBottom = useRef(true)
   const lastId = useRef<string | undefined>(undefined)
   const firstId = useRef<string | undefined>(undefined)
-  /** 触发往上翻时记下的高度和位置，新的一页插到上面之后按它把位置还原 */
+  /** The height and position recorded when the upward turn was triggered; used to restore the position after the new page is inserted above */
   const restore = useRef<{ h: number; top: number } | null>(null)
   const busy = useRef(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
@@ -16,7 +16,7 @@ export function useChatScroll<T extends { id: string; from: string }>(list: T[],
     const first = list[0]?.id, last = list[list.length - 1]
     if (el) {
       if (restore.current && first !== firstId.current) {
-        // 设绝对值而不是加差值：浏览器自带的滚动锚定已经调过一次也不会重复
+        // Set the absolute value instead of adding the delta: the browser's built-in scroll anchoring already adjusted once and won't double-apply
         el.scrollTop = restore.current.top + (el.scrollHeight - restore.current.h)
         restore.current = null
       } else if (last?.id !== lastId.current && (atBottom.current || (me && last?.from === me))) {
@@ -39,7 +39,7 @@ export function useChatScroll<T extends { id: string; from: string }>(list: T[],
     loadOlder().catch(() => {}).finally(() => {
       busy.current = false
       setLoadingOlder(false)
-      // 没拉到新东西时别让这个记录留到下一次列表变化
+      // Don't let this record linger into the next list change when nothing new was pulled
       setTimeout(() => { restore.current = null }, 300)
     })
   }, [hasMore, loadOlder])

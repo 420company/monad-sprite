@@ -1,19 +1,19 @@
-// 服务端发来的动态文字：通知中心、群聊系统消息、带参数的报错。
+// Server-sent dynamic strings: notification center, group system messages, parameterized errors.
 //
-// 2026-09-26 起服务端给这些文字附带模板 key（简体原文，比如 '{name} 关注了你，回关即成为好友'）和参数，
-// 这里用 t(key, params) 按界面语言渲染。老数据只有渲染好的简体整句：先去掉旧 emoji（cleanSysText），
-// 再用下面的模板表反解出参数，同样 t() 渲染；反解不了就原样显示。
+// Since 2026-09-26 the server attaches a template key (Simplified Chinese source) plus params to these strings,
+// which are rendered here via t(key, params) in the UI language. Old data only has fully-rendered Simplified Chinese sentences: first strip legacy emoji (cleanSysText),
+// then reverse-resolve params through the template table below and render with t() the same way; show as-is when unresolvable.
 //
-// 模板表必须覆盖服务端所有模板（server/src/texts.ts，测试会核对），外加已经不再发、但库里还存着的旧句子。
+// The template table must cover every server template (server/src/texts.ts — tests verify this), plus old sentences no longer sent but still stored in the DB.
 import { t } from '@/lib/i18n'
 import { GIFT_NAMES } from '@/components/gifts/GiftIcon'
 
 export type TplParams = Record<string, string | number>
 export interface ParsedText { key: string; params: TplParams }
 
-/** 当前服务端在用的模板（通知 / 推送 / 群系统消息），和 server/src/texts.ts 一一对应 */
+/** Templates currently used by the server (notifications / pushes / group system messages), one-to-one with server/src/texts.ts */
 export const CURRENT_TEMPLATES = [
-  // 通知中心（同时是推送正文）
+  // Notification center (also the push body)
   '{name} 给你发送了消息',
   '你关注的 {name} 开播了：{title}',
   '你关注的 {name} 开播了（付费直播）：{title}',
@@ -48,7 +48,7 @@ export const CURRENT_TEMPLATES = [
   '客服回复了你的工单「{title}」',
   '你的工单「{title}」已解决',
   '你的工单「{title}」已关闭',
-  // 小精灵合约逐笔确认（2026-09-28）：申请确认、授权核对不过、批准后没下单
+  // Per-trade sprite contract confirmations (2026-09-28): request confirm, auth mismatch, approved but never ordered
   '小精灵 {name} 想开多 {coin}（保证金 ${margin}，{lev} 倍），请在 10 分钟内确认',
   '小精灵 {name} 想开空 {coin}（保证金 ${margin}，{lev} 倍），请在 10 分钟内确认',
   '小精灵 {name} 想平多 {coin}（保证金 ${margin}，{lev} 倍），请在 10 分钟内确认',
@@ -60,7 +60,7 @@ export const CURRENT_TEMPLATES = [
   '小精灵 {name} 没有执行你确认的交易：下单前条件不满足，这笔没有下单',
   '{name} 在你离开时提了 {n} 次交易申请',
   '没有收到小精灵 {name} 这笔确认交易的执行结果，请在「合约」页核对持仓',
-  // 只推送、不进通知中心
+  // Push only — never enters the notification center
   '{name} 发了新动态：{text}',
   '{name} 发了图片',
   '{name} 赞了你的评论',
@@ -70,7 +70,7 @@ export const CURRENT_TEMPLATES = [
   '{name} 邀请你视频通话',
   '{name} 邀请你语音通话',
   '0x4 官方：{text}',
-  // 群聊系统消息
+  // Group system messages
   '管理员设置了进群门槛：持有「{symbol}」',
   '管理员设置了进群门槛：持有「{symbol}」{n} 个',
   '管理员设置了进群门槛：持有 {n} {symbol}',
@@ -101,14 +101,14 @@ export const CURRENT_TEMPLATES = [
   '已关闭全体禁言',
   '{name} 已被禁言',
   '{name} 已解除禁言',
-  // 禁止群成员私信（2026-09-29）
+  // Group members barred from DMs (2026-09-29)
   '{name} 关闭了群成员私信',
   '{name} 开启了群成员私信',
   '原群主已注销账号，{name} 成为新群主',
   '{name} 发起了群会议',
 ]
 
-/** 服务端已经不再发、但库里还有的旧句子 */
+/** Old sentences the server no longer sends but the DB still holds */
 export const LEGACY_TEMPLATES = [
   '{name} 给你发了一条加密私信',
   '{name} 给你发来新消息',
@@ -116,13 +116,13 @@ export const LEGACY_TEMPLATES = [
   '{name} 关注了你',
 ]
 
-/** 旧句子反解后改用新模板显示（中文界面也显示新说法）。私信提醒 2026-09-26 统一成「给你发送了消息」 */
+/** Old sentences are re-rendered with new templates after reverse-resolution (new wording even in Chinese UI). DM reminders were unified on 2026-09-26 */
 const LEGACY_ALIAS: Record<string, string> = {
   '{name} 给你发了一条加密私信': '{name} 给你发送了消息',
   '{name} 给你发来新消息': '{name} 给你发送了消息',
 }
 
-/** 服务端报错里带参数的几句（报错没有 key，一律靠反解） */
+/** Parameterized server errors (errors carry no key — always reverse-resolved) */
 export const ERROR_TEMPLATES = [
   '还没到账（当前 {bal} {symbol}），请稍后再试',
   '余额不足，需要 ${n}',
@@ -133,7 +133,7 @@ export const ERROR_TEMPLATES = [
   '需要持有 {n} 个「{symbol}」才能加入（当前 {holding} 个）',
   '需要持有 「{symbol}」才能加入（当前 {holding} 个）',
   '需要持有至少 {n} {symbol} 才能加入（当前 {holding}）',
-  // Zalien 领养凭证（2026-09-27）
+  // Zalien adoption voucher (2026-09-27)
   'Zalien #{n} 不在你的钱包中',
   'Zalien #{n} 已被领养',
   'Zalien #{n} 已被领养，请刷新后重试',
@@ -144,9 +144,9 @@ export const ERROR_TEMPLATES = [
 
 export const ALL_TEMPLATES = [...CURRENT_TEMPLATES, ...LEGACY_TEMPLATES, ...ERROR_TEMPLATES]
 
-// ── 反解 ─────────────────────────────────────────────────────────────
-// 数字类参数限定成数字，免得「{name} 转给你 ${amount}」吃掉带附言那句的「：附言」；
-// 币种符号可以为空（门槛没填符号时是「持有 5 」）；其余参数（昵称、群名、正文）可以是任意字符
+// ── Reverse resolution ─────────────────────────────────────────────────────────────
+// Numeric params are restricted to numbers, so "{name} transferred ${amount}" can't swallow the note-separator of the with-note variant;
+// Token symbol may be empty ("holding 5 " when the threshold has no symbol); other params (nickname, group name, body) accept any characters
 const NUM = '[-+]?\\d[\\d,]*(?:\\.\\d+)?(?:e[-+]?\\d+)?'
 const PARAM_RE: Record<string, string> = { n: NUM, amount: NUM, bal: NUM, holding: NUM, price: NUM, vol: NUM, change: NUM, symbol: '[\\s\\S]*?' }
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -172,10 +172,10 @@ function compile(key: string): Matcher {
   return { key, re: new RegExp(`^${src}$`), names, literal }
 }
 
-// 字面文字多的先试：「{name} 关注了你，回关即成为好友」要排在旧的「{name} 关注了你」前面
+// Try more-literal templates first: the longer follow-template must come before its shorter prefix (otherwise the short one matches first)
 const MATCHERS = ALL_TEMPLATES.map(compile).sort((a, b) => b.literal - a.literal || a.names.length - b.names.length)
 
-/** 简体整句 → 模板 + 参数；认不出返回 null */
+/** Simplified Chinese sentence → template + params; null when unrecognized */
 export function parseServerText(text: string): ParsedText | null {
   for (const m of MATCHERS) {
     const hit = m.re.exec(text)
@@ -187,29 +187,29 @@ export function parseServerText(text: string): ParsedText | null {
   return null
 }
 
-// ── 渲染 ─────────────────────────────────────────────────────────────
-/** 旧礼物名：2026-09-25 换成 meme 版之前的名字 */
+// ── Rendering ────────────────────────────────────────────────────────
+/** Old gift names: pre-2026-09-25 names before the meme-edition rename */
 const LEGACY_GIFT: Record<string, string> = { 玫瑰: '韭菜', 啤酒: '大阳线' }
 
-/** 参数里要跟着界面语言走的只有礼物名；昵称、群名、正文原样 */
+/** Only gift names follow the UI language among params; nicknames, group names, and bodies stay as-is */
 function localizeParams(params: unknown, giftId?: unknown): TplParams {
   const p: TplParams = {}
   if (params && typeof params === 'object') for (const [k, v] of Object.entries(params)) if (typeof v === 'string' || typeof v === 'number') p[k] = v
   if (typeof p.gift === 'string') {
     const byId = typeof giftId === 'string' ? GIFT_NAMES[giftId] : undefined
-    const name = p.gift.replace(LEAD, '')   // 旧文字是「一个🌹玫瑰」
+    const name = p.gift.replace(LEAD, '')   // The old wording was a gift-rose message
     p.gift = t(byId || LEGACY_GIFT[name] || name)
   }
   return p
 }
 
 /**
- * 服务端动态文字按界面语言显示。有 key 用 key；没有就反解 text；都不行原样显示（去掉旧 emoji）。
- * giftId：群里的送礼消息 meta 带着，礼物名按 id 取前端这套名字
+ * Server dynamic strings are shown in the UI language. Use the key when present; otherwise reverse-resolve text; show as-is (legacy emoji stripped) when neither works.
+ * giftId: gift messages in groups carry it in meta; gift names are taken from the frontend's name set by id.
  */
 export function renderServerText(text: string, key?: unknown, params?: unknown, giftId?: unknown): string {
   if (typeof key === 'string' && key) return t(key, localizeParams(params, giftId))
-  // 先按原文反解（昵称本身以 emoji 开头的别被清掉），不行再去掉旧 emoji 反解（「📡 信号：…」）
+  // First reverse-resolve the raw text (don't strip nicknames that start with emoji themselves); if that fails, strip legacy emoji and retry ("📡 signal: …")
   const hit = parseServerText(text)
   if (hit) return t(hit.key, localizeParams(hit.params, giftId))
   const cleaned = cleanSysText(text)
@@ -217,21 +217,21 @@ export function renderServerText(text: string, key?: unknown, params?: unknown, 
   return again ? t(again.key, localizeParams(again.params, giftId)) : cleaned
 }
 
-/** 群聊系统消息：meta 里带 key / params（2026-09-26 起），老消息只有 text */
+/** Group system messages: key / params in meta (since 2026-09-26); old messages only have text */
 export function renderSysMessage(m: { text: string; meta?: Record<string, unknown> }): string {
   return renderServerText(m.text, m.meta?.key, m.meta?.params, m.meta?.giftId)
 }
 
-/** 接口报错：固定句子直接 t()（src/locales/parts/server.json），带参数的先反解 */
+/** API errors: fixed sentences go straight through t() (src/locales/parts/server.json); parameterized ones are reverse-resolved first */
 export function translateServerError(msg: string): string {
   const hit = parseServerText(msg)
   return hit ? t(hit.key, hit.params) : t(msg)
 }
 
-// ── 旧 emoji 清理 ────────────────────────────────────────────────────
-// 2026-09-25 起服务器不再往系统文字里拼 emoji（「📡 信号」「🤖 AI」「🪰 果蝇」、送礼的「一个🌹玫瑰」），
-// 数据库里已存的旧消息显示时也去掉，新旧消息看起来一致。只动开头那串 emoji 和「个」后面紧跟的礼物 emoji，
-// 用户自己打的正文不碰。
+// ── Legacy emoji cleanup ─────────────────────────────────────────────────
+// Since 2026-09-25 the server no longer embeds emoji in system strings ("📡", "🤖", "🪰", gift rose),
+// and already-stored messages have them stripped at display time so old and new look alike. Only the leading emoji run and the gift emoji right after the measure word are touched —
+// body text the user typed themselves is never touched.
 
 const LEAD = /^(?:\p{Extended_Pictographic}\uFE0F?\s*)+/u
 const GIFT = /(一个|\d+ 个)\p{Extended_Pictographic}\uFE0F?/u
@@ -240,7 +240,7 @@ export function cleanSysText(text: string): string {
   return text.replace(LEAD, '').replace(GIFT, '$1')
 }
 
-/** 旧版私信转账消息是「💸 转账 $1.00」，现在只发「转账 $1.00」 */
+/** Legacy DM transfer messages were "💸 transfer $1.00"; now only "transfer $1.00" is sent */
 export function cleanDmText(text: string): string {
   return text.startsWith('💸 转账 $') ? text.slice(3) : text
 }

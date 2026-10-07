@@ -8,7 +8,7 @@ import { HOLD_TO_RECORD_MS } from '@/lib/voice'
 vi.mock('@/lib/native', () => ({ tap: () => {}, hapticResult: () => {} }))
 const { default: SendVoiceButton } = await import('./SendVoiceButton')
 
-// 假录音器：start 后 stop 时吐一块 30KB 的数据
+// Fake recorder: emits a 30KB chunk of data on stop after start
 class FakeRecorder {
   static isTypeSupported = (t: string) => t === 'audio/mp4;codecs=mp4a.40.2'
   state = 'inactive'

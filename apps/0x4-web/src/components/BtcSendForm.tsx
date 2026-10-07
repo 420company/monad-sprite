@@ -1,4 +1,4 @@
-// 发送比特币：地址校验（只认主网）、金额（可全部发送）、手续费三档、预估费用，签名后显示 txid 和确认进度
+// Send Bitcoin: address validation (mainnet only), amount (send-all available), three fee tiers, fee estimate; after signing show the txid and confirmation progress
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Copy, ExternalLink } from 'lucide-react'
 import Button from '@/components/Button'
@@ -23,7 +23,7 @@ const SPEEDS: { id: Speed; label: string; eta: string }[] = [
   { id: 'normal', label: '标准', eta: '约 1 小时' },
   { id: 'slow', label: '省', eta: '约 1 天' },
 ]
-/** 确认进度条按 6 次算满（交易所常用的门槛） */
+/** The confirmation progress bar fills at 6 (the commonly used exchange threshold) */
 const FULL_CONF = 6
 
 export default function BtcSendForm({ priceUsd }: { priceUsd: number }) {
@@ -57,7 +57,7 @@ export default function BtcSendForm({ priceUsd }: { priceUsd: number }) {
     try { sats = parseBtc(amount) } catch (e) { amountErr = errorText(e, t('操作失败'))}
   }
 
-  // 预估：地址对、金额填了、UTXO 和费率都到了才算
+  // Estimate only when the address is valid, the amount is filled, and UTXOs + fee rates have arrived
   const quote = useMemo(() => {
     if (!btcAddress || !utxos || !fees || !dest.ok || (!max && !sats)) return null
     try {
@@ -70,7 +70,7 @@ export default function BtcSendForm({ priceUsd }: { priceUsd: number }) {
   const setAll = () => { setMax(true); setAmount('') }
   const onAmount = (v: string) => { setMax(false); setAmount(v) }
   const onTo = (v: string) => {
-    // 粘贴 / 扫出来的 bitcoin: 链接：拆出地址，带了金额就顺手填上
+    // Pasted / scanned bitcoin: links: extract the address, and fill in the amount when one is included
     const u = parseBitcoinUri(v)
     setTo(u.address.trim())
     if (u.amount && !amount) onAmount(u.amount)
@@ -80,14 +80,14 @@ export default function BtcSendForm({ priceUsd }: { priceUsd: number }) {
     if (!btcAddress || !quote?.plan || !dest.ok || !fees) return
     setBusy(true)
     try {
-      // 「动钱才验证」：锁着先弹验证面板；验过之后签名器才可用
+      // "Verify when moving money": locked wallets pop the verification panel first; the signer is only available after verification
       await ensureUnlocked(t('确认发送比特币'))
       const signer = useWallet.getState().btc
       if (!signer) throw new Error(t('比特币密钥不可用，请锁定后重新解锁钱包'))
       const r = await sendBtc(signer, { from: btcAddress, to: dest.address, amount: max ? 'max' : sats!, feeRate: fees[speed], utxos: utxos! })
       setSent({ txid: r.txid, plan: r.plan })
       toast.success(t('已广播'))
-      // 不关弹层：要留在这里看 txid 和确认进度；余额在后台刷新
+      // Don't close the sheet: stay here to watch the txid and confirmation progress; the balance refreshes in the background
       void usePortfolio.getState().refresh()
     } catch (e) {
       alertError(e, t('发送失败'))
@@ -143,7 +143,7 @@ export default function BtcSendForm({ priceUsd }: { priceUsd: number }) {
   )
 }
 
-/** 广播之后：txid、浏览器链接、确认进度（每 20 秒查一次，满 6 次停） */
+/** After broadcast: txid, explorer link, confirmation progress (checked every 20 s, stops at 6) */
 function Sent({ txid, plan, priceUsd }: { txid: string; plan: BtcSendPlan; priceUsd: number }) {
   const [conf, setConf] = useState(0)
   const [copied, setCopied] = useState(false)
@@ -157,7 +157,7 @@ function Sent({ txid, plan, priceUsd }: { txid: string; plan: BtcSendPlan; price
         const n = confirmations(st, tip)
         setConf(n)
         if (n >= FULL_CONF) return
-      } catch { /* 刚广播时节点可能还没同步到，下一轮再查 */ }
+      } catch { /* Right after broadcast the node may not have synced yet — check again next round */ }
       if (alive) timer = window.setTimeout(tick, 20_000)
     }
     void tick()

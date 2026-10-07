@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-// 网页版「用 0x4 App 扫码登录」（2026-10-01 goat：meet.420.meme 下线，会议只留网页版；没装插件的电脑也能登录）：
-// ① 扫码流程：二维码是手机确认页网址（app.420.meme/#/pc-login?c=ox4meet:…），带 app:'web' 发起；已扫码 → 确认 → 拿到令牌
-// ② 拿令牌登录：社交层 ready、qrMode、令牌按账号存在本机；刷新页面（没连钱包）用存的令牌恢复；令牌失效就删掉、不卡住
-// ③ 只有会议 / 直播 / 群聊等标了 app 的页面放行，钱包页面照旧要钱包；会议、直播的操作（needLogin）放行，交易类（needWallet）照旧弹连接面板
-// ④ 退出登录删掉本机令牌；连上钱包时换成钱包登录
+// Web "Log in by scanning with the 0x4 App" (2026-10-01 goat: meet.420.meme retired, meetings stay web-only; computers without the extension can log in too):
+// ① Scan flow: the QR encodes the phone confirm-page URL (app.420.meme/#/pc-login?c=ox4meet:…), initiated with app:'web'; scanned → confirmed → token issued
+// ② Token login: social layer ready, qrMode, token stored per account on-device; refresh (no wallet connected) restores from the stored token; invalid tokens are deleted, never stuck
+// ③ Only pages tagged app (meetings / livestreams / group chat etc.) pass; wallet pages still require a wallet; meeting/livestream actions (needLogin) pass, trading actions (needWallet) still pop the connect panel
+// ④ Logging out deletes the local token; connecting a wallet switches to wallet login
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/surface', () => ({ WEB_SURFACE: true }))
@@ -17,7 +17,7 @@ const { parseLoginQr } = await import('@/lib/meetQr')
 class NoSocket { readyState = 0; onopen = null; onclose = null; onmessage = null; send() {} close() {} }
 const ACC = 'AliceQr111111111111111111111111111111111111'
 
-/** 本机假服务器：扫码登录三步 + /api/me + 续期 */
+/** Local fake server: the three scan-login steps + /api/me + renewal */
 function fakeServer(srvTrusted = false) {
   const hits: { path: string; body?: unknown; headers?: Record<string, string> }[] = []
   let polls = 0
@@ -71,7 +71,7 @@ describe('网页版扫码登录', () => {
     expect(await useSocial.getState().loginWithQr(r.token)).toBe(true)
     const st = useSocial.getState()
     expect(st.status).toBe('ready'); expect(st.qrMode).toBe(true); expect(st.me?.address).toBe(ACC)
-    expect(st.dmKeyElsewhere).toBe(true)   // 私信钥匙不在这台电脑
+    expect(st.dmKeyElsewhere).toBe(true)   // The DM keys aren't on this computer
     expect(getToken()).toBe('WEBTOKEN')
     expect(readQrSession()).toEqual({ account: ACC, token: 'WEBTOKEN', trusted: false })
     expect(st.qrTrusted).toBe(false)
@@ -85,20 +85,20 @@ describe('网页版扫码登录', () => {
     expect(useSocial.getState().qrTrusted).toBe(true)
     expect(JSON.parse(localStorage.getItem('0x4.webQrSession') || 'null')?.token).toBe('WEBTOKEN')
     expect(sessionStorage.getItem('0x4.webQrSession')).toBeNull()
-    // 关掉浏览器再打开（sessionStorage 没了，localStorage 还在）：用存的令牌恢复，仍是信任的电脑
+    // Close and reopen the browser (sessionStorage gone, localStorage intact): restore from the stored token, still a trusted computer
     useSocial.getState().logout()
     sessionStorage.clear()
     expect(readQrSession()).toEqual({ account: ACC, token: 'WEBTOKEN', trusted: true })
     expect(await useSocial.getState().loginWithQr()).toBe(true)
     expect(useSocial.getState().qrTrusted).toBe(true)
-    // 退出登录：两边都删
+    // Log out: delete on both sides
     useSocial.getState().logout(true)
     expect(localStorage.getItem('0x4.webQrSession')).toBeNull()
   })
 
   it('刷新页面（没连钱包）用本机存的令牌恢复并顺手续期；令牌失效就删掉回到没登录', async () => {
     const srv = fakeServer()
-    // 2026-10-01：扫码登录的令牌放 sessionStorage（关掉浏览器就退出，刷新还在）
+    // 2026-10-01: scan-login tokens live in sessionStorage (closing the browser logs out, refreshing keeps it)
     sessionStorage.setItem('0x4.webQrSession', JSON.stringify({ account: ACC, token: 'WEBTOKEN', v: 1 }))
     expect(await useSocial.getState().loginWithQr()).toBe(true)
     await vi.waitFor(() => expect(readQrSession()?.token).toBe('WEBTOKEN2'))
@@ -111,12 +111,12 @@ describe('网页版扫码登录', () => {
 
   it('会议、直播的操作放行；交易类照旧要钱包', async () => {
     fakeServer()
-    expect(needLogin()).toBe(true)                       // 没登录：弹连接面板
+    expect(needLogin()).toBe(true)                       // Not logged in: pop the connect panel
     expect(useWalletGate.getState().open).toBe(true)
     useWalletGate.setState({ open: false })
     await useSocial.getState().loginWithQr('WEBTOKEN')
-    expect(needLogin()).toBe(false)                      // 扫码登录了：开会、开播直接做
-    expect(needWallet()).toBe(true)                      // 交易、送礼：还是要连钱包
+    expect(needLogin()).toBe(false)                      // Scan-logged in: meetings and going live work directly
+    expect(needWallet()).toBe(true)                      // Trading, gifting: still need a wallet
   })
 
   it('令牌只存在这个标签页（sessionStorage），不进 localStorage：关掉浏览器就退出', async () => {

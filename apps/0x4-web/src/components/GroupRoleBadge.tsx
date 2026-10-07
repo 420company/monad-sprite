@@ -1,5 +1,5 @@
-// 群里的名片勋章（2026-09-25 goat）：只有两种人带，Owner（群主，goat 嫌「群主」两个字 low）和 MOD（群管理员）。普通成员什么都不显示。
-// 群主：金色渐变 + 皇冠；MOD：蓝紫渐变 + 盾牌。和官方人员的头像发光边框是两套东西，互不冲突。
+// Group profile-card badges (2026-09-25 goat): only two roles wear them — Owner (group owner; goat found the original Chinese label too low-brow) and MOD (group admin). Regular members show nothing.
+// Owner: gold gradient + crown; MOD: blue-violet gradient + shield. Separate from staff's avatar glow borders — no conflict.
 import { Crown, Shield } from 'lucide-react'
 
 export default function GroupRoleBadge({ role, size = 'sm' }: { role?: string | null; size?: 'sm' | 'md' }) {

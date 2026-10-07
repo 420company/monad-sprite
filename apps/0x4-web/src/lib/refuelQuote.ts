@@ -1,13 +1,13 @@
-// 补燃料费报价的参数与校验（2026-09-29）。App 的 refuel（lib/gas.ts）和实测脚本（scripts/check-fuel-chains.ts）共用这一份，
-// 保证「白名单是用 App 实际会发的同一种请求测出来的」。这里不引用带 @/ 别名或 import.meta 的模块，脚本在 node 里也能直接用。
+// Gas top-up quote params and validation (2026-09-29). The app's refuel (lib/gas.ts) and the live-test script (scripts/check-fuel-chains.ts) share this file,
+// guaranteeing "the whitelist was probed with the same request shape the app actually sends". No @/-aliased or import.meta modules here, so the script runs in node directly.
 
-/** 补燃料费的来源：BNB Chain 的原生 BNB */
+/** Gas top-up source: BNB Chain's native BNB */
 export const REFUEL_FROM_CHAIN = 56
 export const REFUEL_FROM_TOKEN = '0x0000000000000000000000000000000000000000'
 export const REFUEL_SLIPPAGE = 0.03
 export const REFUEL_ORDER = 'CHEAPEST' as const
 
-/** 报价里用得到的几项（LI.FI LiFiStep 的子集） */
+/** Fields used from the quote (a subset of LI.FI's LiFiStep) */
 export interface RefuelQuoteLike {
   action?: {
     fromChainId?: number; fromAmount?: string; fromToken?: { address?: string }; fromAddress?: string
@@ -20,15 +20,16 @@ export interface RefuelQuoteLike {
 
 const sameToken = (a: string, b: string) => (a.startsWith('0x') ? a.toLowerCase() === b.toLowerCase() : a === b)
 
-/** 请求时我们自己定的几项，报价必须原样对上（App 运行时传；实测脚本不传，只查到账那一侧） */
+/** Our own request fields the quote must echo back exactly (sent by the app at runtime; the test script omits them, checking only the receiving side) */
 export interface RefuelExpect { fromAmount: string; fromAddress: string; toAddress: string }
 const NATIVE_FROM = new Set(['0x0000000000000000000000000000000000000000', '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'])
 
 /**
- * 这份报价能不能用来补这条链的燃料费：目标链对、到账的是这条链的原生币（燃料费币）、预计到账数量大于 0、带可执行的交易。
- * 传了 expect 还要核对出钱那一侧（2026-09-29 审查 P3）：从 BNB Chain 的原生 BNB 出、金额 / 付款地址 / 收款地址和请求一致、
- * 交易发在 BNB Chain 上、交易里带的 BNB 不超过要换的数量。
- * 返回不通过的原因，通过返回 null。
+ * Whether this quote can top up the chain's gas: right target chain, the received asset is the chain's
+ * native (gas) coin, expected received amount > 0, and an executable transaction included.
+ * With expect passed, also verify the paying side (2026-09-29 review P3): paid in BNB Chain native BNB,
+ * amount / from / to match the request, the tx targets BNB Chain, and the tx's BNB doesn't exceed the
+ * swap amount. Returns the failure reason, null when it passes.
  */
 export function refuelQuoteProblem(q: RefuelQuoteLike | null | undefined, toChainId: number, nativeAddress: string, expect?: RefuelExpect): string | null {
   if (!q) return 'no quote'

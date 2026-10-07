@@ -1,5 +1,5 @@
-// 「我 → 安全 → 已登录的电脑」：扫码登录过的电脑（0x4 网页版、会议、赛博伊甸园、管理后台），可以单台或全部让它下线（那台电脑立刻退出）。
-// 2026-10-01 goat：在网吧、公司电脑上扫码后忘了退出——网页版扫码登录 30 分钟没操作 / 12 小时自动下线，这里随时可以手动让它下线。
+// "Me → Security → Signed-in computers": computers signed in via QR (0x4 web, meetings, Cyber Eden, admin console) can be logged out one by one or all at once (that computer logs out immediately).
+// 2026-10-01 goat: forgetting to log out after scanning at internet cafés / office PCs — web QR logins auto-logout after 30 idle minutes / 12 hours; here you can manually log them out anytime.
 import { useEffect, useState } from 'react'
 import { Globe, Laptop, LogOut, RefreshCw, ShieldCheck } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -10,13 +10,13 @@ import { timeAgo } from '@/lib/format'
 import { locale, t } from '@/lib/i18n'
 import { errorText } from '@/lib/errors'
 
-/** 国家 / 地区代码 → 当前语言的名字（TH → 泰国 / Thailand）；不认识就不显示 */
+/** Country / region code → its name in the current language (TH → Thailand); unknown codes aren't shown */
 export function regionName(code: string | null | undefined, loc: string = locale()): string {
   if (!code || !/^[A-Z]{2}$/.test(code)) return ''
   try { return new Intl.DisplayNames([loc], { type: 'region' }).of(code) || '' } catch { return '' }
 }
 
-/** 这台电脑是什么：网页版 / 管理后台 / 会议和游戏 */
+/** What this computer is: web / admin console / meetings & games */
 function kindLabel(s: MeetSession): string {
   if (s.kind === 'web') return t('0x4 网页版')
   if (s.kind === 'admin') return t('管理后台')

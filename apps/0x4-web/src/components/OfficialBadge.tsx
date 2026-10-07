@@ -1,10 +1,10 @@
-// 官方社区金色认证标：参考 X 的金色认证（金色锯齿圆形徽章 + 白色对勾）。
-// 只给平台管理员在后台建的官方社区用（接口字段 official === true），普通群永远不显示。
-// 放在群名右边：群列表、群聊标题、币详情页社区榜单、搜索结果、社区排行。
+// Official community gold verification badge: modeled on X's gold verification (gold serrated circular badge + white checkmark).
+// Only for official communities created by platform admins in the backend (API field official === true); regular groups never show it.
+// Placed right of the group name: group lists, group chat titles, token detail page community rankings, search results, community rankings.
 import { useId } from 'react'
 import { t } from '@/lib/i18n'
 
-/** 12 个尖角的锯齿圆（外半径 12、内半径 10.3，中心 12,12），和 X 的认证章同一个轮廓 */
+/** A serrated circle with 12 points (outer radius 12, inner radius 10.3, center 12,12) — the same silhouette as X's verification seal */
 const SEAL = (() => {
   const pts: string[] = []
   for (let i = 0; i < 24; i++) {
@@ -15,7 +15,7 @@ const SEAL = (() => {
   return pts.join(' ')
 })()
 
-// label：读屏念的名字，默认「官方社区」；「0x4 官方」公告会话传「0x4 官方认证」
+// label: the name screen readers announce (default: official-community label); the official announcement session passes its certified label
 export default function OfficialBadge({ size = 16, className = '', label: labelProp }: { size?: number; className?: string; label?: string }) {
   const id = useId().replace(/:/g, '')
   const label = labelProp ?? t('官方社区')

@@ -1,5 +1,5 @@
-// solAutoCore 的常量和地址推算：常量对官方代币库；程序 PDA 对 Rust 测试 pdas_match_ts_core 算出的同一组值
-// （2026-10-04：手写的关联代币账户程序地址错了一段，分叉联调时才发现，从此两边都钉死）
+// solAutoCore's constants and address derivation: constants against the official token program; program PDAs against the same values the Rust test pdas_match_ts_core computes
+// (2026-10-04: the hand-written associated-token-account program id had a wrong segment — only caught during fork integration; since then both sides are pinned)
 import { describe, expect, it } from 'vitest'
 import { PublicKey } from '@solana/web3.js'
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, NATIVE_MINT } from '@solana/spl-token'
@@ -39,7 +39,7 @@ describe('solAutoCore', () => {
     const route = ix.keys.slice(17)
     expect(route.every((k) => !k.isSigner)).toBe(true)
     expect(ix.keys.filter((k) => k.isSigner).map((k) => k.pubkey.toBase58())).toEqual([bonk.toBase58()])
-    // 数据：识别码 + amount_in + min_out + 路由数据（长度前缀 + 3 字节）
+    // Data: discriminator + amount_in + min_out + routing data (length prefix + 3 bytes)
     expect([...ix.data.subarray(0, 8)]).toEqual([102, 6, 61, 18, 1, 218, 235, 234])
     expect(ix.data.readBigUInt64LE(8)).toBe(5n)
     expect(ix.data.readBigUInt64LE(16)).toBe(7n)

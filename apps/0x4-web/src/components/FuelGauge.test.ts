@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 燃料费油量表图标：三档各自的读屏名字、当前那段点亮、指针方向；不传档位时是单色的「燃料费」
+// Gas gauge icon: screen-reader name per tier, current segment lit, needle direction; without a tier it's a monochrome "gas fee" glyph
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -14,9 +14,9 @@ beforeEach(() => {
 })
 afterEach(() => { act(() => root.unmount()); host.remove() })
 const render = (level?: FuelLevel) => { act(() => root.render(createElement(FuelGauge, { level }))); return host.querySelector('svg')! }
-// 表盘三段的亮度（按左中右顺序）
+// Brightness of the dial's three segments (left-to-right order)
 const lit = (svg: SVGElement) => [...svg.querySelectorAll('path')].slice(0, 3).map((p) => (p as SVGPathElement).style.opacity)
-// 指针终点相对表心的横向偏移：左负右正
+// Needle tip's horizontal offset from the dial center: negative left, positive right
 const needleDx = (svg: SVGElement) => { const d = svg.querySelectorAll('path')[3].getAttribute('d')!; const n = d.match(/-?\d+(\.\d+)?/g)!.map(Number); return n[2] - n[0] }
 
 describe('燃料费油量表', () => {

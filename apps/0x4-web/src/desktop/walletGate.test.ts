@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-// 网页版连 0x4 浏览器插件的整条流程（desktop/walletGate.ts）：没装弹说明、装了就连并挂上签名器、
-// 签名前过闸（锁了请插件解锁）、锁定只标锁着 / 断开清掉、打开网页自动恢复（锁着也恢复）、合约交易密钥走插件、没连钱包时社交写操作被拦。
+// The whole web flow for connecting the 0x4 browser extension (desktop/walletGate.ts): not installed → show the explainer; installed → connect and mount the signer,
+// Gate before signing (locked → ask the extension to unlock); locking only marks locked / disconnect clears; reopening the page auto-restores (even while locked); perps trading keys go through the extension; social write ops are intercepted with no wallet.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Keypair } from '@solana/web3.js'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { Ox4Provider, Ox4Event } from '@/lib/vault/extension'
 
-// 这些测试模拟网页版（VITE_SURFACE=web）
+// These tests simulate the web build (VITE_SURFACE=web)
 vi.mock('@/lib/surface', () => ({ WEB_SURFACE: true }))
 
 const { connectOx4, needWallet, restoreOx4, unlockOx4, useWalletGate } = await import('./walletGate')
@@ -16,7 +16,7 @@ const { useWallet } = await import('@/store/wallet')
 const { api } = await import('@/lib/social')
 const { agentFor, loadAccount, loadFills, loadOpenOrders, loadLeverageBrackets } = await import('@/lib/aster')
 
-/** 假插件 perpRead 的回复（按接口名）；测试里可以换 */
+/** Fake extension perpRead replies (by API name); swappable in tests */
 let perpReply: (endpoint: string) => Promise<{ status: number; body: unknown }> = async (endpoint) => ({
   status: 200,
   body: endpoint === 'account' ? { totalMarginBalance: '12.5', maxWithdrawAmount: '3', totalInitialMargin: '1', positions: [] }
@@ -74,7 +74,7 @@ describe('连接 0x4 Wallet', () => {
     expect(w.evmAddress).toBe(f.accounts.evmAddress)
     expect(w.btcAddress).toBe('bc1qtest')
     expect(w.keysUnlocked).toBe(true)
-    expect(w.vault).toBeNull()   // 网页版不存金库
+    expect(w.vault).toBeNull()   // Web doesn't store a vault
     const login = await (w.wallet as unknown as { signLogin: (m: string) => Promise<{ chain: string }> }).signLogin('hello')
     expect(login.chain).toBe('solana')
     expect(f.calls).toContain('signLogin')
@@ -101,7 +101,7 @@ describe('连接 0x4 Wallet', () => {
     expect(useWallet.getState().address).toBe(f.accounts.address)
     expect(useWallet.getState().keysUnlocked).toBe(false)
     expect(localStorage.getItem('0x4.webSession')).not.toBeNull()
-    // 插件在自己的弹窗里解锁：推 accountsChanged（地址没变）→ 去掉锁，不重新挂、不弹窗
+    // The extension unlocks inside its own popup: pushes accountsChanged (address unchanged) → clear the lock, no remount, no popup
     f.calls.length = 0
     f.state.unlocked = true
     f.emit('accountsChanged', f.accounts)
@@ -123,7 +123,7 @@ describe('连接 0x4 Wallet', () => {
     await ensureUnlocked('测试')
     expect(f.calls).toEqual(['status', 'connect'])
     expect(useWallet.getState().keysUnlocked).toBe(true)
-    // 「解锁」按钮：用户在插件里关掉窗口（4001）→ 返回 false、不报错
+    // "Unlock" button: user closes the window in the extension (4001) → return false, no error
     f.state.unlocked = false
     f.emit('lock')
     ;(f.p as unknown as { connect: unknown }).connect = async () => { throw { code: 4001, message: 'User rejected' } }
@@ -143,7 +143,7 @@ describe('连接 0x4 Wallet', () => {
     f.calls.length = 0
     const m = await decodeDm(row, (x) => dm().decrypt(x))
     expect(m.locked).toBe(true)
-    expect(m.undecryptable).toBe(true)   // 不存本机、不 ack，解锁后从服务器重新拉
+    expect(m.undecryptable).toBe(true)   // Not stored locally, not acked — re-pulled from the server after unlocking
     expect(f.calls).not.toContain('dmDecrypt')
   })
 
@@ -198,8 +198,8 @@ describe('连接 0x4 Wallet', () => {
   })
 })
 
-// 2026-09-29 审查：合约只读查询以前是「插件不弹窗签名、交回网页、网页自己请求交易所」，签名能被拿去调不带业务参数的写接口。
-// 现在网页版只读查询一律交给插件 perpRead 代办：网页拿不到签名、也不自己向交易所发私有请求
+// 2026-09-29 review: perps read-only queries used to be "the extension signs without popping, hands back to the web page, and the web page requests the exchange itself" — the signature could be reused to call write endpoints without business params.
+// Web read-only queries are now all handled by the extension's perpRead: the web page gets no signature and never sends private requests to the exchange itself
 describe('合约只读查询走插件代办', () => {
   it('查账户 / 挂单 / 成交 / 杠杆分档：只调 perpRead（接口名 + 白名单参数），不调 signAgentTypedData，网页不自己请求交易所', async () => {
     const f = fakeOx4()
@@ -229,7 +229,7 @@ describe('合约只读查询走插件代办', () => {
       await expect(loadOpenOrders(acc)).rejects.toThrow('NO_AGENT')
       const n = f.calls.length
       await expect(loadOpenOrders(acc)).rejects.toThrow('NO_AGENT')
-      expect(f.calls.length).toBe(n)   // 一分钟内不再问插件
+      expect(f.calls.length).toBe(n)   // Don't ask the extension again within a minute
     } finally { perpReply = saved }
     useWallet.getState().detachExtension()
     const g = fakeOx4()

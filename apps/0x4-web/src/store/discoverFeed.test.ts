@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 发现页榜单 store：同一份榜单不并发重复拉、30 秒内不重拉、失败保留旧列表、成功写本地快照。
+// Discover leaderboard store: no concurrent duplicate fetches of one leaderboard, no refetch within 30s, failures keep the old list, successes write a local snapshot.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarketToken } from '@/lib/types'
 import type { FeedPart } from '@/lib/marketFeed'
@@ -9,7 +9,7 @@ let impl: (kind: string) => Promise<FeedPart>[] = () => []
 vi.mock('@/lib/market', () => ({
   feedSources: (kind: string) => { calls.push(kind); return impl(kind) },
   getChainPools: async (kind: string, key: string) => { calls.push(`pools:${kind}:${key}`); return [] },
-  // store/market 用到的，这里用不上
+  // Used by store/market; not needed here
   getTokens: async () => [], getTrending: async () => [], searchTokens: async () => [], marketKey: (c: string, a: string) => `${c}:${a.toLowerCase()}`, SOL_MINT: 'sol',
 }))
 
@@ -30,7 +30,7 @@ describe('发现页榜单 store', () => {
     expect(feed.list.map((x) => x.address).sort()).toEqual(['b1', 'r1'])
     expect(feed.loading).toBe(false)
     expect(JSON.parse(localStorage.getItem('0x4.discover.v1.market')!).list).toHaveLength(2)
-    await s.load('market', true)   // 用户点刷新：强制重拉
+    await s.load('market', true)   // User hits refresh: force refetch
     expect(calls).toEqual(['market', 'market'])
   })
 

@@ -1,9 +1,9 @@
-// 小精灵看图点评的摘要（2026-10-02 goat 第三批）：只整理图上已有的数字；仓位只带比例。
+// The sprite's chart-review summary (2026-10-02 goat, third batch): only organizes numbers already on the chart; positions carry ratios only.
 import { describe, expect, it } from 'vitest'
 import type { Candle } from './aster'
 import { buildBrief } from './chartBrief'
 
-/** n 根 K 线：收盘价从 100 起每根 +1，偶数根收涨、奇数根收跌一点，成交量前面 10、最后 5 根 30 */
+/** n candles: closes rise +1 per candle from 100, even candles close up, odd ones down a touch; volume 10 for the first ones, 30 for the last 5 */
 const candles = (n: number): Candle[] => Array.from({ length: n }, (_, i) => {
   const close = 100 + i
   return { time: 60 * i, open: i % 2 === 0 ? close - 1 : close + 0.5, high: close + 2, low: close - 2, close, volume: i >= n - 5 ? 30 : 10 }
@@ -19,12 +19,12 @@ describe('看图摘要', () => {
   it('涨跌、区间、收涨根数、放量倍数', () => {
     const b = buildBrief({ market: 'spot', symbol: 'WIF', interval: '15m', candles: candles(40) })!
     expect(b).toMatchObject({ market: 'spot', symbol: 'WIF', interval: '15m', bars: 40, last: 139, hi: 141, lo: 98, upBars: 5, volRatio: 3 })
-    expect(b.chgAll).toBeCloseTo(139 / 99 - 1, 5)          // 第一根开盘 99
-    expect(b.chgRecent).toBeCloseTo(139 / 129 - 1, 5)      // 往前数第 11 根收盘 129
-    // 现货：不带买卖力量、大单、仓位（就算传了）
+    expect(b.chgAll).toBeCloseTo(139 / 99 - 1, 5)          // First candle opens at 99
+    expect(b.chgRecent).toBeCloseTo(139 / 129 - 1, 5)      // The 11th candle back closes at 129
+    // Spot: no buy/sell pressure, large orders, or positions (even when passed)
     const s = buildBrief({ market: 'spot', symbol: 'WIF', interval: '15m', candles: candles(40), flow: [{ time: 1, delta: 5, cum: 5 }], big: [], bigSince: 1, position: { isLong: true, leverage: 3, roe: 0.1, liquidationPx: 90 } })!
     expect(s.flow).toBeUndefined(); expect(s.big).toBeUndefined(); expect(s.position).toBeUndefined()
-    // 不够 25 根：不算放量倍数
+    // Fewer than 25 candles: no volume-surge multiple
     expect(buildBrief({ market: 'spot', symbol: 'WIF', interval: '15m', candles: candles(20) })!.volRatio).toBeUndefined()
   })
 
@@ -43,7 +43,7 @@ describe('看图摘要', () => {
     expect(b.last).toBe(129)
     expect(b.position).toEqual({ isLong: true, lev: 10, roe: 0.1523, liqDist: 0.1, hasTp: true, hasSl: false, tpDist: 0.05 })
     expect(JSON.stringify(b.position)).not.toMatch(/size|usd|margin|entry/i)
-    // 逐仓没有强平价时不带距离
+    // No distance shown when an isolated position has no liquidation price
     expect(buildBrief({ market: 'perp', symbol: 'BTC', interval: '1h', candles: candles(30), position: { isLong: false, leverage: 3, roe: -0.02, liquidationPx: null } })!.position).toEqual({ isLong: false, lev: 3, roe: -0.02, hasTp: false, hasSl: false })
   })
 })

@@ -1,5 +1,5 @@
-// 黑名单（2026-10-02 goat，上架要求）：我拉黑的人，可以取消。
-// 拉黑以后互相看不到对方的动态和评论、不能互发私信、对方进不了我的直播间、互相取消关注。
+// Blocklist (2026-10-02 goat, listing requirement): people I've blocked; blocking can be undone.
+// After blocking, neither side can see the other's feed posts or comments, they can't DM each other, the other side can't enter my live room, and mutual follows are removed.
 import { useEffect, useState } from 'react'
 import Sheet from '@/components/Sheet'
 import Button from '@/components/Button'

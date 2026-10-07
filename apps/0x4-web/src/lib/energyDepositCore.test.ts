@@ -1,4 +1,4 @@
-// 充值能量的共用规则（网页版和电脑端会议同一份）：整数 USDT、授权只授这次的数量、两笔交易的内容
+// Shared rules for topping up energy (web and desktop meetings use the same): integer USDT, approvals only for this amount, contents of the two transactions
 import { describe, expect, it } from 'vitest'
 import { decodeFunctionData, erc20Abi, parseAbi } from 'viem'
 import { cleanDepositInput, depositCalls, depositClosedReason, parseDepositAmount } from './energyDepositCore'

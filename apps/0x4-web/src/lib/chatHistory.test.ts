@@ -1,4 +1,4 @@
-// 聊天记录纯函数：合并去重、排序、游标、回执换 id、删除，以及私信密文解码（真实 X25519 + AES-GCM）
+// Pure functions for chat history: merge-dedupe, sorting, cursors, receipt id swaps, deletion, plus DM ciphertext decoding (real X25519 + AES-GCM)
 import { describe, expect, it } from 'vitest'
 import { x25519 } from '@noble/curves/ed25519'
 import { byTsId, confirmLocal, decodeDm, mergeMessages, olderCursor, removeIds } from './chatHistory'
@@ -20,8 +20,8 @@ describe('mergeMessages', () => {
   })
   it('往上翻一页（插到前面）再收到实时消息（接在后面），都不重复', () => {
     let list = mergeMessages([], [m('05', 5), m('06', 6)])
-    list = mergeMessages(list, [m('03', 3), m('04', 4), m('05', 5)])   // 更早一页，和已有的重叠一条
-    list = mergeMessages(list, [m('06', 6)])                            // ws 重复推送
+    list = mergeMessages(list, [m('03', 3), m('04', 4), m('05', 5)])   // One earlier page, overlapping one existing entry
+    list = mergeMessages(list, [m('06', 6)])                            // Duplicate ws pushes
     list = mergeMessages(list, [m('07', 7)])
     expect(list.map((x) => x.id)).toEqual(['03', '04', '05', '06', '07'])
   })
@@ -63,7 +63,7 @@ describe('decodeDm（真实加解密）', () => {
     const forSelf = await alice.encrypt('你好 👋', alicePub)
     expect((await decodeDm({ ...row, ...forBob }, (p) => bob.decrypt(p))).text).toBe('你好 👋')
     expect((await decodeDm({ ...row, ...forSelf }, (p) => alice.decrypt(p))).text).toBe('你好 👋')
-    // 拿错那份：解不开 → undecryptable，不抛错
+    // Grabbed the wrong copy: can't decrypt → undecryptable, no throw
     const wrong = await decodeDm({ ...row, ...forBob }, (p) => alice.decrypt(p))
     expect(wrong).toMatchObject({ undecryptable: true, text: '' })
   })

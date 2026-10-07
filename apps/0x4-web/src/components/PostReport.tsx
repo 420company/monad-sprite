@@ -1,4 +1,4 @@
-// 动态右上角的「举报」（2026-10-02 goat，上架要求）：别人的动态、登录后才显示；自己的动态那里是删除按钮。
+// The "report" button at a feed post's top-right (2026-10-02 goat, listing requirement): shown only when logged in and on others' posts; on your own posts that spot holds the delete button.
 import { Flag } from 'lucide-react'
 import { openReport } from '@/lib/safety'
 import { useSocial } from '@/store/social'

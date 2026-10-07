@@ -1,11 +1,11 @@
-// 成交后上报交易记录：这是「交易即社交」的入口，服务端据此算盈亏、发动态、排排行榜
+// Report the trade record after a fill: this is the "trading is social" entry point — the server computes PnL, publishes posts, and ranks leaderboards from it
 import { api } from './social'
 import { chainById, isNative, isStable } from './chains'
 import { useSocial } from '@/store/social'
 
-export interface TradeReport { side: 'buy' | 'sell'; /** 合约平仓时这笔的盈亏（开仓给 0）；现货不传，服务端按库存算 */ realized?: number; chainId: number; token: string; symbol: string; name?: string; logo?: string; qty: number; usd: number; marketCap?: number; tx?: string; /** 非链上市场（如 hyperliquid）直接给标识，跳过链表查询 */ chainKey?: string }
+export interface TradeReport { side: 'buy' | 'sell'; /** This fill's PnL when closing a perps position (0 at open); spot omits it — the server computes from inventory */ realized?: number; chainId: number; token: string; symbol: string; name?: string; logo?: string; qty: number; usd: number; marketCap?: number; tx?: string; /** Non-onchain markets (e.g. hyperliquid) get the identifier directly, skipping the chain-table lookup */ chainKey?: string }
 
-/** 稳定币与原生币不算「买入某个币」，只上报 meme / 山寨币的买卖 */
+/** Stablecoins and native coins don't count as "buying a coin" — only meme / altcoin buys and sells are reported */
 export function isReportable(t: { address: string; symbol: string }): boolean {
   return !isNative(t.address) && !isStable(t.symbol) && !['SOL', 'ETH', 'BNB', 'WETH', 'WBNB', 'WSOL'].includes(t.symbol.toUpperCase())
 }
@@ -16,5 +16,5 @@ export async function reportTrade(r: TradeReport): Promise<void> {
   if (!chain || !(r.qty > 0)) return
   try {
     await api('/api/trades', { method: 'POST', body: JSON.stringify({ side: r.side, realized: r.realized, chain, token: r.token, symbol: r.symbol, name: r.name, logo: r.logo, qty: r.qty, usd: r.usd, marketCap: r.marketCap, tx: r.tx }) })
-  } catch { /* 上报失败不影响交易本身 */ }
+  } catch { /* A failed report doesn't affect the trade itself */ }
 }

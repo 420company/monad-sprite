@@ -1,5 +1,5 @@
-// 行情数据源：DexScreener 公共接口（无需 API Key），支持全部链
-// 接口失败时抛出异常，上层只标记离线，不用假数据顶上
+// Market data source: DexScreener public API (no API key needed), all chains supported
+// Throws on API failure; callers only mark offline — never paper over with fake data
 import { API_BASE, ENV } from './env'
 import { fetchJson } from './http'
 import { MOCK_TOKENS, SOL_MINT, USDC_MINT } from './mock'
@@ -9,7 +9,7 @@ import type { FeedKind, FeedPart } from './marketFeed'
 import { t } from '@/lib/i18n'
 import { assetForSymbol, mainstreamLookalike, normSymbol, officialAssetOf } from './officialTokens'
 
-/** DexScreener 交易对结构（只声明用到的字段） */
+/** DexScreener pair shape (only the fields we use are declared) */
 interface DsPair {
   chainId: string
   dexId: string
@@ -41,7 +41,7 @@ const API = ENV.dexscreenerApi
 
 export const marketKey = (chain: string, address: string) => `${chain}:${address.toLowerCase()}`
 
-/** 一个交易对 → 代币行情 */
+/** One pair → token quote */
 function pairToToken(p: DsPair): MarketToken {
   return {
     chain: p.chainId,
@@ -69,7 +69,7 @@ function pairToToken(p: DsPair): MarketToken {
   }
 }
 
-/** 同一代币可能有多个交易对，按「链 + 地址」取流动性最高的那个；只保留我们支持交易的链 */
+/** A token may have multiple pairs: pick the most liquid by "chain + address"; keep only chains we support trading on */
 function bestPairs(pairs: DsPair[], onlyChain?: string): MarketToken[] {
   const byToken = new Map<string, DsPair>()
   for (const p of pairs) {
@@ -82,12 +82,12 @@ function bestPairs(pairs: DsPair[], onlyChain?: string): MarketToken[] {
   return [...byToken.values()].map(pairToToken)
 }
 
-/** 批量获取某条链上代币行情（最多 30 个地址一批） */
+/** Batch-fetch token quotes on one chain (max 30 addresses per batch) */
 export async function getTokens(addresses: string[], chain = 'solana'): Promise<MarketToken[]> {
   const uniq = [...new Set(addresses.filter(Boolean))]
   const chunks: string[][] = []
   for (let i = 0; i < uniq.length; i += 30) chunks.push(uniq.slice(i, i + 30))
-  // 几批一起发（以前一批等一批，60 个地址要两个来回）
+  // Fire batches in parallel (used to be sequential — 60 addresses took two round trips)
   const results = await Promise.all(chunks.map((chunk) => fetchJson<DsPair[]>(`${API}/tokens/v1/${chain}/${chunk.join(',')}`)))
   return results.flatMap((pairs) => bestPairs(pairs, chain))
 }
@@ -97,13 +97,13 @@ export async function getToken(address: string, chain = 'solana'): Promise<Marke
   return list[0]
 }
 
-/** 只凭合约地址在所有链上查找（用于「添加代币」） */
+/** Look up by contract address across all chains (for "add token") */
 export async function lookupAnyChain(address: string): Promise<MarketToken[]> {
   const res = await fetchJson<{ pairs: DsPair[] | null }>(`${API}/latest/dex/tokens/${encodeURIComponent(address.trim())}`)
   return bestPairs(res.pairs || []).sort((a, b) => (b.liquidityUsd || 0) - (a.liquidityUsd || 0))
 }
 
-/** 热门代币：DexScreener 推广榜 + 主流代币，按 24h 成交量排序（Solana） */
+/** Hot tokens: DexScreener boosted list + majors, sorted by 24h volume (Solana) */
 export async function getTrending(): Promise<MarketToken[]> {
   const boosts = await fetchJson<DsBoost[]>(`${API}/token-boosts/top/v1`).catch(() => [] as DsBoost[])
   const boosted = boosts.filter((b) => b.chainId === 'solana').map((b) => b.tokenAddress)
@@ -117,33 +117,33 @@ export async function getTrending(): Promise<MarketToken[]> {
 }
 
 /**
- * 搜索结果（2026-09-30 goat：「搜 btc 出来这么多」「BTC、PEPE 的冒牌也要处理」）：
- *   tokens  要显示的：官方合约排最前（BNB Chain 的排第一）、标「官方」，其余按流动性 + 成交额排。
- *   以前还有一个 hidden（折叠的同名代币），2026-09-30 goat 定冒牌一律不显示、不再折叠，这个字段去掉了。
+ * Search results (2026-09-30 goat: "searching btc returns this many", "BTC/PEPE impersonators need handling too"):
+ *   tokens  to display: official contracts first (BNB Chain's first), tagged "official"; the rest by liquidity + volume.
+ *   There used to be a hidden field (collapsed same-name tokens); 2026-09-30 goat decided impersonators are never shown, no more collapsing — the field is gone.
  */
 export interface SearchResult { tokens: MarketToken[] }
 
-/** 死池：流动性不到 5,000 美元、24 小时成交额也不到 1,000 美元（和行情页「流动性不低于 5,000 美元」同一口径） */
+/** Dead pool: liquidity under $5,000 AND 24h volume under $1,000 (same bar as the market page's "liquidity ≥ $5,000") */
 export const SEARCH_MIN_LIQUIDITY = 5_000
 export const SEARCH_MIN_VOLUME = 1_000
-/** 「新创建」：交易池创建不超过 3 天（搜索结果里标出来，风险较高） */
+/** "Newly created": pool created within the last 3 days (flagged in search results — higher risk) */
 export const NEW_POOL_MS = 3 * 86_400_000
-/** 同名的第二个起要显示，满足其一：成熟币（流动性 ≥ 5 万、池子超过 3 天、24h 成交 ≥ 1 万美元）或新币（池子 3 天内、24h 成交 ≥ 1 万美元且 ≥ 100 笔） */
+/** Same-name tokens beyond the first are shown when either holds: established (liquidity ≥ $50k, pool older than 3 days, 24h volume ≥ $10k) or new (pool ≤ 3 days old, 24h volume ≥ $10k with ≥ 100 trades) */
 export const SAME_NAME_MIN_LIQUIDITY = 50_000
 export const SAME_NAME_MIN_VOLUME = 10_000
 export const SAME_NAME_MIN_TXNS = 100
 const SEARCH_LIMIT = 30
 
-/** 搜的是不是合约地址（EVM 0x 开头 40 位，或 Solana base58 32~44 位） */
+/** Whether the query is a contract address (EVM 0x + 40 hex chars, or Solana base58 32–44 chars) */
 export const isAddressQuery = (q: string) => /^0x[0-9a-fA-F]{40}$/.test(q.trim()) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q.trim())
 
-/** 综合分：流动性 + 一半的 24 小时成交额（成交额高说明真有人在交易，但比流动性容易刷） */
+/** Composite score: liquidity + half of 24h volume (high volume means real trading, but volume is easier to wash than liquidity) */
 const searchScore = (x: MarketToken) => (x.liquidityUsd || 0) + (x.volume24h || 0) / 2
 
-/** 交易池是不是 3 天内刚创建的（拿不到创建时间的不算） */
+/** Whether the pool was created within the last 3 days (pools with unknown creation time don't count) */
 export const isNewPool = (x: Pick<MarketToken, 'createdAt'>, now = Date.now()) => !!x.createdAt && now - x.createdAt <= NEW_POOL_MS
 
-/** 同名的第二个起能不能显示：成熟币看流动性 + 成交额，新币看成交额 + 成交笔数（有真实交易的新币不挡） */
+/** Whether same-name tokens beyond the first may show: established ones judged by liquidity + volume, new ones by volume + trade count (new tokens with real trading aren't blocked) */
 export function sameNameVisible(x: MarketToken, now = Date.now()): boolean {
   const vol = x.volume24h || 0
   if (vol < SAME_NAME_MIN_VOLUME) return false
@@ -152,14 +152,14 @@ export function sameNameVisible(x: MarketToken, now = Date.now()): boolean {
 }
 
 /**
- * 把搜到的币排好、过滤（纯函数，方便单测）：
- *   · 官方表里有的币（手写主流币 / 稳定币 + 市值前 200）：只显示官方合约，符号相同（或 ERC20-USDT 这类冒充写法）的非官方合约一律不显示。
- *   · 不在官方表里的普通币：同一个符号里分数最高的照常显示（只过死池）；第二个起按 sameNameVisible 的门槛，达不到的不显示。
- *   · 非官方、交易池 3 天内刚创建的标 fresh（界面显示「新创建」）。
- *   · 粘贴合约地址：用户明确要那个币，不过滤，冒充主流币的标 impostor（界面显示「非官方」）。
+ * Sort and filter search results (pure function, easy to unit-test):
+ *   · Tokens in the official list (hand-curated majors / stablecoins + top 200): only the official contract shows; non-official contracts with the same symbol (or ERC20-USDT-style impersonations) never show.
+ *   · Ordinary tokens not in the official list: the highest-scoring of each symbol shows as usual (only dead pools filtered); beyond the first, sameNameVisible's bar applies — below it, hidden.
+ *   · Non-official tokens whose pool is ≤ 3 days old are tagged fresh (UI shows "newly created").
+ *   · Pasted contract address: the user explicitly wants that token, so no filtering; impersonators of majors are tagged impostor (UI shows "unofficial").
  */
 export function rankSearch(list: MarketToken[], q: string, now = Date.now()): SearchResult {
-  // 同一个币可能从两路来（搜索接口 + 官方表直查），按「链 + 地址」去重，留流动性高的那份
+  // The same token may arrive via two paths (search API + official-list direct lookup): dedupe by "chain + address", keep the more liquid copy
   const byKey = new Map<string, MarketToken>()
   for (const x of list) {
     const k = marketKey(x.chain, x.address)
@@ -169,10 +169,10 @@ export function rankSearch(list: MarketToken[], q: string, now = Date.now()): Se
   const all = [...byKey.values()].map((x) => {
     const official = !!officialAssetOf(x.chain, x.address)
     const like = official ? undefined : mainstreamLookalike(x.symbol)
-    // 宽松资产（自动收录的短符号）撞名的不算冒牌
+    // Name clashes with lenient assets (auto-listed short symbols) don't count as impersonation
     return { ...x, official, impostor: !!like && !like.loose, fresh: !official && isNewPool(x, now) }
   })
-  // 搜的是官方表里的币（usdt / btc / pepe…）：只要这一种币（搜 usdt 时 USDC、AIPF 这类只是和 USDT 配对的币不显示）
+  // Query matches a token in the official list (usdt / btc / pepe…): show only that token (searching usdt hides USDC, AIPF, etc. that merely pair with USDT)
   const asset = isAddressQuery(q) ? undefined : assetForSymbol(q.trim())
   const officials = all.filter((x) => x.official && (!asset || officialAssetOf(x.chain, x.address) === asset))
     .sort((a, b) => Number(b.chain === 'bsc') - Number(a.chain === 'bsc') || searchScore(b) - searchScore(a))
@@ -181,12 +181,12 @@ export function rankSearch(list: MarketToken[], q: string, now = Date.now()): Se
 
   const shown: MarketToken[] = []
   const seen = new Set<string>()
-  // 搜的是宽松资产（AI、LIT 这类短符号）：官方的已经排在最前，同名的别家算「第二个起」，要过同名门槛才显示
+  // Query matches a lenient asset (short symbols like AI, LIT): the official one already ranks first; other same-name tokens count as "beyond the first" and must clear the same-name bar
   if (asset?.loose) seen.add(normSymbol(asset.symbol))
   for (const x of rest) {
-    // 官方表里有的币的非官方合约（冒牌）：不显示（2026-09-30 goat）
+    // Non-official contracts of tokens in the official list (impersonators): never shown (2026-09-30 goat)
     if (x.impostor) continue
-    // 搜的是官方表里的币，其余不相干的也不显示（宽松资产只留同名的）
+    // Query matches an official-list token: unrelated results are hidden too (lenient assets keep same-name only)
     if (asset && (!asset.loose || normSymbol(x.symbol) !== normSymbol(asset.symbol))) continue
     if ((x.liquidityUsd || 0) < SEARCH_MIN_LIQUIDITY && (x.volume24h || 0) < SEARCH_MIN_VOLUME) continue
     const k = normSymbol(x.symbol)
@@ -197,7 +197,7 @@ export function rankSearch(list: MarketToken[], q: string, now = Date.now()): Se
   return { tokens: [...officials, ...shown].slice(0, SEARCH_LIMIT) }
 }
 
-/** 搜索：名称、符号或合约地址，所有支持的链。搜的是主流币（btc / eth / usdt…）时，官方合约直接按地址查一遍，保证一定在结果里 */
+/** Search: name, symbol, or contract address across all supported chains. When the query is a major (btc / eth / usdt…), the official contract is also looked up directly by address to guarantee it's in the results */
 export async function searchTokensGrouped(q: string): Promise<SearchResult> {
   const query = q.trim()
   if (!query) return { tokens: [] }
@@ -206,18 +206,18 @@ export async function searchTokensGrouped(q: string): Promise<SearchResult> {
   for (const [c, a] of asset?.tokens ?? []) byChain.set(c, [...(byChain.get(c) || []), a])
   const [res, ...officials] = await Promise.all([
     fetchJson<{ pairs: DsPair[] | null }>(`${API}/latest/dex/search?q=${encodeURIComponent(query)}`),
-    // 官方表直查失败不影响搜索本身
+    // Official-list direct lookup failing doesn't affect the search itself
     ...[...byChain].map(([c, addrs]) => getTokens(addrs, c).catch(() => [] as MarketToken[])),
   ])
   return rankSearch([...officials.flat(), ...bestPairs(res.pairs || [])], query)
 }
 
-/** 只要正常显示的那部分（老调用点用） */
+/** Only the normally-displayed subset (used by legacy call sites) */
 export async function searchTokens(q: string): Promise<MarketToken[]> {
   return (await searchTokensGrouped(q)).tokens
 }
 
-/** SOL 价格（美元） */
+/** SOL price (USD) */
 export async function getSolPrice(): Promise<number> {
   const t = await getToken(SOL_MINT)
   return t?.priceUsd || 0
@@ -226,7 +226,7 @@ export async function getSolPrice(): Promise<number> {
 export { SOL_MINT, USDC_MINT }
 
 
-/** 把 DexScreener 的「链 + 地址」清单按链批量拉成行情，保持原顺序、去重、只留我们支持的链 */
+/** Batch-fetch quotes for a DexScreener "chain + address" list per chain; preserves order, dedupes, keeps only chains we support */
 async function resolveList(items: { chainId: string; tokenAddress: string }[], limit = 40): Promise<MarketToken[]> {
   const byChain = new Map<string, string[]>()
   for (const it of items) {
@@ -243,20 +243,20 @@ async function resolveList(items: { chainId: string; tokenAddress: string }[], l
   return out
 }
 
-/** 火热：DexScreener 加速榜（项目方付费推广的币，热度真实存在但不代表质量），按链拉行情 */
+/** Hot: DexScreener boosted list (paid promotion by projects — the hype is real but says nothing about quality), quotes fetched per chain */
 export async function getBoosted(): Promise<MarketToken[]> {
   const items = await fetchJson<{ chainId: string; tokenAddress: string; totalAmount?: number }[]>(`${API}/token-boosts/top/v1`)
   return resolveList(items)
 }
 
-/** 最新：DexScreener 最新登记档案的代币，过滤掉流动性太低的空气盘 */
+/** New: most recently profiled tokens on DexScreener, filtering out low-liquidity vaporware */
 export async function getLatest(): Promise<MarketToken[]> {
   const items = await fetchJson<{ chainId: string; tokenAddress: string }[]>(`${API}/token-profiles/latest/v1`)
   return (await resolveList(items)).filter((t) => (t.liquidityUsd || 0) >= 5000)
 }
 
-/** 股票代币：xStocks（Backed 发行的代币化美股 / ETF）。清单来自 xstocks.com（scripts/fetch-xstocks.mjs → public/xstocks.json），
- *  行情用 Jupiter 按 mint 批量查（每次 100 个），只留有流动性的，按 24h 成交额排 */
+/** Stock tokens: xStocks (tokenized US stocks / ETFs issued by Backed). The list comes from xstocks.com (scripts/fetch-xstocks.mjs → public/xstocks.json),
+ *  quotes are batch-fetched via Jupiter by mint (100 at a time), keeping only liquid ones, sorted by 24h volume */
 export async function getStocks(): Promise<MarketToken[]> {
   const { list } = await fetchJson<{ list: { symbol: string; name: string; icon: string | null; solana: string }[] }>(`${import.meta.env.BASE_URL}xstocks.json`)
   const meta = new Map(list.map((x) => [x.solana, x]))
@@ -282,13 +282,13 @@ export async function getStocks(): Promise<MarketToken[]> {
 }
 
 // ---------------------------------------------------------------------------
-// 更多数据源（2026-09-25 goat 反馈发现页只有十几个币）。
-// ⚠️ 同日真机又发现只剩 Solana：GeckoTerminal 免费档每 IP 每分钟 30 次，每台手机自己拉切几次标签就 429。
-//    改成优先读我们服务器汇总好的 /api/market/pools（server/src/marketLists.ts，服务器慢慢拉、缓存），
-//    服务器没有这个接口时才退回直连，而且只拉少量几页。
-// DexScreener 的推广榜 / 最新榜每次只给 30 个，再按流动性一滤就剩十几个。补两个免费源：
-//   · Jupiter 24h 热门榜：Solana，一次 100 个，带价格 / 流动性 / 成交
-//   · GeckoTerminal：各链热门池 / 新池，每页 20 个，可翻页（免费档每分钟 30 次，这里带 60 秒缓存）
+// More data sources (2026-09-25 goat: the Discover page showed only a dozen tokens).
+// ⚠️ Same day, real-device testing showed only Solana left: GeckoTerminal's free tier is 30 req/min per IP — a few tab switches on one phone and it's 429.
+//    Switched to prefer our server's aggregated /api/market/pools (server/src/marketLists.ts — the server pulls slowly and caches),
+//    falling back to direct only when the server lacks the endpoint, and then only a few pages.
+// DexScreener's boosted / latest lists give 30 at a time, and liquidity filtering leaves a dozen. Adding two free sources:
+//   · Jupiter 24h hot list: Solana, 100 at a time, with price / liquidity / volume
+//   · GeckoTerminal: hot / new pools per chain, 20 per page, pageable (free tier 30/min; 60 s cache here)
 // ---------------------------------------------------------------------------
 
 interface JupToken { id: string; symbol: string; name: string; icon?: string; usdPrice?: number; liquidity?: number; mcap?: number; fdv?: number; stats24h?: { priceChange?: number; buyVolume?: number; sellVolume?: number; numBuys?: number; numSells?: number }; stats1h?: { priceChange?: number }; stats6h?: { priceChange?: number }; stats5m?: { priceChange?: number }; firstPool?: { createdAt?: string } }
@@ -300,7 +300,7 @@ function fromJup(x: JupToken, logo?: string): MarketToken {
     createdAt: x.firstPool?.createdAt ? Date.parse(x.firstPool.createdAt) : undefined, url: `https://dexscreener.com/solana/${x.id}` }
 }
 
-/** Jupiter 24h 热门榜（Solana，最多 100 个） */
+/** Jupiter 24h hot list (Solana, up to 100) */
 async function jupTrending(): Promise<MarketToken[]> {
   const list = await fetchJson<JupToken[]>('https://lite-api.jup.ag/tokens/v2/toptrending/24h?limit=100')
   return list.filter((x) => x.usdPrice && (x.liquidity || 0) >= 5000).map((x) => fromJup(x))
@@ -311,12 +311,12 @@ interface GeckoToken { id: string; attributes: { address: string; name: string; 
 
 const geckoCache = new Map<string, { at: number; list: MarketToken[] }>()
 
-/** 一页 GeckoTerminal 池子 → 行情（按池子的基础币去重），60 秒内同一页不重复请求 */
+/** One page of GeckoTerminal pools → quotes (deduped by pool base token); the same page isn't refetched within 60 s */
 async function geckoPage(net: string, kind: 'trending_pools' | 'new_pools', page: number): Promise<MarketToken[]> {
   const key = `${net}/${kind}/${page}`
   const hit = geckoCache.get(key)
   if (hit && Date.now() - hit.at < 60_000) return hit.list
-  // GeckoTerminal 网络名 → 我们的链（chain 字段用 DexScreener 链标识），只收我们支持的链
+  // GeckoTerminal network name → our chain (chain field uses DexScreener chain keys); only chains we support
   const chain = chainByGecko(net)
   if (!chain) return []
   const chainKey = chain.dexKey
@@ -340,7 +340,7 @@ async function geckoPage(net: string, kind: 'trending_pools' | 'new_pools', page
   return out
 }
 
-/** 多个来源合并：同一条链同一个币只留一条（先到先得），其中一个源挂了不影响其它 */
+/** Merging multiple sources: one entry per chain+token (first wins); one source failing doesn't affect the others */
 async function mergeSources(sources: Promise<MarketToken[]>[]): Promise<MarketToken[]> {
   const settled = await Promise.allSettled(sources)
   const seen = new Set<string>()
@@ -358,7 +358,7 @@ async function mergeSources(sources: Promise<MarketToken[]>[]): Promise<MarketTo
 }
 
 type RawPool = Omit<MarketToken, 'chainId' | 'logo'> & { logo: string | null }
-/** 服务器给的池子 → 行情（补 chainId / logo 备选 / 详情链接），只留我们支持的链 */
+/** Server-provided pools → quotes (fills in chainId / logo fallback / detail links); only chains we support */
 function fromServer(list: RawPool[]): MarketToken[] {
   const out: MarketToken[] = []
   for (const x of list) {
@@ -369,22 +369,22 @@ function fromServer(list: RawPool[]): MarketToken[] {
   return out
 }
 
-/** 服务器汇总的多链榜单（kind: trending 热门池 / new 新池）。
- *  不带 network = 主筛选各链合并；带 network（GeckoTerminal 网络 id）= 只要这一条链，「更多」里的链由服务器按需拉 */
+/** Server-aggregated multi-chain lists (kind: trending = hot pools / new = new pools).
+ *  Without network = merged across the main-filter chains; with network (a GeckoTerminal network id) = that chain only — chains under "More" are pulled by the server on demand */
 async function serverPools(kind: 'trending' | 'new', network?: string): Promise<MarketToken[]> {
   const d = await fetchJson<{ updatedAt: number; list: RawPool[] }>(`${API_BASE}/api/market/pools?kind=${kind}${network ? `&network=${encodeURIComponent(network)}` : ''}`)
   if (!d.list?.length && !network) throw new Error('empty')
   return fromServer(d.list)
 }
 
-/** 服务器拿不到时的退路：直连 GeckoTerminal，但每条链只拉第一页，免得又被限流 */
+/** Fallback when the server can't deliver: direct GeckoTerminal, but only the first page per chain to avoid rate limits again */
 function directPools(kind: 'trending_pools' | 'new_pools'): Promise<MarketToken[]> {
   return mergeSources(['bsc', 'eth', 'base', 'robinhood'].map((n) => geckoPage(n, kind, 1)))
 }
 
-/** 常驻各链一次拿齐：/api/market/pools/all（2026-09-26）。服务器内存里现成的数据，不碰 GeckoTerminal。
- *  pending = 服务器刚启动、首轮还没拉到的链（换成 DexScreener 链标识），页面据此显示「正在读取中」。
- *  服务器还是旧版（没有这个接口）时退回合并接口，再不行直连 GeckoTerminal 第一页。 */
+/** Fetch all resident chains at once: /api/market/pools/all (2026-09-26). Ready-made data from server memory — GeckoTerminal untouched.
+ *  pending = chains the just-started server hasn't pulled in its first round yet (as DexScreener chain keys); the page shows "loading" based on it.
+ *  When the server is still the old version (no such endpoint), fall back to the merged endpoint, then to GeckoTerminal's first page. */
 async function fetchPoolsAll(kind: 'trending' | 'new'): Promise<FeedPart> {
   try {
     const d = await fetchJson<{ loading?: boolean; pending?: string[]; lists: Record<string, RawPool[]> }>(`${API_BASE}/api/market/pools/all?kind=${kind}`, {}, 8_000)
@@ -396,7 +396,7 @@ async function fetchPoolsAll(kind: 'trending' | 'new'): Promise<FeedPart> {
   }
 }
 
-/** 同一种榜单 10 秒内共用一个请求：市场和火热都用热门池，进发现页预取后切视图不再重复拉 */
+/** One request shared per list kind within 10 s: Market and Hot both use hot pools, so switching views after entering Discover with prefetch doesn't refetch */
 const poolsAllMemo = new Map<string, { at: number; p: Promise<FeedPart> }>()
 export function serverPoolsAll(kind: 'trending' | 'new'): Promise<FeedPart> {
   const hit = poolsAllMemo.get(kind)
@@ -408,12 +408,12 @@ export function serverPoolsAll(kind: 'trending' | 'new'): Promise<FeedPart> {
 }
 
 /**
- * 发现页各榜单的数据源（按合并优先级排，同一个币用排前面的源）。交给 marketFeed.runFeed 并行跑，谁先回来先显示。
- *   市场：DexScreener 热门 + Jupiter 热门 100 + 各链热门池
- *   火热：DexScreener 推广榜 + 各链热门池（按 1 小时涨跌幅度排）
- *   最新：DexScreener 最新登记 + 各链新池（按上线时间排）
- *   股票：xStocks
- * 流动性过滤和排序在 marketFeed.finalizeFeed。
+ * Data sources per Discover list (ordered by merge priority; the earlier source wins for the same token). marketFeed.runFeed runs them in parallel — first back shows first.
+ *   Market: DexScreener hot + Jupiter hot 100 + per-chain hot pools
+ *   Hot: DexScreener boosted + per-chain hot pools (sorted by 1h change)
+ *   New: DexScreener latest profiles + per-chain new pools (sorted by listing time)
+ *   Stocks: xStocks
+ * Liquidity filtering and sorting live in marketFeed.finalizeFeed.
  */
 export function feedSources(kind: FeedKind): Promise<FeedPart>[] {
   const part = (p: Promise<MarketToken[]>) => p.then((list): FeedPart => ({ list }))
@@ -426,8 +426,8 @@ export function feedSources(kind: FeedKind): Promise<FeedPart>[] {
 }
 
 /**
- * 「更多」里某条链的榜单（发现页选中这条链时才拉）：服务器按需向 GeckoTerminal 要、缓存 60 秒。
- * 市场 / 火热用热门池，最新用新池；和其它榜单一样只留流动性 ≥ $5k 的。服务器拿不到时不直连 GeckoTerminal（手机直连会撞限流），直接报错让页面显示重试。
+ * Per-chain lists under "More" (fetched only when that chain is selected on Discover): the server pulls GeckoTerminal on demand, cached 60 s.
+ * Market / Hot use hot pools, New uses new pools; same as other lists, only liquidity ≥ $5k survives. When the server can't deliver, don't go direct to GeckoTerminal (phones hit rate limits) — throw so the page shows retry.
  */
 export async function getChainPools(kind: 'trending' | 'new', dexKey: string): Promise<MarketToken[]> {
   const chain = chainByDexKey(dexKey)

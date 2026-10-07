@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-// 欢迎页 / 解锁页猫头入场（2026-09-29 goat：马赛克显影和整体不搭，改成落下 + 对焦 + 落定光晕和像素颗粒）
-// ① 同一次打开 App 只完整播一次：第二次进解锁页（被自动锁定后）直接在位，时间线换成 T_STILL
-// ② 系统「减少动态效果」：一律不播
-// ③ 播的时候有落下动画、光晕、8 颗颗粒、地面淡影；不播时只有猫头图片
+// Welcome / unlock page cat-head entrance (2026-09-29 goat: the mosaic reveal clashed with the whole look — changed to drop-in + focus + landing halo with pixel grain)
+// ① play fully only once per app open: the second visit to the unlock page (after auto-lock) starts in place, with the T_STILL timeline
+// ② OS "reduce motion": never plays
+// ③ when playing: drop-in animation, halo, 8 grains, soft ground shadow; when not playing: just the cat-head image
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -38,7 +38,7 @@ describe('猫头入场', () => {
     expect(cat.classList.contains('is-dropping')).toBe(false)
     expect(cat.querySelector('.welcome-cat-sparks')).toBeNull()
     expect(cat.querySelector('.welcome-cat-halo')).toBeNull()
-    expect(cat.querySelector('img.welcome-cat-img')).not.toBeNull()   // 猫头还在
+    expect(cat.querySelector('img.welcome-cat-img')).not.toBeNull()   // The cat head is still there
     unmount()
   })
 

@@ -1,4 +1,4 @@
-// 群内投票气泡与发起投票弹层
+// In-group poll bubble and the start-poll sheet
 import { useState } from 'react'
 import { ChartBar, Plus, X } from 'lucide-react'
 import Sheet from './Sheet'

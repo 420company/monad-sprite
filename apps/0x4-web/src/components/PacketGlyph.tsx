@@ -1,4 +1,4 @@
-// 红包图形：红底上一个信封轮廓 + 金色封口圆，替代原来的 🧧 emoji（系统 emoji 各平台长得不一样，看着廉价）
+// Red-packet glyph: an envelope outline + gold seal circle on red, replacing the old 🧧 emoji (system emoji looks different per platform and looked cheap)
 export default function PacketGlyph({ size = 34 }: { size?: number }) {
   return (
     <svg viewBox="0 0 28 36" width={size * 28 / 36} height={size} aria-hidden="true" style={{ flexShrink: 0 }}>

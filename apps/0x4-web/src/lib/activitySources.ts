@@ -1,8 +1,8 @@
-// 活动页的四个数据源（归并逻辑在 activityTimeline.ts）：
-//   evm     服务端 /api/me/activity/evm（BSC 走 NodeReal，其余 EVM 链走 Alchemy，见 server/src/evmActivity.ts）
-//   sol     Solana 节点：getSignaturesForAddress 翻页 + getParsedTransactions 一次批量解析出收发金额
-//   btc     比特币：/api/btc 代理（Esplora），第一页含未确认，之后按最后一笔已确认的 txid 往下翻
-//   bridge  App 里自己发起的闪兑 / 跨链（本机保存），已结束的并进时间线，进行中的在页面顶部单独置顶
+// The activity page's four data sources (merge logic in activityTimeline.ts):
+//   evm     server /api/me/activity/evm (BSC via NodeReal, other EVM chains via Alchemy, see server/src/evmActivity.ts)
+//   sol     Solana nodes: getSignaturesForAddress pagination + getParsedTransactions batch-parsing send/receive amounts in one go
+//   btc     Bitcoin: /api/btc proxy (Esplora); first page includes unconfirmed, then paginate from the last confirmed txid
+//   bridge  in-app initiated swaps / bridges (saved locally); finished ones merge into the timeline, in-progress ones pin to the page top
 import { PublicKey } from '@solana/web3.js'
 import { api } from './social'
 import { API_BASE } from './env'
@@ -19,7 +19,7 @@ const SOL_PAGE = 20
 
 interface EvmItem { id: string; chainId: number; hash: string; time: number; direction: 'in' | 'out' | 'self'; asset: { symbol: string; address: string; decimals: number; logo?: string }; amount: string; counterparty: string; status: 'success' | 'failed' }
 
-/** chainId 为空 = 全部 EVM 链 */
+/** Empty chainId = all EVM chains */
 export function evmSource(chainId: number | null): TimelineSource {
   return {
     id: 'evm',
@@ -28,20 +28,20 @@ export function evmSource(chainId: number | null): TimelineSource {
       if (chainId) qs.set('chainId', String(chainId))
       if (cursor) qs.set('cursor', cursor)
       const r = await api<{ items: EvmItem[]; next: string | null; failed?: number[]; unavailable?: number[] }>(`/api/me/activity/evm?${qs}`)
-      // 服务端有链读失败时整页照给（其它链的），这里当成「这个源部分失败」：抛错会丢掉整页，所以只在一条都没有时才抛
+      // The server still serves the page when one chain fails (with the other chains'); treat that as "this source partially failed": throwing would drop the whole page, so throw only when nothing came back
       if (!r.items.length && r.failed?.length && !cursor) throw new Error('evm failed')
       return { items: r.items.map((x): TimelineEntry => ({ ...x, source: 'evm' })), next: r.next, unavailable: r.unavailable }
     },
   }
 }
 
-/** Solana 代币符号：常用币直接认，其余批量问行情接口，问不到显示 mint 前几位 */
+/** Solana token symbols: common coins recognized directly, the rest batch-queried from the market API; unresolvable ones show the mint's first chars */
 const KNOWN_SOL = new Map(CHAINS.find((c) => c.id === SOLANA_CHAIN_ID)!.tokens.map((tk) => [tk.address, tk.symbol]))
 const solSymbols = new Map<string, string>()
 async function resolveSymbols(mints: string[]) {
   const unknown = [...new Set(mints)].filter((m) => !KNOWN_SOL.has(m) && !solSymbols.has(m))
   if (!unknown.length) return
-  try { for (const tk of await useMarket.getState().loadTokens(unknown)) if (tk.symbol) solSymbols.set(tk.address, tk.symbol) } catch { /* 查不到就显示缩写 */ }
+  try { for (const tk of await useMarket.getState().loadTokens(unknown)) if (tk.symbol) solSymbols.set(tk.address, tk.symbol) } catch { /* Show the abbreviation when unresolvable */ }
 }
 const solSymbolOf = (mint: string) => KNOWN_SOL.get(mint) || solSymbols.get(mint) || `${mint.slice(0, 4)}…`
 
@@ -52,7 +52,7 @@ export function solSource(rpcUrl: string, owner: string): TimelineSource {
       const conn = getConnection(rpcUrl)
       const sigs = await conn.getSignaturesForAddress(new PublicKey(owner), { limit: SOL_PAGE, ...(cursor ? { before: cursor } : {}) })
       const next = sigs.length >= SOL_PAGE ? sigs[sigs.length - 1].signature : null
-      // 一次批量解析整页；节点不支持批量或失败时退回只显示「Solana 交易」，不让整个源失败
+      // Batch-parse the whole page at once; when the node lacks batch support or it fails, fall back to plain "Solana transaction" rows instead of failing the source
       let parsed: (SolParsedTx | null)[] = []
       try { parsed = (await conn.getParsedTransactions(sigs.map((s) => s.signature), { maxSupportedTransactionVersion: 0, commitment: 'confirmed' })) as unknown as (SolParsedTx | null)[] } catch { parsed = [] }
       const mints: string[] = []
@@ -60,7 +60,7 @@ export function solSource(rpcUrl: string, owner: string): TimelineSource {
       await resolveSymbols(mints)
       const items = sigs.flatMap((s, i) => {
         const tx = parsed[i] ?? null
-        // 批量解析没拿到的：签名列表里的 err 还是准的
+        // For entries batch-parsing missed: the signature list's err is still reliable
         const list = parseSolanaTx(s.signature, s.blockTime, tx, owner, solSymbolOf)
         return tx ? list : list.map((e) => ({ ...e, status: s.err ? 'failed' as const : 'success' as const }))
       })
@@ -86,14 +86,14 @@ export function btcSource(address: string): TimelineSource {
           amount: formatBtc(Math.abs(a.delta)), counterparty: a.counterparty, status: a.confirmed ? 'success' : 'pending', source: 'btc',
         }
       })
-      // Esplora 每页最多 25 条已确认；不满 25 条说明到头了
+      // Esplora returns max 25 confirmed per page; fewer means we've reached the end
       const confirmed = txs.filter((tx) => tx.status?.confirmed)
       return { items, next: confirmed.length >= 25 ? confirmed[confirmed.length - 1].txid : null }
     },
   }
 }
 
-/** 闪兑 / 跨链：本机记录，一次给完 */
+/** Swaps / bridges: local records, delivered in one go */
 export function bridgeSource(list: BridgeLike[]): TimelineSource {
   return {
     id: 'bridge',

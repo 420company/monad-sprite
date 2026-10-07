@@ -63,7 +63,7 @@ describe('NFT 系列识别的状态流转', () => {
     const fetcher = vi.fn((c: string) => c === PUDGY ? new Promise<NftCollectionInfo>((r) => { releaseSlow = r }) : Promise.resolve(null))
     const l = createCollectionLookup(fetcher, (s) => states.push(s))
     l.request(PUDGY)
-    await vi.advanceTimersByTimeAsync(500) // 慢请求已发出
+    await vi.advanceTimersByTimeAsync(500) // The slow request is already sent
     l.request(OTHER)
     await vi.advanceTimersByTimeAsync(500)
     expect(states.at(-1)).toEqual({ status: 'missing' })

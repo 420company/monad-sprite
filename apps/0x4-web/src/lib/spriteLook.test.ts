@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-// 问小精灵（2026-10-02 goat 第三批）：流式读它的回答。服务器用替身，不连网。
+// Ask the sprite (2026-10-02 goat batch 3): stream its answers. The server is stubbed — no network.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { askSpriteLook, parseSse } from './spriteLook'
 import type { ChartBrief } from './chartBrief'
 
 const brief: ChartBrief = { market: 'perp', symbol: 'BTC', interval: '15m', bars: 300, last: 86000, chgAll: 0.03, chgRecent: -0.004, hi: 86900, lo: 83100, upBars: 4 }
 const sse = (...evs: unknown[]) => evs.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('')
-/** 把一段文字切成几块流出来（模拟网络把一个事件拆成两半） */
+/** Stream a piece of text in chunks (simulating the network splitting one event in two) */
 function streamOf(text: string, cuts: number[]) {
   const enc = new TextEncoder()
   const parts: string[] = []

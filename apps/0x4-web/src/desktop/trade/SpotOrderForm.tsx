@@ -1,8 +1,8 @@
-// 网页版现货下单面板（右栏 340，参考 Jupiter 兑换面板）。报价、燃料费检查、签名下单全部复用手机买卖弹层的同一份逻辑
-// （components/TradeSheet 的 useTradeForm），这里只有电脑端的界面：
-// · 支付资产是贴着按钮的下拉面板（AssetPicker），不弹手机全高弹层
-// · 主按钮永远可以点（2026-09-29 goat：点买入没有任何提示和反应，只是按键闪烁了一下）：
-//   没连钱包 → 走 needWallet()；没填数量 → 聚焦数量框并在框下写「请输入数量」；余额不够、报价还没出来、报价失败、燃料费不够都直接说原因
+// Web spot order panel (right column 340px, modeled on Jupiter's swap panel). Quotes, gas checks, and signed order placement all reuse the mobile buy/sell sheet's logic
+// (components/TradeSheet's useTradeForm) — only the desktop UI lives here:
+// · The payment asset is a dropdown panel attached to the button (AssetPicker), not the mobile full-height sheet
+// · The primary button is always tappable (2026-09-29 goat: tapping buy gave no hint or response, just a button flicker):
+//   no wallet → needWallet(); no amount → focus the amount box and write the "enter amount" hint under it; insufficient balance, quotes pending, quote failure, insufficient gas — each states its reason directly
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, Check, ChevronDown, Clock, ExternalLink, LoaderCircle, RefreshCw, Wallet } from 'lucide-react'
 import TokenLogo from '@/components/TokenLogo'
@@ -24,14 +24,14 @@ export default function SpotOrderForm({ token, side, connected, onDone }: { toke
   const payBtn = useRef<HTMLButtonElement>(null)
   const amountInput = useRef<HTMLInputElement>(null)
   const [picking, setPicking] = useState(false)
-  /** 点了主按钮但不能下单的原因，写在数量框下面；改数量 / 换资产就清掉 */
+  /** Why the primary button can't place an order, written under the amount box; cleared when the amount / asset changes */
   const [hint, setHint] = useState('')
   useEffect(() => { setHint('') }, [f.amount, f.payWith, side])
 
-  // 切换买入 / 卖出时保留数量（2026-09-29 协调：切换不重建面板、数量不丢）。
-  // 买入框是「支付资产」数量、卖出框是「代币」数量，单位不同，直接照搬数字会把 5 USDT 变成 5 BTCB，
-  // 所以按美元价值换算：切换前的数量 × 当时单价 = 价值，切换后等新的单价出来再 ÷ 单价填回去；价格拿不到就留空。
-  // （useTradeForm 在 side 变化时会先清空数量；下面这个 effect 声明在它后面，同一轮里后执行）
+  // Keep the amount when switching buy / sell (2026-09-29 alignment: switching doesn't rebuild the panel, the amount survives).
+  // The buy box holds the "payment asset" amount while the sell box holds the "token" amount — different units, so copying the number raw would turn 5 USDT into 5 BTCB,
+  // so convert via USD value: pre-switch amount × then-price = value; once the new price arrives, divide back by it to refill; leave blank when no price.
+  // (useTradeForm clears the amount first when side changes; this effect is declared after it, so it runs later in the same pass)
   const prev = useRef({ side, amt: 0, price: 0 })
   const [carryUsd, setCarryUsd] = useState<number | null>(null)
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function SpotOrderForm({ token, side, connected, onDone }: { toke
   return (
     <div className="tx-spot-form">
       <fieldset disabled={f.busy} className="tx-fieldset">
-        {/* 支付 */}
+        {/* Pay */}
         <div className="tx-box-label">
           <span>{f.isBuy ? t('支付') : t('卖出')}</span>
           {connected && <button type="button" className="tx-avail" onClick={() => f.setPct(100)} title={t('全部')}>{t('可用 {amount} {symbol}', { amount: fmtAmount(f.payBalance), symbol: f.paySymbol })}</button>}
@@ -119,7 +119,7 @@ export default function SpotOrderForm({ token, side, connected, onDone }: { toke
 
       <div className="tx-swap-arrow" aria-hidden="true"><ArrowDown size={14} /></div>
 
-      {/* 获得 */}
+      {/* Receive */}
       <div className="tx-box-label"><span>{t('获得（预计）')}</span></div>
       <div className="tx-box is-read">
         <div className="tx-box-row">

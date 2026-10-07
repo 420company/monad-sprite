@@ -1,11 +1,11 @@
-// 昵称右侧的 X 标记：只有绑定过 X 的用户才显示，点一下弹出对方的 X 资料卡。
+// X badge next to the nickname: only shown for users who bound X; tapping pops their X profile card.
 //
-// 用居中小弹窗而不是整屏弹层：卡片内容就这么多，撑满一屏下面全是空白。
-// 交互沿用 AlertDialog 那套：原生 <dialog>、点背景关、Esc 关。
+// A centered small dialog instead of a full-screen sheet: the card only has this much content — full screen would leave empty space below.
+// Interaction reuses AlertDialog's pattern: native <dialog>, backdrop click closes, Esc closes.
 //
-// 取数说明：地址攒一小段时间批量问一次服务端（/api/users/x-handles），结果缓存在内存里，
-// 没绑的也缓存成 null，避免同一个人在动态、聊天、排行里出现十次就问十次。
-// 资料（头像、昵称、简介、粉丝数）是用户授权绑定的那一刻存下来的，不是实时抓的。
+// Data fetching: addresses accumulate briefly then ask the server once in batch (/api/users/x-handles), results cached in memory,
+// unbound ones cached as null too, so a person appearing ten times across feed, chat, and rankings doesn't trigger ten requests.
+// Profile data (avatar, name, bio, follower count) was snapshotted at the moment the user authorized binding — not scraped live.
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { create } from 'zustand'
@@ -19,21 +19,21 @@ export interface XProfile {
   handle: string
   name: string | null
   avatar: string | null
-  /** 顶部横幅，X 有就有，没有就退回头像模糊 */
+  /** Top banner: use X's if there is one, else fall back to a blurred avatar */
   banner: string | null
   bio: string | null
   verified: boolean
-  /** ISO 时间，X 上的注册时间 */
+  /** ISO time, the X account's creation time */
   joined: string | null
   followers: number | null
   following: number | null
 }
 
 interface XState {
-  /** 地址 → X 资料；null = 没绑定（已问过） */
+  /** Address → X profile; null = not bound (already asked) */
   profiles: Record<string, XProfile | null>
   ensure: (address: string) => void
-  /** 自己刚绑完 / 解绑时更新，不用等下次批量 */
+  /** Updated right after I bind / unbind — no waiting for the next batch */
   set: (address: string, profile: XProfile | null) => void
 }
 
@@ -55,7 +55,7 @@ export const useXHandles = create<XState>()((set, get) => ({
         const r = await api<Record<string, XProfile | null>>(`/api/users/x-handles?addresses=${batch.join(',')}`)
         set({ profiles: { ...get().profiles, ...r } })
       } catch {
-        // 没问到就不写缓存，下次进页面再问
+        // Don't cache when the ask failed — ask again on next page entry
       }
     }, 120)
   },
@@ -65,7 +65,7 @@ export default function XBadge({ address, size = 13 }: { address?: string | null
   const profile = useXHandles((s) => (address ? s.profiles[address] : undefined))
   const ensure = useXHandles((s) => s.ensure)
   const [open, setOpen] = useState(false)
-  /** 头像挂了（X 换过图、被墙）就退回 X 图标，别留个破图框 */
+  /** If the avatar fails (X changed the image, or it's blocked), fall back to the X icon — never leave a broken image frame */
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [bannerFailed, setBannerFailed] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
@@ -89,7 +89,7 @@ export default function XBadge({ address, size = 13 }: { address?: string | null
     <>
       <button
         type="button"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true) }}   // 点按的轻震由全局按键震动负责（lib/pressHaptics.ts），关掉「按键震动」就不震
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true) }}   // Tap haptics are handled by the global key haptic (lib/pressHaptics.ts) — off when "key haptics" is disabled
         aria-label={t('X 账号 @{handle}', { handle: profile.handle })}
         title={`X @${profile.handle}`}
         className="inline-flex shrink-0 items-center justify-center rounded-full bg-fg text-bg transition hover:opacity-85"
@@ -106,8 +106,8 @@ export default function XBadge({ address, size = 13 }: { address?: string | null
         className="m-auto w-[calc(100%-3rem)] max-w-sm overflow-hidden rounded-2xl border border-line bg-card p-0 text-fg shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm open:animate-[alert-in_.22s_cubic-bezier(.16,1,.3,1)]"
       >
         {open && <div className="relative">
-          {/* 整张卡的背景用本人的 X 横幅；没有横幅就拿头像放大模糊顶上，
-              上面压一层暗色让文字读得清 */}
+          {/* The whole card's background uses the person's X banner; without a banner, fall back to their enlarged blurred avatar,
+              with a dark overlay so text stays readable */}
           <div className="absolute inset-0 overflow-hidden">
             {bg
               ? <img src={bg} alt="" aria-hidden="true"
@@ -124,7 +124,7 @@ export default function XBadge({ address, size = 13 }: { address?: string | null
               className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"
             ><XIcon size={17} /></button>
 
-            {/* 头像在左，信息在右 */}
+            {/* Avatar on the left, info on the right */}
             <div className="flex items-start gap-3 pr-10">
               {profile.avatar && !avatarFailed
                 ? <img src={profile.avatar} alt="" onError={() => setAvatarFailed(true)}
@@ -141,10 +141,10 @@ export default function XBadge({ address, size = 13 }: { address?: string | null
                   className="block max-w-full truncate text-sm text-muted"
                   title={t('复制')}
                 >@{profile.handle}</button>
-                {/* 不显示 X 个人简介：那是他在 X 上的自我介绍，放这里既占地方也容易带进
-                    与本产品无关的内容。数据库里仍存着，需要时可以再放出来 */}
-                {/* 不显示粉丝数 / 关注数：只有绑定那一刻的快照，显示出来是过期数字。
-                    加入时间不会变，可以放心显示。数据库里仍存着，将来做定期刷新不用重取 */}
+                {/* Don't show the X bio: it's their self-intro on X — takes space here and can bring in
+                    content unrelated to this product. Still stored in the DB, can be shown again when needed */}
+                {/* Don't show follower / following counts: they're snapshots from binding time — stale numbers. Join date never changes, safe to show.
+                    Still stored in the DB, so future periodic refreshes don't need re-fetching */}
                 {joined && <div className="mt-1.5 text-xs text-muted">{t('{year} 年 {month} 月加入 X', { year: joined.getFullYear(), month: joined.getMonth() + 1 })}</div>}
               </div>
             </div>
@@ -168,7 +168,7 @@ export default function XBadge({ address, size = 13 }: { address?: string | null
   )
 }
 
-/** X 的官方图标形状 */
+/** X's official icon shape */
 function XLogo({ size = 13 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

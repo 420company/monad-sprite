@@ -51,15 +51,15 @@ describe('服务器下发的燃料费标准不可信时用本地默认（2026-09
   it('离谱的数字（太大、负数、不是数字、警戒线比补充量还高）不用；正常的照用；下单前补充量不超过硬上限', async () => {
     const before = { eth: gasRule(1), base: gasRule(8453) }
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ chains: {
-      1: { minUsd: 400, topUpUsd: 4000 },          // 太大
-      8453: { minUsd: 0.2, topUpUsd: 1.5 },         // 正常
-      42161: { minUsd: -1, topUpUsd: Number.NaN },  // 负数、不是数字（JSON 里变成 null）
-      [SOLANA_CHAIN_ID]: { minUsd: 5, topUpUsd: 2 }, // 警戒线比补充量还高
+      1: { minUsd: 400, topUpUsd: 4000 },          // Too big
+      8453: { minUsd: 0.2, topUpUsd: 1.5 },         // Normal
+      42161: { minUsd: -1, topUpUsd: Number.NaN },  // Negative, not a number (becomes null in JSON)
+      [SOLANA_CHAIN_ID]: { minUsd: 5, topUpUsd: 2 }, // Warning line higher than the top-up amount
     } }), { headers: { 'Content-Type': 'application/json' } }))
     await loadGasRules()
     vi.unstubAllGlobals()
-    expect(gasRule(1)).toEqual(before.eth)                       // 以太坊：退回本地默认，不会一次补 4000 美元
-    expect(gasRule(8453)).toEqual({ minUsd: 0.2, topUpUsd: 5 })   // 对照：正常的数字照用（补充量 1.5 按最少 5 美元补，2026-09-29 goat）
+    expect(gasRule(1)).toEqual(before.eth)                       // Ethereum: fall back to local defaults — never tops up $4000 at once
+    expect(gasRule(8453)).toEqual({ minUsd: 0.2, topUpUsd: 5 })   // Control: normal numbers used as-is (top-up 1.5 → minimum $5 top-up, 2026-09-29 goat)
     expect(gasRule(42161).topUpUsd).toBeGreaterThan(0)
     expect(gasRule(42161).topUpUsd).toBeLessThanOrEqual(10)
     expect(gasRule(SOLANA_CHAIN_ID).minUsd).toBeLessThanOrEqual(gasRule(SOLANA_CHAIN_ID).topUpUsd)
@@ -101,7 +101,7 @@ describe('燃料费币不止 isNative（2026-09-29 审查 P1：Arc 的 USDC、�
     const holdings = [sol, h(SOLANA_CHAIN_ID, 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', 100, 'BONK')]
     expect(nativeUsd(holdings, SOLANA_CHAIN_ID)).toBe(750)
     expect(lowGasChains(holdings)).toEqual([])
-    // 对照：SOL 只剩 0.001 个（0.15 美元，低于 0.5 美元警戒线）→ 报
+    // Control: SOL down to 0.001 ($0.15, below the $0.5 warning line) → alert
     expect(lowGasChains([{ ...sol, amount: 0.001, valueUsd: 0.15 }, holdings[1]]).map((l) => l.chainId)).toEqual([SOLANA_CHAIN_ID])
   })
   it('这次没拿到燃料费币的价格（记成 0）：不当成没有燃料费，不预警也不补', () => {
@@ -109,7 +109,7 @@ describe('燃料费币不止 isNative（2026-09-29 审查 P1：Arc 的 USDC、�
     const holdings = [h(56, NATIVE_EVM, 50, 'BNB'), eth, h(42161, '0x1234567890123456789012345678901234567890', 100, 'MEME')]
     expect(lowGasChains(holdings)).toEqual([])
     expect(autoRefuelDue({ ...base, holdings, low: [42161], fuelChains: [42161], scannedChains: [42161] })).toBeNull()
-    // 对照：确实没有 ETH（数量为 0）→ 照常补
+    // Control: genuinely no ETH (amount 0) → top up as usual
     const none = [holdings[0], holdings[2]]
     expect(autoRefuelDue({ ...base, holdings: none, low: lowGasChains(none).map((l) => l.chainId), fuelChains: [], scannedChains: [] })).toBe(42161)
   })

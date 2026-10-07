@@ -1,10 +1,10 @@
-// 网页版「现货」交易终端（2026-09-29 goat 第三轮：整体排版很奇怪；币名改正常字体；支付资产弹出手机全高弹层；点买入没反应；
-// BTCB 那里「K 线加载失败，重试」和「暂无历史 K 线」同时出现）。参考 Backpack 现货 + Jupiter 兑换面板，一屏放下、整页不滚、各面板自己滚：
-//   左：市场列表 260（搜索、自选 / 热门，可收起成一条图标栏）
-//   中：代币头（图标、符号、链、价格、24h 统计、收藏 / 复制地址 / 区块浏览器）→ K 线（开高低收，状态只显示一个）→ 页签面板
-//       （我的持仓 / 我的成交 / 持币最多的群 / 相关动态 / 代币信息）
-//   右：买卖面板 340（desktop/trade/SpotOrderForm：和手机买卖弹层同一份逻辑，支付资产是下拉面板，按钮永远能点、不能下单时说原因）
-// /token/:chain/:address 与 /spot 都是这一页。数据全部来自现有接口，失败显示空状态，不放假数据。
+// Web "Spot" trading terminal (2026-09-29 goat 3rd round: overall layout felt off; coin names back to normal font; payment asset pops a full-height mobile sheet; buy button did nothing;
+// BTCB showed "chart failed to load, retry" and "no historical candles" at the same time). Modeled on Backpack spot + Jupiter swap panel: everything on one screen, page doesn't scroll, each panel scrolls itself:
+//   left: market list 260 (search, watchlist / hot, collapsible to an icon bar)
+//   center: token header (icon, symbol, chain, price, 24h stats, favorite / copy address / block explorer) → chart (OHLC, only one status shown) → tab panel
+//       (my positions / my fills / top-holder groups / related posts / token info)
+//   right: buy/sell panel 340 (desktop/trade/SpotOrderForm: same logic as the mobile buy/sell sheet; payment asset is a dropdown panel; the button is always tappable and explains why when an order can't be placed)
+// /token/:chain/:address and /spot are both this page. All data comes from existing APIs; failures show an empty state, never fake data.
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
@@ -45,23 +45,23 @@ import './trade.css'
 
 const IVALS: DexInterval[] = ['15m', '1h', '4h', '1d']
 const dir = (n?: number) => (n ?? 0) >= 0 ? 'up' : 'down'
-/** 金额类统计：数据商给 0 表示没有这项数据，显示 -- 而不是 $0.00 */
+/** Money stats: the data provider's 0 means "no such data" — show -- instead of $0.00 */
 const big = (n?: number) => (n && n > 0 ? fmtUsd(n, { compact: true }) : '--')
 const tokenPath = (x: { chain: string; address: string }) => `/token/${x.chain}/${x.address}`
 const pre = (x: MarketToken) => { if (x.pairAddress) prefetchDexCandles({ chain: x.chain, address: x.address, pairAddress: x.pairAddress, interval: '1h' }) }
 const chainLabel = (chain: string) => chainByDexKey(chain)?.name || chain
 const RAIL_KEY = '0x4.desk.spotRailFolded'
 
-/** /spot：没指定币时打开上次看的，没有就打开第一个自选 */
+/** /spot: with no coin specified, open the last-viewed one, else the first watchlist coin */
 export function DeskSpot() {
   const favorites = useFavorites((s) => s.items)
   let last = ''
-  try { last = sessionStorage.getItem('0x4.desk.lastToken') || '' } catch { /* 隐私模式 */ }
+  try { last = sessionStorage.getItem('0x4.desk.lastToken') || '' } catch { /* Privacy mode */ }
   const to = last || (favorites[0] ? tokenPath(favorites[0]) : '/token/bsc/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c')
   return <Navigate to={to} replace />
 }
 
-/** 一个币的行情：进来拉一次，之后 15 秒刷新（和手机币详情同一个接口）。现货页和行情页的弹窗共用 */
+/** One coin's market data: fetched once on entry, refreshed every 15s (same API as mobile coin details). Shared between the spot page and the market page's popup */
 function useTokenQuote(chain: string, address: string) {
   const { cache, put } = useMarket()
   const [state, setState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
@@ -96,11 +96,11 @@ export default function TokenTerminal() {
   const chain = params.chain || 'solana'
   const address = params.address || params.mint || ''
   const { token, state, retry } = useTokenQuote(chain, address)
-  // 左栏收起：每个浏览器自己记（存不了就每次展开）
+  // Left column collapse: remembered per browser (expanded every time if it can't persist)
   const [folded, setFolded] = useState(() => { try { return localStorage.getItem(RAIL_KEY) === '1' } catch { return false } })
-  const fold = (v: boolean) => { setFolded(v); try { localStorage.setItem(RAIL_KEY, v ? '1' : '0') } catch { /* 无痕模式 */ } }
+  const fold = (v: boolean) => { setFolded(v); try { localStorage.setItem(RAIL_KEY, v ? '1' : '0') } catch { /* Incognito mode */ } }
 
-  useEffect(() => { try { sessionStorage.setItem('0x4.desk.lastToken', `/token/${chain}/${address}`) } catch { /* 隐私模式 */ } }, [chain, address])
+  useEffect(() => { try { sessionStorage.setItem('0x4.desk.lastToken', `/token/${chain}/${address}`) } catch { /* Privacy mode */ } }, [chain, address])
 
   return (
     <div className={`tx-term tx-spot ${folded ? 'is-folded' : ''}`}>
@@ -112,18 +112,18 @@ export default function TokenTerminal() {
 }
 
 /**
- * 行情页点一个币：在行情页上弹出这个币的交易窗口（2026-10-05 goat：「把行情和购买整理到一个页面里」）。
- * 内容和现货页右边三块一样（代币头 + K 线 + 页签 + 买卖面板），只是没有左边的市场列表；关掉回到原来的行情列表（筛选、滚动都还在）。
- * 只盖住中间的内容区（goat：「不要挡住左边的导航条」）：顶栏、空间外观左边的竖导航、底部状态栏都露在外面也能点，
- * 所以不用 <dialog> 的模态（模态会盖满整屏、背后全部不能点），按这几样的实际位置算出内容区，挂到 .desk 上（不挂在 .desk-main 里：它有 transform 时 fixed 会错位）。
- * 买卖面板自己再弹的窗口（确认、选资产）是模态 <dialog>，照样叠在最上面
+ * Clicking a coin on the market page: pop this coin's trading window over the market page (2026-10-05 goat: "put market and buying on one page").
+ * Same three blocks as the spot page's right side (token header + chart + tabs + buy/sell panel), just without the left market list; closing returns to the original market list (filters and scroll intact).
+ * Only covers the middle content area (goat: "don't block the left nav"): top bar, the space-look's left vertical nav, and the bottom status bar stay visible and clickable,
+ * so no <dialog> modal (a modal covers the whole screen and blocks everything behind); the content area is computed from their actual positions and mounted on .desk (not inside .desk-main: fixed misplaces when it has a transform).
+ * Windows popped by the buy/sell panel itself (confirm, pick asset) are modal <dialog>s and stack on top as usual
  */
 function contentArea(): { top: number; left: number; right: number; bottom: number } {
   const vw = window.innerWidth, vh = window.innerHeight
   const bar = document.querySelector('.desk-bar')?.getBoundingClientRect()
   const status = document.querySelector('.desk-status')?.getBoundingClientRect()
   const nav = document.querySelector('.desk-nav')?.getBoundingClientRect()
-  // 空间外观：导航是左边竖着的一根（高比宽大），内容区从它右边开始；其它外观导航在顶栏里
+  // Space look: the nav is a vertical bar on the left (taller than wide), content starts to its right; other looks keep nav in the top bar
   const sideNav = nav && nav.height > nav.width && nav.left < vw / 3 ? nav : null
   const top = bar && bar.height > 0 ? Math.max(0, bar.bottom) : 0
   const bottom = status && status.height > 0 && status.top > vh / 2 ? vh - status.top : 0
@@ -137,12 +137,12 @@ export function TokenQuick({ chain, address, onClose }: { chain: string; address
   useEffect(() => {
     const re = () => setArea(contentArea())
     window.addEventListener('resize', re)
-    // 外观切换（空间 ↔ 其它）导航位置会变
+    // Switching looks (space ↔ others) moves the nav
     window.addEventListener('theme-change', re)
     const t0 = window.setTimeout(re, 60)
     return () => { window.removeEventListener('resize', re); window.removeEventListener('theme-change', re); clearTimeout(t0) }
   }, [])
-  // Esc 关闭；买卖面板自己的确认窗口开着时，Esc 先关那个
+  // Esc closes; when the buy/sell panel's own confirmation window is open, Esc closes that first
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.querySelector('dialog[open]')) onClose() }
     window.addEventListener('keydown', onKey)
@@ -163,14 +163,14 @@ export function TokenQuick({ chain, address, onClose }: { chain: string; address
         </div>
       </section>
     </>,
-    // 挂在 .desk 里（和顶栏、竖导航、状态栏同一层叠上下文，z-index 才比得过；挂 body 上会被外层的层叠上下文压在下面，遮罩挡住导航）
+    // Mounted in .desk (same stacking context as top bar, vertical nav, status bar so z-index wins; mounted on body it would be crushed under outer stacking contexts, with the mask covering the nav)
     document.querySelector('.desk') || document.body,
   )
 }
 
 function Terminal({ token, stale, onRetry }: { token: MarketToken; stale: boolean; onRetry: () => void }) {
   const connected = useWallet(isWalletConnected)
-  // 连的是外部钱包、而且它没有 Solana（Phantom 以外的）
+  // Connected an external wallet, and it has no Solana (anything but Phantom)
   const noSolana = useWallet((w) => w.kind === 'external' && !w.wallet)
   const [interval, setIval] = usePageState<DexInterval>('token.interval', '1h', oneOf('15m', '1h', '4h', '1d'))
   const [chartRetry, setChartRetry] = useState(0)
@@ -179,7 +179,7 @@ function Terminal({ token, stale, onRetry }: { token: MarketToken; stale: boolea
   const [orderKey, setOrderKey] = useState(0)
   const chainInfo = chainById(token.chainId)
 
-  // K 线状态四选一：没有交易对 / 数据商说不支持 → 无 K 线；还没开始或加载中 → 加载中；失败 → 失败 + 重试；拿到了 → 画图
+  // Chart state, pick one of four: no pair / provider says unsupported → no chart; not started or loading → loading; failed → failed + retry; got data → draw
   const status: ChartStatus = !token.pairAddress || chart.data?.supported === false ? 'unsupported'
     : chart.status === 'idle' || chart.status === 'loading' ? 'loading'
       : chart.status === 'error' ? 'error' : 'ready'
@@ -190,19 +190,19 @@ function Terminal({ token, stale, onRetry }: { token: MarketToken; stale: boolea
       <TokenHead token={token} stale={stale} onRetry={onRetry} />
       <ChartPanel intervals={IVALS} interval={interval} onInterval={setIval} candles={chart.data?.candles ?? []} chartKey={`${token.chain}:${token.address}:${interval}`}
         status={status} asOf={chart.data?.asOf} onRetry={() => setChartRetry((v) => v + 1)} formatPrice={price}>
-        {/* 问小精灵（2026-10-02）：现货只有 K 线本身（没有买卖力量、大单、仓位） */}
+        {/* Ask the sprite (2026-10-02): spot has only the chart itself (no buy/sell pressure, big orders, positions) */}
         <SpriteLook chartKey={`${token.chain}:${token.address}:${interval}`} getBrief={() => buildBrief({ market: 'spot', symbol: token.symbol, interval, candles: chart.data?.candles ?? [] })} />
       </ChartPanel>
       <aside className="tx-panel tx-order" aria-label={t('代币交易')}>
         <div className="tx-order-in">
           <div className="tx-side" role="group" aria-label={t('买入或卖出')}>
-            {/* 切换买卖不重建面板（2026-09-29：原来每点一次整块重建，看着「闪一下」，填的数量也丢了）；数量在面板里按价值换算保留 */}
+            {/* Switching buy/sell doesn't rebuild the panel (2026-09-29: previously each tap rebuilt the whole block — a visible "flash" — and lost the entered amount); the amount is kept, converted by value inside the panel */}
             <button type="button" aria-pressed={side === 'buy'} className={`is-up ${side === 'buy' ? 'on' : ''}`} onClick={() => setSide('buy')}>{t('买入')}</button>
             <button type="button" aria-pressed={side === 'sell'} className={`is-down ${side === 'sell' ? 'on' : ''}`} onClick={() => setSide('sell')}>{t('卖出')}</button>
           </div>
           {!chainInfo
             ? <div className="tx-empty is-tight"><span>{t('暂不支持在 {chain} 上交易', { chain: token.chain })}</span></div>
-            // 外部钱包只有 EVM（MetaMask 等）买卖不了 Solana 上的币：一句话 + 获取 0x4 Wallet（2026-09-30）
+            // External wallets with EVM only (MetaMask etc.) can't trade Solana coins: one line + get 0x4 Wallet (2026-09-30)
             : noSolana && token.chainId === SOLANA_CHAIN_ID
               ? <div className="tx-empty is-tight tx-nosol"><span>{t('这个币在 Solana 上，用 0x4 Wallet 就能买卖')}</span><button type="button" className="tx-btn tx-btn-sm" onClick={getOx4Wallet}>{t('获取 0x4 Wallet')}</button></div>
               : <SpotOrderForm key={`${token.chain}:${token.address}:${orderKey}`} token={token} side={side} connected={connected} onDone={() => setOrderKey((k) => k + 1)} />}
@@ -213,7 +213,7 @@ function Terminal({ token, stale, onRetry }: { token: MarketToken; stale: boolea
   )
 }
 
-/** 代币头：图标、符号、链、收藏｜价格 + 24h｜统计｜复制地址、区块浏览器 */
+/** Token header: icon, symbol, chain, favorite | price + 24h | stats | copy address, block explorer */
 function TokenHead({ token, stale, onRetry }: { token: MarketToken; stale: boolean; onRetry: () => void }) {
   const { items: favorites, add: addFav, remove: removeFav } = useFavorites()
   const holding = usePortfolio((s) => s.holdings.find((h) => h.chainId === token.chainId && sameAddr(h.mint, token.address) && h.amount > 0))
@@ -260,7 +260,7 @@ function TokenHead({ token, stale, onRetry }: { token: MarketToken; stale: boole
 
 type TabKey = 'holding' | 'trades' | 'groups' | 'posts' | 'info'
 
-/** 底部页签：我的持仓 / 我的成交 / 持币最多的群 / 相关动态 / 代币信息。固定高度，内容自己滚 */
+/** Bottom tabs: my positions / my fills / top-holder groups / related posts / token info. Fixed height, content scrolls itself */
 function BottomTabs({ token, connected, onBuy }: { token: MarketToken; connected: boolean; onBuy: () => void }) {
   const [tab, setTab] = usePageState<TabKey>('desk.token.bottom', () => connected ? 'holding' : 'info', oneOf('holding', 'trades', 'groups', 'posts', 'info'))
   const [composing, setComposing] = useState(false)
@@ -311,7 +311,7 @@ function HoldingTab({ token, connected, onBuy }: { token: MarketToken; connected
 
 interface TradeRow { id: string; side: 'buy' | 'sell'; chain: string; token: string; symbol: string; qty: number; usd: number; price: number; realized: number; created_at: number }
 
-/** 我的成交：服务器记的最近 50 笔交易里挑出这个币的（公开接口，只读） */
+/** My fills: this coin's entries picked from the server's last 50 recorded trades (public API, read-only) */
 function TradesTab({ token, connected }: { token: MarketToken; connected: boolean }) {
   const me = useSocial((s) => s.me)
   const address = useWallet((s) => s.address)
@@ -348,7 +348,7 @@ function TradesTab({ token, connected }: { token: MarketToken; connected: boolea
   )
 }
 
-/** 持币最多的群（前 3，服务器按持仓排名）；没有就给「建一个群」 */
+/** Top-holder groups (top 3, ranked by holdings on the server); "Create a group" if none */
 function GroupsTab({ token }: { token: MarketToken }) {
   const nav = useNavigate()
   const [data, setData] = useState<TokenCommunities | null>(null)
@@ -378,7 +378,7 @@ function GroupsTab({ token }: { token: MarketToken }) {
   )
 }
 
-/** 相关动态：公开接口只读（没连钱包也能看），电脑端紧凑列表，点开进动态详情 */
+/** Related posts: public read-only API (viewable without a wallet), compact list on desktop, tap to open post details */
 function PostsTab({ token, refreshKey }: { token: MarketToken; refreshKey: number }) {
   const [list, setList] = useState<Post[] | null>(null)
   const [failed, setFailed] = useState(false)
@@ -424,7 +424,7 @@ function InfoTab({ token }: { token: MarketToken }) {
         <div><dt>{t('完全稀释市值')}</dt><dd>{big(token.fdv)}</dd></div>
         <div><dt>{t('流动性')}</dt><dd>{big(token.liquidityUsd)}</dd></div>
         <div><dt>{t('24h 成交额')}</dt><dd>{big(token.volume24h)}</dd></div>
-        {/* 涨跌占两列（2026-09-30 goat：原来四个数挤在一格和成交笔数重叠）；成交笔数因此排到下一排 */}
+        {/* Change spans two columns (2026-09-30 goat: four numbers used to squeeze into one cell overlapping the trade count); trade count therefore moves to the next row */}
         <div className="tx-info-span2"><dt>{t('涨跌 5m / 1h / 6h / 24h')}</dt><dd>{[token.change5m, token.change1h, token.change6h, token.change24h].map((v, i) => <span key={i} className={v == null ? 'mute' : dir(v)}>{fmtPct(v)}</span>)}</dd></div>
         <div><dt>{t('24h 成交笔数（买 / 卖）')}</dt><dd>{total ? `${fmtAmount(token.buys24h, 0)} / ${fmtAmount(token.sells24h, 0)}` : '--'}</dd>
           {ratio !== null && <div className="tx-ratio" role="img" aria-label={t('24 小时成交笔数：买入 {buy}%，卖出 {sell}%', { buy: ratio.toFixed(0), sell: (100 - ratio).toFixed(0) })}><span style={{ width: `${ratio}%` }} /></div>}</div>
@@ -438,19 +438,19 @@ function InfoTab({ token }: { token: MarketToken }) {
   )
 }
 
-/** 左栏：自选 / 热门，可搜，可收起成一条图标栏。点一行就切到那个币 */
+/** Left column: watchlist / trending, searchable, collapsible into an icon rail. Tapping a row switches to that token */
 function Rail({ current, folded, onFold }: { current: { chain: string; address: string }; folded: boolean; onFold: (v: boolean) => void }) {
   const favorites = useFavorites((s) => s.items)
   const { cache, put } = useMarket()
   const { feeds, load } = useDiscoverFeed()
   const [tab, setTab] = usePageState<'fav' | 'hot'>('desk.spot.rail', favorites.length ? 'fav' : 'hot', oneOf('fav', 'hot'))
   const [q, setQ] = useState('')
-  // 搜索结果（2026-09-30：官方置顶、冒牌不显示，规则见 lib/market.ts rankSearch）
+  // Search results (2026-09-30: official pinned, counterfeits hidden — see lib/market.ts rankSearch for rules)
   const [found, setFound] = useState<SearchResult | null>(null)
   const results = found?.tokens ?? null
   const [searching, setSearching] = useState(false)
   useEffect(() => { void load('market') }, [load])
-  // 自选报价：按链批量取，20 秒刷新
+  // Watchlist quotes: batched per chain, refreshed every 20 seconds
   useEffect(() => {
     if (!favorites.length) return
     let alive = true
@@ -482,7 +482,7 @@ function Rail({ current, folded, onFold }: { current: { chain: string; address: 
     <li key={`${x.chain}:${x.address}`}><Link to={tokenPath(x)} className={`tx-rail-row ${isOn(x) ? 'on' : ''}`} onPointerEnter={() => pre(x)} aria-current={isOn(x) ? 'page' : undefined}>
       <TokenLogo src={x.logo} symbol={x.symbol} size={22} chain={x.chain} address={x.address} />
       <span className="tx-rail-name"><b>{x.symbol}{x.official && <i className="tx-tag is-official">{t('官方')}</i>}{x.impostor && <i className="tx-tag is-fake">{t('非官方')}</i>}{x.fresh && <i className="tx-tag is-new" title={t('这个币的交易池 3 天内刚创建，风险较高')}>{t('新创建')}</i>}</b><small>{chainLabel(x.chain)}</small></span>
-      {/* 24 小时涨跌拿不到时写流动性，不放一排「--」 */}
+      {/* When 24h change is unavailable, show liquidity instead of a row of "--" */}
       <span className="tx-rail-px"><span>{x.priceUsd > 0 ? fmtUsd(x.priceUsd) : '--'}</span>{x.change24h == null
         ? <small className="mute">{x.liquidityUsd ? t('流动性 {v}', { v: fmtUsd(x.liquidityUsd, { compact: true }) }) : '--'}</small>
         : <small className={dir(x.change24h)}>{fmtPct(x.change24h)}</small>}</span>

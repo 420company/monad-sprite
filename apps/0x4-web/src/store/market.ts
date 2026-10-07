@@ -1,4 +1,4 @@
-// 行情状态：热门列表、搜索、单币缓存（按 链:地址 索引）；接口失败只标记 offline，绝不用假数据顶上——那会让人对着假价格做决定
+// Market state: trending list, search, per-coin cache (indexed by chain:address); API failures only flag offline — never paper over with fake data, which would let people decide against fake prices
 import { create } from 'zustand'
 import type { MarketToken } from '@/lib/types'
 import { getTokens, getTrending, searchTokens, marketKey, SOL_MINT } from '@/lib/market'
@@ -36,7 +36,7 @@ export const useMarket = create<MarketState>()((set, get) => ({
       const sol = list.find((t) => t.address === SOL_MINT)
       set({ trending: list, offline: false, lastUpdated: Date.now(), cache: { ...get().cache, ...index(list) }, solPrice: sol?.priceUsd || get().solPrice })
     } catch {
-      // 行情接口不可达：只标记离线，列表保持原样
+      // Market API unreachable: flag offline only, list untouched
       set({ offline: true, lastUpdated: Date.now() })
     } finally {
       set({ loading: false })

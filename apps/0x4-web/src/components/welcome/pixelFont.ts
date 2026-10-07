@@ -1,11 +1,11 @@
-// 标语「MEME IS / EVERYTHING.」的像素点阵（2026-09-25，替换掉液态铬衬线字；goat 要求全大写更整齐）。
+// Pixel matrix for the "MEME IS / EVERYTHING." slogan (2026-09-25, replacing the liquid-chrome serif; goat wants all-caps for tidiness).
 //
-// 不用字体文件：只有这两行字，自己画点阵最锐利，也不用等字体加载。
-// 全大写，每个字 7 行高，没有升部降部。竖笔两格宽、横笔一格高，字宽 5~7 格，字间 1 格，空格 3 格。
+// No font file: just these two lines — hand-drawn pixels are sharpest, and there's no font load to wait for.
+// All caps, each glyph 7 rows tall, no ascenders/descenders. Vertical strokes 2 cells wide, horizontal strokes 1 cell tall, glyph width 5–7 cells, 1 cell between glyphs, 3 cells for spaces.
 
 type Glyph = string[]
 
-/** top = 字形从第几行开始画 */
+/** top = which row the glyph starts drawing from */
 const glyph = (top: number, rows: string[]): Glyph => [...Array<string>(top).fill(''), ...rows]
 
 const GLYPHS: Record<string, Glyph> = {
@@ -106,16 +106,16 @@ const GLYPHS: Record<string, Glyph> = {
 const width = (g: Glyph) => Math.max(...g.map(r => r.length))
 const SPACE = 3
 const GAP = 1
-/** 每行字占的行数（含降部） */
+/** Rows occupied per line of text (incl. descenders) */
 export const GLYPH_ROWS = 7
-/** 第二行相对第一行往下错多少格：行间留 2 格 */
+/** How many cells the second line sits below the first: 2 cells between lines */
 export const LINE_ADVANCE = 9
 
 export interface PixelCell {
-  /** 列、行（格子坐标） */
+  /** Column, row (grid coordinates) */
   x: number
   y: number
-  /** 第几行字、第几个字母（做入场错落用） */
+  /** Which line, which letter (for staggered entrance) */
   line: number
   char: number
 }
@@ -126,7 +126,7 @@ export interface PixelText {
   cells: PixelCell[]
 }
 
-/** 把几行字排成格子坐标，左对齐 */
+/** Lay out the lines into grid coordinates, left-aligned */
 export function layoutPixelText(lines: string[]): PixelText {
   const cells: PixelCell[] = []
   let cols = 0

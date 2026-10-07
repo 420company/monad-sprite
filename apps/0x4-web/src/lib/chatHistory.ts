@@ -1,14 +1,14 @@
-// 聊天记录的纯函数：合并去重、分页游标、删除、私信密文解码。store 和测试共用，不碰网络。
+// Pure functions for chat history: merge/dedupe, paging cursor, deletion, DM ciphertext decoding. Shared by the store and tests; no network.
 import type { DmMessage } from './social'
 
 type Msg = { id: string; ts: number }
 
-/** 排序与服务端分页一致：先按时间，同一毫秒按 id（服务端 id 按发送顺序递增） */
+/** Sorts consistently with server paging: by time first, then by id within the same millisecond (server ids increase in send order) */
 export const byTsId = (a: Msg, b: Msg) => a.ts - b.ts || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
 /**
- * 合并两批消息：按 id 去重（后来的覆盖先到的，服务器的数据为准），按时间排好。
- * 超过 cap 条时丢最旧的（丢掉的往上翻还能再拉回来）。
+ * Merge two message batches: dedupe by id (later overwrites earlier, server data wins), sorted by time.
+ * Beyond cap entries, drop the oldest (dropped ones can be re-pulled by scrolling up).
  */
 export function mergeMessages<T extends Msg>(existing: T[], incoming: T[], cap = 3000): T[] {
   if (!incoming.length) return existing
@@ -19,7 +19,7 @@ export function mergeMessages<T extends Msg>(existing: T[], incoming: T[], cap =
   return out.length > cap ? out.slice(-cap) : out
 }
 
-/** 往上翻页的游标：当前最早一条的 (ts, id)；本地还没回执的消息不算 */
+/** Scroll-up paging cursor: the (ts, id) of the current earliest message; local messages without a receipt yet don't count */
 export function olderCursor(list: Msg[]): string {
   const first = list.find((m) => !isLocalId(m.id))
   return first ? `before=${first.ts}&beforeId=${encodeURIComponent(first.id)}` : ''
@@ -33,19 +33,19 @@ export function removeIds<T extends { id: string }>(list: T[] | undefined, ids: 
   return list.filter((m) => !drop.has(m.id))
 }
 
-/** 本地先显示的私信收到服务器回执后换成正式 id 和时间；找不到本地那条返回 null */
+/** A locally pre-shown DM swaps to the official id and time once the server receipt arrives; null when the local one can't be found */
 export function confirmLocal<T extends Msg>(list: T[] | undefined, localId: string, id: string, ts: number): T[] | null {
   if (!list || !list.some((m) => m.id === localId)) return null
   return list.filter((m) => m.id !== id).map((m) => (m.id === localId ? { ...m, id, ts } : m)).sort(byTsId)
 }
 
-/** 服务端返回的私信：给我的那份密文。旧版客户端发出的没有「自己那份」→ legacy */
+/** A DM returned by the server: my copy of the ciphertext. Messages sent by old clients lack the "own copy" → legacy */
 export interface DmWire { id: string; from: string; to: string; ts: number; ciphertext?: string; nonce?: string; epk?: string; legacy?: boolean }
 type Decrypt = (p: { ciphertext: string; nonce: string; epk: string }) => Promise<string>
 
 /**
- * 网页版 0x4 插件锁着时解密私信抛这个（2026-10-06：插件锁了网页不再登出）。不去请插件解密：插件锁着会弹解锁窗口，
- * 后台收到一条私信就弹一个窗口不行。这样的消息标 locked，界面写「解锁后查看」，插件解锁后重新拉一次（store/social.ts）
+ * Thrown when decrypting DMs while the web 0x4 extension is locked (2026-10-06: a locked extension no longer logs web out). Don't ask the extension to decrypt: a locked extension pops the unlock window,
+ * and one window per background DM won't do. Such messages are marked locked, the UI says "unlock to view", and they're re-pulled after the extension unlocks (store/social.ts)
  */
 export class DmLocked extends Error {
   constructor() { super('DmLocked'); this.name = 'DmLocked' }

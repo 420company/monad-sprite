@@ -1,6 +1,6 @@
-// 动钱前的验证面板（原生 App）。钱包锁着时，转账 / 兑换 / 合约下单等要签名的操作会走到这里：
-// 开了面容 ID / 指纹就自动弹，失败或取消了可以输密码；关掉面板 = 取消这笔操作。
-// 触发方见 lib/vault/gate.ts 的 ensureUnlocked。
+// Pre-money-move verification panel (native app). When the wallet is locked, signing operations (transfers / swaps / perp orders etc.) route here:
+// Face ID / fingerprint pops automatically when enabled; password entry on failure or cancel; closing the panel = cancelling the operation.
+// Triggered via lib/vault/gate.ts's ensureUnlocked.
 import { useEffect, useId, useRef, useState } from 'react'
 import { Fingerprint, ScanFace } from 'lucide-react'
 import Sheet from '@/components/Sheet'
@@ -36,7 +36,7 @@ export default function UnlockSheet() {
       finishUnlock(true)
     } catch (raw) {
       const e = toBiometricError(raw)
-      if (e instanceof BiometricCancelled) return   // 留在面板上，可以改输密码
+      if (e instanceof BiometricCancelled) return   // Stay on the panel to switch to password entry
       if (e instanceof BiometricInvalidated) {
         setBio({ ...bio, enabled: false })
         setError(t('{method}已失效，请输入密码解锁，之后可在设置里重新开启', { method: biometryWord(bio.biometry) }).trim())
@@ -46,7 +46,7 @@ export default function UnlockSheet() {
     } finally { setBusy(false) }
   }
 
-  // 打开就自动弹一次面容 ID / 指纹
+  // Face ID / fingerprint auto-pops once on open
   useEffect(() => {
     if (!open || !bio?.enabled || !bio.available || autoTried.current) return
     autoTried.current = true

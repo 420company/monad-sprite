@@ -1,6 +1,6 @@
-// 个人主页名字旁的小标签：管理员显示「官方」，客服显示「客服」。普通用户什么都不显示。
-// 列表里不放这个标签，头像的发光边框就是标识；主页上多一个字，方便用户确认对方身份。
-// 身份和头像边框同一个来源（lib/staffBadges → 服务端），不看昵称、不看自报的地址。
+// Small tag next to the name on profiles: admins show "Official", support shows "Support". Regular users show nothing.
+// Not placed in lists — the avatar's glow border is the marker there; the extra word on profiles helps users confirm who they're talking to.
+// Identity shares the same source as the avatar border (lib/staffBadges → server) — never nicknames or self-claimed addresses.
 import { useEffect } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { useStaffBadges } from '@/lib/staffBadges'

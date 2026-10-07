@@ -1,43 +1,43 @@
-// 生物识别解锁。
+// Biometric unlock.
 //
-// iOS：开启与解锁都在原生完成，网页层自始至终拿不到解锁密码，也拿不到私钥：
-//   开启   → Vault.enableBiometric(密码)  原生验过密码才存进钥匙串
-//   解锁   → Vault.unlockWithBiometric()  密码从钥匙串取出后直接在原生解金库
-//   原生实现见 ios/App/App/VaultPlugin.swift。
-// Android：金库还在网页层，原生只保管密码（指纹绑定的 Keystore 密钥加密），
-//   验过指纹把密码交回网页层解金库。见 android/…/BiometricVaultPlugin.java。
+// iOS: enabling and unlocking both complete natively — the web layer never gets the unlock password, nor the private key:
+//   Enabling → Vault.enableBiometric(password): the password is only stored to the keychain after native verification
+//   Unlock → Vault.unlockWithBiometric(): the password is taken from the Keychain and unlocks the vault directly in native code
+//   Native implementation: ios/App/App/VaultPlugin.swift.
+// Android: the vault still lives in the web layer; native only guards the password (encrypted by the fingerprint-bound Keystore key).
+//   After fingerprint verification, hand the password back to the web layer to unlock the vault. See android/…/BiometricVaultPlugin.java.
 import { registerPlugin } from '@capacitor/core'
 import { isNative, platform } from '@/lib/native'
 import { t } from '@/lib/i18n'
 
-/** fingerprint / biometric 是 Android 的：系统只告诉「强生物识别可用」，分不清具体是什么，有指纹传感器就叫指纹 */
+/** fingerprint / biometric are Android's: the OS only reports "strong biometrics available" without saying which — with a fingerprint sensor it's called fingerprint */
 export type BiometryType = 'faceID' | 'touchID' | 'opticID' | 'fingerprint' | 'biometric' | 'none'
 
 const Native = registerPlugin<{
   status(): Promise<{ available: boolean; biometry: BiometryType; enabled: boolean }>
-  // 以下三个只有 Android 有
+  // Only Android has the three below
   store(o: { password: string }): Promise<{ enabled: boolean }>
   retrieve(o: { reason: string }): Promise<{ password: string }>
   clear(): Promise<{ enabled: boolean }>
 }>('BiometricVault')
 
-/** 这个运行环境有没有原生实现。网页没有 */
+/** Whether this runtime has a native implementation. Web doesn't */
 export const biometricSupported = isNative && (platform === 'ios' || platform === 'android')
-/** Android：密码由原生保管、网页层解金库 */
+/** Android: native keeps the password, the web layer unlocks the vault */
 export const biometricAndroid = isNative && platform === 'android'
 
 export const androidBiometric = {
-  /** 调用前须已验证过密码 */
+  /** The password must have been verified before calling */
   store: (password: string) => Native.store({ password }),
   retrieve: async (reason: string) => (await Native.retrieve({ reason })).password,
   clear: () => Native.clear().then(() => undefined, () => undefined),
 }
 
 export interface BiometricStatus {
-  /** 设备支持并已录入生物特征 */
+  /** The device supports biometrics and has some enrolled */
   available: boolean
   biometry: BiometryType
-  /** 钥匙串里有已开启的条目 */
+  /** The Keychain has an enabled entry */
   enabled: boolean
 }
 
@@ -56,18 +56,18 @@ export function biometryLabel(type: BiometryType): string {
   return t('生物识别')
 }
 
-/** 嵌进中文句子用：含英文的（面容 ID）两边补空格，纯中文的（指纹）不补。开头结尾多出的空格由调用方 trim */
+/** For embedding in Chinese sentences: pad with spaces around terms containing English (Face ID), not around pure-Chinese ones (fingerprint). The caller trims stray leading/trailing spaces */
 export function biometryWord(type: BiometryType): string {
   const label = biometryLabel(type)
   return /[A-Za-z]/.test(label) ? ` ${label} ` : label
 }
 
-/** 用户主动取消验证。调用方据此静默回到密码输入，不弹错误 */
+/** The user proactively cancelled verification. The caller silently returns to password input on this — no error popup */
 export class BiometricCancelled extends Error {}
-/** 条目不存在或已作废（换了脸 / 指纹、关了锁屏密码）。调用方应提示重新开启 */
+/** The entry doesn't exist or is void (face / fingerprint changed, lock-screen password turned off). The caller should prompt to re-enable */
 export class BiometricInvalidated extends Error {}
 
-/** 把原生返回的错误码翻译成上面两种，其余原样抛出 */
+/** Translate native error codes into the two above; throw everything else as-is */
 export function toBiometricError(e: unknown): Error {
   const code = (e as { code?: string }).code
   if (code === 'CANCELLED') return new BiometricCancelled(t('已取消'))

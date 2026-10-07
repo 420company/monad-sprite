@@ -1,4 +1,4 @@
-// 首页「每周最佳交易」：本周已实现盈亏最高的卖出
+// Home's "best trades of the week": this week's sell with the highest realized PnL
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Lightbulb } from 'lucide-react'

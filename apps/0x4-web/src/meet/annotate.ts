@@ -1,24 +1,24 @@
-// 会议里的画笔标注（2026-09-30 goat：讲课的人在我们会议页面上标出重点，不是在被共享的软件里画）。
-// 这里只放纯逻辑（坐标换算、消息校验、笔画状态），画布和工具条在 AnnotationLayer.tsx，同步走会议已有的数据通道（lk.ts packData）。
+// In-meeting pen annotations (2026-09-30 goat: the presenter marks key points on our meeting page, not inside the shared app).
+// Pure logic only here (coordinate conversion, message validation, stroke state); canvas and toolbar live in AnnotationLayer.tsx, synced over the meeting's existing data channel (lk.ts packData).
 //
-// 规则：
-//   · 谁能画：当前正在共享屏幕的人、会议主持人。收到消息时按音视频服务给的发送者身份（participant.identity）判断，不信消息里自报的。
-//   · 坐标按共享画面「实际显示的内容区域」归一化到 0..1（画面是 object-fit: contain，四周可能有黑边），
-//     所以不同窗口大小的人看到的标注落在画面上同一个位置。
-//   · 画的过程中每 ~50ms 发一段增量（seg），抬笔发 end；撤销（undo）只撤发送者自己最后一笔；清除（clear）清全部。
-//   · 新进来的人：共享者把现有笔画（不含激光笔）补发一次（sync，分段，每段不超过数据通道单条上限）。
-//   · 停止共享 / 换人共享：所有人本地清空，不用发消息。
+// Rules:
+//   - Who can draw: the current screen sharer, or the meeting host. On receive, judge by the sender identity from the AV service (participant.identity), never the message's self-claim.
+//   - Coordinates normalized to 0..1 against the shared view's "actually displayed content area" (object-fit: contain may letterbox),
+//     so annotations land on the same spot of the picture for everyone regardless of window size.
+//   - While drawing, send an incremental segment (~50ms); pen-up sends end; undo removes only the sender's own last stroke; clear wipes everything.
+//   - Late joiners: the sharer replays existing strokes once (sync, chunked, each under the data channel's per-message cap; laser pointer excluded).
+//   - Share stopped / sharer changed: everyone clears locally, no message needed.
 
 export type AnnTool = 'pen' | 'laser'
 export type AnnColor = 'red' | 'yellow' | 'green'
 export const ANN_COLORS: Record<AnnColor, string> = { red: '#ff4d5e', yellow: '#ffd23f', green: '#3ddc84' }
-/** 激光笔抬笔后多久淡出消失 */
+/** How long after pen-up the laser pointer fades out */
 export const LASER_FADE_MS = 3000
-/** 一笔最多多少个数（x、y 各算一个）：600 个点，正常画一个圈几十到一两百个点 */
+/** Max numbers per stroke (x and y count separately): 600 points; a normal circle is tens to ~200 points */
 export const MAX_STROKE_NUMS = 1200
-/** 同一时间最多保留多少笔（多了丢最早的） */
+/** Max strokes kept at once (oldest dropped first) */
 export const MAX_STROKES = 300
-/** 数据通道单条消息的安全上限（字节），补发时按这个分段 */
+/** Safe per-message cap (bytes) for the data channel; replays chunk by this */
 export const SYNC_CHUNK_BYTES = 12_000
 
 export interface Stroke { id: string; by: string; tool: AnnTool; color: AnnColor; pts: number[]; endAt: number | null }
@@ -30,15 +30,15 @@ export type AnnMsg =
   | { t: 'ann'; k: 'clear' }
   | { t: 'ann'; k: 'sync'; reset: boolean; strokes: SyncStroke[] }
 
-/** 能不能画：发送者是当前共享屏幕的人，或者是主持人 */
+/** Whether the sender may draw: is the current screen sharer, or the host */
 export function canAnnotate(identity: string | undefined | null, sharerId: string | null | undefined, hostId: string | null | undefined): boolean {
   if (!identity) return false
   return (!!sharerId && identity === sharerId) || (!!hostId && identity === hostId)
 }
 
-// ---------- 坐标 ----------
+// ---------- Coordinates ----------
 export interface Rect { x: number; y: number; w: number; h: number }
-/** object-fit: contain 时视频内容在容器里实际占的区域（容器坐标）。还不知道视频尺寸时按整个容器算 */
+/** The area video content actually occupies in the container under object-fit: contain (container coords). Whole container until video dimensions are known */
 export function contentRect(cw: number, ch: number, vw: number, vh: number): Rect {
   if (!(cw > 0 && ch > 0)) return { x: 0, y: 0, w: 0, h: 0 }
   if (!(vw > 0 && vh > 0)) return { x: 0, y: 0, w: cw, h: ch }
@@ -48,17 +48,17 @@ export function contentRect(cw: number, ch: number, vw: number, vh: number): Rec
 }
 const q4 = (n: number) => Math.round(n * 10000) / 10000
 const clamp01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n)
-/** 容器坐标 → 归一化（0..1，保留 4 位小数，超出内容区域的夹到边上） */
+/** Container coords → normalized (0..1, 4 decimals; clamped to the content area) */
 export function toNorm(px: number, py: number, r: Rect): [number, number] {
   if (!(r.w > 0 && r.h > 0)) return [0, 0]
   return [q4(clamp01((px - r.x) / r.w)), q4(clamp01((py - r.y) / r.h))]
 }
-/** 归一化 → 容器坐标 */
+/** Normalized → container coords */
 export function fromNorm(nx: number, ny: number, r: Rect): [number, number] {
   return [r.x + nx * r.w, r.y + ny * r.h]
 }
 
-// ---------- 消息校验 ----------
+// ---------- Message validation ----------
 const ID_RE = /^[A-Za-z0-9_-]{1,32}$/
 const isTool = (x: unknown): x is AnnTool => x === 'pen' || x === 'laser'
 const isColor = (x: unknown): x is AnnColor => x === 'red' || x === 'yellow' || x === 'green'
@@ -67,7 +67,7 @@ function cleanPts(x: unknown, max: number): number[] | null {
   for (const n of x) if (typeof n !== 'number' || !Number.isFinite(n) || n < 0 || n > 1) return null
   return x as number[]
 }
-/** 收到的数据消息是不是合法的标注消息；不合法返回 null（形状不对、坐标越界、点太多一律丢掉） */
+/** Whether a received data message is a valid annotation message; null when invalid (bad shape, out-of-range coords, too many points — all dropped) */
 export function sanitizeAnn(d: unknown): AnnMsg | null {
   if (!d || typeof d !== 'object') return null
   const m = d as Record<string, unknown>
@@ -96,8 +96,8 @@ export function sanitizeAnn(d: unknown): AnnMsg | null {
   }
 }
 
-// ---------- 状态 ----------
-/** 按一条消息更新笔画（sender = 音视频服务给的发送者身份）。纯函数，返回新数组 */
+// ---------- State ----------
+/** Apply one message to the strokes (sender = AV-service identity). Pure function, returns a new array */
 export function applyAnn(strokes: Stroke[], m: AnnMsg, sender: string, now: number): Stroke[] {
   switch (m.k) {
     case 'seg': {
@@ -120,7 +120,7 @@ export function applyAnn(strokes: Stroke[], m: AnnMsg, sender: string, now: numb
       return next
     }
     case 'undo': {
-      // 只撤发送者自己最后一笔（激光笔会自己消失，不算）
+      // Undo removes only the sender's own last stroke (the laser pointer fades on its own, not counted)
       for (let i = strokes.length - 1; i >= 0; i--) if (strokes[i].by === sender && strokes[i].tool === 'pen') return strokes.filter((_, j) => j !== i)
       return strokes
     }
@@ -134,20 +134,20 @@ export function applyAnn(strokes: Stroke[], m: AnnMsg, sender: string, now: numb
   }
 }
 
-/** 去掉已经淡出完的激光笔；没有变化返回原数组 */
+/** Drop fully-faded laser pointers; returns the original array when nothing changed */
 export function pruneLaser(strokes: Stroke[], now: number): Stroke[] {
   const keep = strokes.filter((s) => !(s.tool === 'laser' && s.endAt !== null && now - s.endAt > LASER_FADE_MS))
   return keep.length === strokes.length ? strokes : keep
 }
 
-/** 激光笔现在的透明度：没抬笔 1，抬笔后 LASER_FADE_MS 内线性降到 0 */
+/** Laser pointer's current opacity: 1 before pen-up, linear down to 0 within LASER_FADE_MS after */
 export function laserAlpha(s: Stroke, now: number): number {
   if (s.endAt === null) return 1
   return Math.max(0, 1 - (now - s.endAt) / LASER_FADE_MS)
 }
 
 const byteLen = (x: unknown) => new TextEncoder().encode(JSON.stringify(x)).length
-/** 给新进来的人补发现有笔画：只补画笔（激光笔几秒就没了），按单条上限分段；第一段带 reset 让对方先清空 */
+/** Replay existing strokes for late joiners: pen strokes only (laser fades in seconds), chunked by the per-message cap; the first chunk carries reset so the peer clears first */
 export function chunkSync(strokes: Stroke[], limit = SYNC_CHUNK_BYTES): AnnMsg[] {
   const pens: SyncStroke[] = strokes.filter((s) => s.tool === 'pen' && s.pts.length >= 2).map(({ id, by, tool, color, pts }) => ({ id, by, tool, color, pts }))
   if (!pens.length) return [{ t: 'ann', k: 'sync', reset: true, strokes: [] }]
@@ -162,13 +162,13 @@ export function chunkSync(strokes: Stroke[], limit = SYNC_CHUNK_BYTES): AnnMsg[]
   return out
 }
 
-/** 抽稀：离上一个点太近的不要（归一化距离），减少消息量 */
+/** Decimate: drop points too close to the previous one (normalized distance), reducing message volume */
 export function farEnough(last: [number, number] | null, p: [number, number], min = 0.002): boolean {
   if (!last) return true
   return Math.abs(p[0] - last[0]) + Math.abs(p[1] - last[1]) >= min
 }
 
-/** 新笔画的编号（只要同一个人不重复） */
+/** New stroke id (unique per sender is enough) */
 export function strokeId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
 }

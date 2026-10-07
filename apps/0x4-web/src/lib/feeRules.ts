@@ -1,14 +1,14 @@
-// 手续费规则的纯数据和纯函数（2026-09-30 从 lib/fees.ts 拆出来）：0x4 Wallet 插件的兑换也要按同一套规则收费，
-// 但插件里没有 App 的社区登录状态（store/social），不能引 lib/fees.ts。App 仍从 lib/fees.ts 用，行为不变。
+// Pure data and pure functions for fee rules (split out of lib/fees.ts on 2026-09-30): the 0x4 Wallet extension's swaps charge under the same rules,
+// but the extension has no app community-login state (store/social), so it can't import lib/fees.ts. The app still uses lib/fees.ts; behavior unchanged.
 
 export interface FeeState {
   vip: boolean; solBps: number; evmBps: number; perpRate: number; perpMaxRate: number
   volume: { spot: number; perp: number }; target: { spot: number; perp: number }
-  /** { 币的 mint: 我们在该币上的收费账户 } */
+  /** { token mint: our fee account for that token } */
   solFeeAccounts: Record<string, string>
   lifiIntegrator: string
 }
-// 服务器拉不到时的兜底（和服务器默认值一致；收费账户是 2026-09-27 在链上建好的）
+// Fallback when the server is unreachable (matches the server's defaults; the fee accounts were created on-chain on 2026-09-27)
 export const DEFAULT_FEES: FeeState = {
   vip: false, solBps: 100, evmBps: 75, perpRate: 0.0006, perpMaxRate: 0.0006,
   volume: { spot: 0, perp: 0 }, target: { spot: 100_000, perp: 2_000_000 },
@@ -21,8 +21,8 @@ export const DEFAULT_FEES: FeeState = {
 }
 
 /**
- * Jupiter 收费：只有这笔的输入币或输出币是我们建了收费账户的币（SOL / USDC / USDT）才收。
- * ★2026-09-27 主网模拟实测：收费账户的币和这笔无关、或账户没建，整笔兑换会失败 —— 所以宁可这笔不收也不能乱填
+ * Jupiter fees: only charged when this swap's input or output token is one we built a fee account for (SOL / USDC / USDT).
+ * ★ Measured 2026-09-27 on mainnet simulation: if the fee account's token is unrelated to the swap or the account doesn't exist, the entire swap fails — so better to skip the fee than fill in something wrong
  */
 export function jupiterFee(f: FeeState, inputMint: string, outputMint: string): { bps: number; account: string } | null {
   if (!(f.solBps > 0)) return null
@@ -30,8 +30,8 @@ export function jupiterFee(f: FeeState, inputMint: string, outputMint: string): 
   return account ? { bps: f.solBps, account } : null
 }
 
-/** LI.FI 每笔自己收的 0.25%（portal 里写的固定费率）；报价详情里和我们的合起来显示「用户总共付多少」 */
+/** LI.FI's own 0.25% per transaction (the fixed rate written in the portal); combined with ours in quote details as "how much the user pays in total" */
 export const LIFI_FEE_BPS = 25
-/** 报价详情里的「手续费」：用户这笔总共付的比例（%） */
+/** The "fees" line in quote details: the percentage the user pays in total for this transaction (%) */
 export const spotFeeLabel = (f: FeeState, via: 'jupiter' | 'lifi') => `${((via === 'jupiter' ? f.solBps : f.evmBps + LIFI_FEE_BPS) / 100).toFixed(2).replace(/\.?0+$/, '')}%${f.vip ? ' · VIP' : ''}`
 

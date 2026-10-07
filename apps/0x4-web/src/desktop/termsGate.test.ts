@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// 先同意条款才创建 / 登录账号（2026-10-02 goat，上架要求；lib/safety.ts + store/social.ts 的 login()）。
-// 覆盖：没同意时不向服务器要登录、不弹签名，弹出条款；点「以后再说」这次打开期间不再自动弹；同意后照常登录；
-//      注销账号后同意记录清掉，不会自动又建一个新账号；条款版本升了要重新同意；同意是按钱包记的。
+// Agree to the terms before creating / logging into an account (2026-10-02 goat, store requirement; lib/safety.ts + store/social.ts's login()).
+// Coverage: without agreement, no login request to the server, no signature popup — show the terms; tapping "later" suppresses auto-popup for this session; agreement proceeds to normal login;
+//      after account deletion the agreement record is cleared (no auto-created new account); a terms version bump requires re-agreement; agreement is recorded per wallet.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Keypair } from '@solana/web3.js'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
@@ -66,12 +66,12 @@ describe('先同意条款才登录', () => {
     expect(termsAccepted('A')).toBe(false); expect(termsAccepted(null)).toBe(false)
     acceptTerms('A')
     expect(termsAccepted('A')).toBe(true); expect(termsAccepted('B')).toBe(false)
-    // 条款版本升了（本机记的是旧版本）：要重新同意
+    // Terms version bumped (device remembers the old one): re-agreement required
     localStorage.setItem('0x4.terms', JSON.stringify({ A: TERMS_VERSION - 1 }))
     expect(termsAccepted('A')).toBe(false)
     acceptTerms('A'); revokeTerms('A')
     expect(termsAccepted('A')).toBe(false)
-    // 本机存的东西坏了：当没同意过，不报错
+    // Corrupted local storage: treat as never agreed, no error
     localStorage.setItem('0x4.terms', '{坏的')
     expect(termsAccepted('A')).toBe(false)
   })
@@ -86,14 +86,14 @@ describe('先同意条款才登录', () => {
     expect(srv.count('GET /api/auth/nonce')).toBe(0)
     expect(f.signs).toHaveLength(0)
     expect(useTermsGate.getState().open).toBe(true)
-    // 「以后再说」：这次打开期间不再自动弹（登录还是不进行），用户主动去点还会出来
+    // "Later": no more auto-popups this session (login still doesn't proceed); manually tapping still shows it
     useTermsGate.getState().hide(true)
     await useSocial.getState().login()
     expect(useTermsGate.getState().open).toBe(false)
     expect(srv.count('GET /api/auth/nonce')).toBe(0)
     useTermsGate.getState().show(true)
     expect(useTermsGate.getState().open).toBe(true)
-    // 同意：记下来，登录照常走完
+    // Agree: record it, login completes as usual
     acceptTerms(walletKey()!)
     useTermsGate.getState().hide()
     await useSocial.getState().login()
@@ -110,7 +110,7 @@ describe('先同意条款才登录', () => {
     acceptTerms(walletKey()!)
     await useSocial.getState().login()
     await vi.waitFor(() => expect(useSocial.getState().status).toBe('ready'))
-    // 界面上注销成功后做的三件事（components/AccountDeleteSheet.tsx）
+    // The three things done after successful on-screen deletion (components/AccountDeleteSheet.tsx)
     revokeTerms(walletKey()!)
     useTermsGate.setState({ open: false, dismissed: true })
     useSocial.getState().logout(true)
@@ -119,7 +119,7 @@ describe('先同意条款才登录', () => {
     expect(useSocial.getState().status).toBe('idle')
     expect(srv.count('GET /api/auth/nonce')).toBe(before)
     expect(useTermsGate.getState().open).toBe(false)
-    // 钱包还连着（注销的是账号，不是钱包）
+    // The wallet stays connected (deletion removes the account, not the wallet)
     expect(walletKey()).toBe(f.accounts.address)
   })
 })

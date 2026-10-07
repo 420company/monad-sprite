@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 返回手势（2026-09-29）：iOS 左边缘右滑、Android 返回键，和页面返回按钮同一套逻辑
+// Back gesture (2026-09-29): iOS left-edge swipe-right, Android back key — same logic as the page's back button
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -22,7 +22,7 @@ function touch(type: string, x: number, y: number, target: EventTarget = root) {
   target.dispatchEvent(e)
   return e
 }
-/** 一次完整的滑动：从 (x0,y0) 按下，按 steps 依次移动（每步 dt 毫秒），最后松手 */
+/** One complete swipe: press at (x0,y0), move through steps in order (dt ms per step), release at the end */
 function swipe(x0: number, y0: number, steps: [number, number][], dt = 30, target: EventTarget = root) {
   touch('touchstart', x0, y0, target)
   const moves = steps.map(([x, y]) => { clock += dt; return touch('touchmove', x, y, target) })
@@ -49,12 +49,12 @@ describe('哪些页面能手势返回', () => {
 describe('iOS 左边缘右滑', () => {
   it('从左边缘开始往右拖过 35% 宽度：页面跟手，松手滑出后返回，位置复原', () => {
     const moves = swipe(8, 300, [[30, 302], [120, 305], [200, 306]], 60)
-    expect(moves[1].defaultPrevented).toBe(true)   // 确定是返回手势后不让页面滚
+    expect(moves[1].defaultPrevented).toBe(true)   // Once confirmed as a back gesture, the page doesn't scroll
     expect(root.style.transform).toContain('px')
-    expect(onBack).not.toHaveBeenCalled()          // 先滑出去再换页
+    expect(onBack).not.toHaveBeenCalled()          // Slide out first, then change the page
     vi.advanceTimersByTime(300)
     expect(onBack).toHaveBeenCalledTimes(1)
-    // 换页后上一页从左边略暗处回到原位，结束后样式全部清掉
+    // After the page change, the previous page returns from the dimmer left to its place; all styles are cleared at the end
     expect(root.style.transform).toMatch(/translate3d\(0/)
     vi.advanceTimersByTime(EMERGE_MS + 40)
     expect(root.style.transform).toBe('')
@@ -167,7 +167,7 @@ describe('和返回按钮同一套逻辑', () => {
     window.history.replaceState({ idx: 0 }, '')
     goBack(nav)
     expect(nav).toHaveBeenLastCalledWith('/', { replace: true })
-    // 页面用 useBack('/discover') 登记了上级页面
+    // The page registers its parent via useBack('/discover')
     const host = document.createElement('div'); document.body.appendChild(host)
     const r = createRoot(host)
     const Page = () => { useBack('/discover'); return null }

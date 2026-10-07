@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// 网页版（插件钱包）的合约写操作（2026-09-30）：lib/aster.ts 把一次下单的全部动作一起交给插件 perpWrite，
-// 核对：动作组成和顺序、止盈止损没挂上照实报、主单失败按交易所原话报错、没授权先授权再整批重发（下过单的不重发）、
-// 撤单和改杠杆也走插件；手机 App 的钱包（没有 ox4PerpWrite）不受影响。另核白名单和 lib/aster.ts 的收费常量是同一份。
+// Web (extension wallet) contract writes (2026-09-30): lib/aster.ts hands all actions of one order to the extension's perpWrite together,
+// Verify: action composition and order, unplaced TP/SL reported truthfully, main-order failure errors with the exchange's original message, authorize-then-resend-the-batch when unauthorized (orders already placed are not resent),
+// Cancelling orders and changing leverage also go through the extension; the phone app's wallet (no ox4PerpWrite) is unaffected. Also verifies the whitelist and lib/aster.ts's fee constants are the same copy.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { Account } from 'viem'
@@ -13,7 +13,7 @@ const market: PerpMarket = { index: 0, coin: 'BTC', symbol: 'BTCUSDT', szDecimal
 const ok = (action: string, body: unknown = { orderId: 7, status: 'NEW', executedQty: '0' }): PerpWriteResult => ({ action: action as PerpWriteResult['action'], status: 200, body })
 const fail = (action: string, msg: string): PerpWriteResult => ({ action: action as PerpWriteResult['action'], status: 400, body: { code: -1, msg } })
 
-/** 假的插件账户：ox4PerpWrite 按 reply 回，记下每次交给插件的动作 */
+/** Fake plugin account: ox4PerpWrite replies per reply, recording every action handed to the plugin */
 function pluginAccount(reply: (actions: PerpWriteAction[], n: number) => PerpWriteResult[]) {
   const main = privateKeyToAccount(KEY)
   const sent: PerpWriteAction[][] = []
@@ -28,7 +28,7 @@ describe('网页版合约写操作走插件 perpWrite', () => {
   let fetchCalls: string[]
   beforeEach(() => {
     fetchCalls = []
-    // 只有授权（approveAgent）会由网页自己发；别的写接口网页不该直接请求交易所
+    // Only the authorization (approveAgent) is sent by web itself; web must not hit the exchange directly for other write endpoints
     vi.stubGlobal('fetch', vi.fn(async (u: string) => { fetchCalls.push(String(u)); return new Response('{"code":200,"msg":"success"}') }))
   })
   afterEach(() => { vi.unstubAllGlobals() })
@@ -40,7 +40,7 @@ describe('网页版合约写操作走插件 perpWrite', () => {
     expect(sent[0].map((x) => `${x.action}:${x.params.type ?? x.params.leverage ?? x.params.marginType}`)).toEqual(['leverage:10', 'marginType:ISOLATED', 'order:MARKET', 'order:TAKE_PROFIT_MARKET', 'order:STOP_MARKET'])
     expect(sent[0][2].params).toMatchObject({ symbol: 'BTCUSDT', side: 'BUY', quantity: '0.002', builder: BUILDER })
     expect(sent[0][3].params).toMatchObject({ side: 'SELL', stopPrice: '90000.0', closePosition: 'true' })
-    expect(() => perpWriteBatch(sent[0])).not.toThrow()   // 网页发出去的就是插件认的格式
+    expect(() => perpWriteBatch(sent[0])).not.toThrow()   // What the web page sends is exactly the format the extension accepts
     expect(r).toMatchObject({ filledSz: 0.002, avgPx: 76010, resting: false, oid: 9, protectionFailed: ['sl'] })
     expect(fetchCalls).toEqual([])
   })
@@ -58,7 +58,7 @@ describe('网页版合约写操作走插件 perpWrite', () => {
     expect(sent).toHaveLength(2)
     expect(fetchCalls.filter((u) => u.includes('/fapi/v3/approveAgent'))).toHaveLength(1)
     expect(sent[1]).toEqual(sent[0])
-    // 下单已经成功、止盈报没授权（不会真发生，但不能因此把主单再下一次）
+    // Order already succeeded but TP reports unauthorized (can't really happen — but never re-place the main order because of it)
     const b = pluginAccount((a) => a.map((x, i) => i === 0 ? ok(x.action, { orderId: 1, status: 'NEW', executedQty: '0' }) : fail(x.action, 'No agent found')))
     const r = await placeOrder(b.acc, { market, isBuy: true, size: 0.001, takeProfit: 90000 })
     expect(b.sent).toHaveLength(1)
@@ -68,7 +68,7 @@ describe('网页版合约写操作走插件 perpWrite', () => {
   it('撤单、单独改杠杆也交给插件；保证金模式「不用改」不算错', async () => {
     const { acc, sent } = pluginAccount((a) => a.map((x) => x.action === 'marginType' ? { action: x.action, status: 400, body: { code: -4046, msg: 'No need to change margin type.' } } : ok(x.action)))
     await cancelOrder(acc, market, 123)
-    await setLeverage(acc, market, 80, true)   // 超过这个币的上限压到 50
+    await setLeverage(acc, market, 80, true)   // Clamp to 50 when over this coin's cap
     expect(sent).toEqual([
       [{ action: 'cancel', params: { symbol: 'BTCUSDT', orderId: '123' } }],
       [{ action: 'leverage', params: { symbol: 'BTCUSDT', leverage: '50' } }, { action: 'marginType', params: { symbol: 'BTCUSDT', marginType: 'CROSSED' } }],
@@ -100,12 +100,12 @@ describe('网页版合约写操作走插件 perpWrite', () => {
     expect(err).toBeInstanceOf(Error)
     expect((err as { protectionGone?: boolean }).protectionGone).toBe(true)
     expect(a.sent).toHaveLength(2)
-    // 撤单失败：到此为止，不带 protectionGone（旧的还在）
+    // Cancel failed: stop here, without protectionGone (the old one is still there)
     const b = pluginAccount((x) => x.map(() => fail('cancel', 'Unknown order sent.')))
     const err2 = await setProtection(b.acc, market, true, 'sl', 70000, 555).catch((e: unknown) => e)
     expect((err2 as { protectionGone?: boolean }).protectionGone).toBeUndefined()
     expect(b.sent).toHaveLength(1)
-    // 新挂（没有旧单）被拒：也不带 protectionGone
+    // Fresh place (no old order) rejected: no protectionGone either
     const c = pluginAccount((x) => x.map(() => fail('order', 'Order would immediately trigger.')))
     const err3 = await setProtection(c.acc, market, true, 'sl', 80000).catch((e: unknown) => e)
     expect(err3).toBeInstanceOf(Error)

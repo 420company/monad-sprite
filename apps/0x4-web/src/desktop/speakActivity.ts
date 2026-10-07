@@ -1,6 +1,6 @@
-// 在会议 / 直播里自己正在说话，算「在用」（2026-10-01 goat：公共电脑扫码登录后，专门来开会讲话的人不该被当成没人）。
-// 只看 LiveKit 本地给的「正在说话」标记（它按麦克风音量判断），不录音、不上传任何声音。说话期间每 20 秒报一次（qrIdle 那边一分钟最多告诉服务器一次）。
-// 只是开着麦、开着页面听，不算。
+// Speaking myself in a meeting / livestream counts as "in use" (2026-10-01 goat: after scan-logging into a public computer, someone who came specifically to speak shouldn't count as absent).
+// Only looks at LiveKit's local "speaking" flag (it judges by mic volume) — no recording, no audio uploaded. Reports every 20s while speaking (qrIdle tells the server at most once per minute).
+// Just having the mic on and listening on the page doesn't count.
 import { ParticipantEvent, type Room } from 'livekit-client'
 import { reportActivity } from './qrIdle'
 

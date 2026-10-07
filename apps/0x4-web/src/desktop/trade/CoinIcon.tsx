@@ -1,12 +1,12 @@
-// 合约币种图标（网页版合约终端）：先试两家公开图标库，都没有就用首字母 + 按币名算的固定颜色。
-// 原来依次试四家（2026-09-29 实测其中一家域名在国内解析不了、一家大多 404），每个币最多报 4 条加载失败，
-// 合约列表一展开控制台几十条红字。现在只留实测覆盖最多的两家，并且记住失败过的，同一个币不再重试。
+// Perp coin icons (web perp terminal): try two public icon libraries first, fall back to first letter + a deterministic color derived from the coin name.
+// It used to try four providers in order (2026-09-29 measured: one domain doesn't resolve in China, another mostly 404s), each coin reporting up to 4 load failures,
+// Expanding the perp list used to flood the console with errors. Now only the two best-tested providers remain, and failed ones are remembered — no retry for the same coin.
 import { useEffect, useMemo, useState } from 'react'
 
 const BRAND: Record<string, string> = { BTC: '#f7931a', ETH: '#627eea', BNB: '#f3ba2f', SOL: '#14f195', XRP: '#9aa4ad', DOGE: '#c2a633', ASTER: '#8cff4d' }
-/** 这一次打开网页里已经确认没有图标的币：直接画首字母，不再发请求 */
+/** Coins already confirmed icon-less in this web session: draw the initial directly, no more requests */
 const missing = new Set<string>()
-/** 已经成功加载过的地址：列表来回滚动时直接用 */
+/** Addresses already loaded successfully: reuse directly when the list scrolls back and forth */
 const found = new Map<string, string>()
 
 function urlsOf(coin: string): string[] {

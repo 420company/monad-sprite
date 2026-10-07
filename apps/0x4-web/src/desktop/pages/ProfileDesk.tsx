@@ -1,6 +1,6 @@
-// 网页版个人主页（/u/:address 宽屏，钱包菜单「我的主页」、排行 / 社区里点头像进来。2026-09-29 goat：「我点个人中心，又是给的手机预览版本的界面」）。
-// 版式：左 360 资料卡（头像、名字、认证、地址、简介、关注 / 私聊）+ 四格数据 + 盈亏卡（周期、已实现 / 未实现、曲线）；
-// 右边页签表：动态 · 交易 · 持仓。数据和手机主页（pages/Profile.tsx）同一套接口，读不到显示空状态，不编数字。
+// Web profile page (/u/:address wide screen; entered via the wallet menu's "My profile" or tapping avatars in rankings / community. 2026-09-29 goat: "I tapped personal center and got the phone-preview UI again").
+// Layout: left 360 profile card (avatar, name, verification, address, bio, follow / DM) + four stat cells + PnL card (period, realized / unrealized, curve);
+// Right tab bar: Posts · Trades · Positions. Same API as the phone profile (pages/Profile.tsx); unreadable data shows an empty state, never made-up numbers.
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeftRight, CalendarDays, Copy, Gift, MessageSquareLock, RefreshCw, Share2, Wallet } from 'lucide-react'
@@ -36,7 +36,7 @@ interface Position { chain: string; token: string; symbol: string; logo: string 
 interface Trade { id: string; side: 'buy' | 'sell'; chain: string; token: string; symbol: string; logo: string | null; qty: number; usd: number; price: number; realized: number; created_at: number }
 type Period = '24h' | '7d' | '30d' | 'all'
 type Side = 'all' | 'buy' | 'sell' | 'closed'
-/** 标签：label 是函数，渲染时才翻译 */
+/** Tabs: label is a function, translated only at render time */
 const PERIODS: [Period, () => string][] = [['24h', () => t('24 小时')], ['7d', () => t('7 天')], ['30d', () => t('30 天')], ['all', () => t('全部')]]
 const SIDES: [Side, () => string][] = [['all', () => t('全部')], ['buy', () => t('买入')], ['sell', () => t('卖出')], ['closed', () => t('已平仓')]]
 const TAB_LABEL: Record<ProfileTab, () => string> = { posts: () => t('动态'), trades: () => t('交易||tab'), holdings: () => t('持仓') }
@@ -55,11 +55,11 @@ export default function ProfileDesk() {
   const { address = '' } = useParams()
   const nav = useNavigate()
   const { me, status } = useSocial()
-  // 从列表点进来时带着已有的资料（router state），先直接显示，不用等接口
+  // Coming in from a list carries the existing profile (router state) — show it immediately without waiting for the API
   const seedRaw = (useLocation().state as { profile?: ProfileT } | null)?.profile
   const seed = seedRaw && seedRaw.address === address ? seedRaw : null
   const [p, setP] = useState<ProfileT | null>(seed)
-  // 小精灵的地址：这里没有它的资料，直接去小精灵页（2026-10-05 goat：从动态点进来看到的是一串地址）
+  // The sprite's address: no profile for it here — go to the sprite page instead (2026-10-05 goat: coming in from a post showed a raw address)
   useEffect(() => { if (p?.sprite) nav(`/fly/${p.sprite.id}`, { replace: true }) }, [p?.sprite?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const [pFailed, setPFailed] = useState(false)
   const [social, setSocial] = useState<Social | null>(null)
@@ -68,7 +68,7 @@ export default function ProfileDesk() {
   const [retry, setRetry] = useState(0)
   const pickTab = (k: ProfileTab) => { setTab(k); saveProfileTab(k) }
   useEffect(() => {
-    // 换了一个人：先清掉上一个人的数据（有带过来的资料就先用它），迟到的旧请求结果丢掉
+    // Switched to a different person: clear the previous person's data first (use the carried-over profile if there is one), drop late results from old requests
     let alive = true
     setP((cur) => (cur && cur.address === address ? cur : seed)); setSocial(null); setPFailed(false)
     api<ProfileT>(`/api/users/${address}`).then((v) => { if (alive) setP(v) }).catch((e) => { if (alive) { setPFailed(true); toast.error(errorText(e, t('加载失败'))) } })
@@ -82,7 +82,7 @@ export default function ProfileDesk() {
   return (
     <div className="wc-page">
       <div className="wc-prof">
-        {/* 左：资料 + 数据 + 盈亏 */}
+        {/* Left: profile + stats + PnL */}
         <aside className="wc-prof-side">
           <section className="wc-panel wc-prof-card" aria-label={t('个人资料')}>
             {!p ? (
@@ -105,7 +105,7 @@ export default function ProfileDesk() {
                 {social?.joinedAt && <span className="flex items-center gap-1.5"><CalendarDays size={13} aria-hidden="true" />{t('{date} 加入', { date: new Date(social.joinedAt).toLocaleDateString(locale(), { year: 'numeric', month: 'long' }) })}</span>}
               </div>
               {p.bio && <div className="wc-prof-bio"><MoreText text={p.bio} /></div>}
-              {/* 关系与操作：互关 = 好友 + 私聊；我单方面关注 = 已关注；对方关注我 = 回关 */}
+              {/* Relationships & actions: mutual follow = friend + DM; I follow them = following; they follow me = follow back */}
               {!mine && (
                 <div className="wc-prof-acts">
                   {social?.isFriend ? <span className="wc-chip is-accent">{t('好友')}</span> : social?.followsMe && <span className="wc-chip">{t('关注了你')}</span>}
@@ -130,7 +130,7 @@ export default function ProfileDesk() {
           <PnlCard address={address} />
         </aside>
 
-        {/* 右：动态 · 交易 · 持仓 */}
+        {/* Right: posts · trades · positions */}
         <section className="wc-panel is-clip wc-prof-main">
           <div className="wc-tabs" role="tablist" aria-label={t('主页内容')}>
             {PROFILE_TABS.map((k) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => pickTab(k)}>{TAB_LABEL[k]()}</button>)}
@@ -147,7 +147,7 @@ export default function ProfileDesk() {
   )
 }
 
-/** 盈亏卡：周期、总盈亏、已实现 / 未实现、曲线（和手机主页同一个接口 /api/users/:address/pnl） */
+/** PnL card: period, total PnL, realized / unrealized, curve (same API as the phone profile /api/users/:address/pnl) */
 function PnlCard({ address }: { address: string }) {
   const status = useSocial((s) => s.status)
   const [period, setPeriod] = usePageState<Period>('profile.period', '24h', oneOf('24h', '7d', '30d', 'all'))
@@ -185,7 +185,7 @@ function PnlCard({ address }: { address: string }) {
   )
 }
 
-/** 交易记录表：方向、代币、金额、盈亏、时间；可筛选 全部 / 买入 / 卖出 / 已平仓，每次 20 条，加载更多 */
+/** Trade history table: side, token, amount, PnL, time; filterable All / Buy / Sell / Closed, 20 per page, load more */
 function TradesTable({ address }: { address: string }) {
   const nav = useNavigate()
   const status = useSocial((s) => s.status)
@@ -222,7 +222,7 @@ function TradesTable({ address }: { address: string }) {
   )
 }
 
-/** 持仓表：持仓中 / 已平仓（和手机主页同一个接口 /api/users/:address/positions） */
+/** Positions table: open / closed (same API as the phone profile /api/users/:address/positions) */
 function HoldingsTable({ address }: { address: string }) {
   const nav = useNavigate()
   const status = useSocial((s) => s.status)

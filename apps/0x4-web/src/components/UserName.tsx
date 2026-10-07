@@ -1,7 +1,7 @@
-// 显示某个具体用户的名字。
-// 2026-09-27 goat：管理员和客服的名字不再上色（原来是黄字蓝描边），和普通用户一样的颜色。
-// 工作人员身份仍由头像发光边框和 StaffTag 标出，名字本身不区分。
-// address / size 参数保留，调用方不用改。
+// Display a specific user's name.
+// 2026-09-27 goat: admins' and support's names no longer get colored (previously yellow text with blue outline) — same color as regular users.
+// Staff identity is still shown by the avatar's glow border and StaffTag; the name itself doesn't distinguish.
+// address / size params kept — callers don't need to change.
 export default function UserName({ name, className }: { address?: string | null; name: string; className?: string; size?: 'sm' | 'lg' }) {
   return className ? <span className={className}>{name}</span> : <>{name}</>
 }

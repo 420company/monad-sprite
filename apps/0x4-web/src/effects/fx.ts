@@ -1,7 +1,7 @@
-// 直播间用的特效开关（2026-10-02）：把设置套到主播的摄像头上。
-// · 开摄像头时：processorForCamera() 给一个已经按设置配好的处理器（没开特效就不给），画面一开始就是处理过的。
-// · 直播中改设置：applyFx(轨道, 设置)——已经在处理就只改参数；从「全关」变成「有特效」就挂上处理器；全关了就摘掉。
-// · 处理器代码（含识别引擎、three.js）按需加载，没开特效的主播和观众都不加载。
+// Livestream effects switch (2026-10-02): applies settings to the host's camera.
+// · When the camera opens: processorForCamera() returns a processor already configured per settings (none when effects are off) — frames are processed from the very start.
+// · Changing settings mid-stream: applyFx(track, settings) — if already processing, only params change; going from "all off" to "effects on" attaches the processor; turning everything off detaches it.
+// · The processor code (incl. detection engine, three.js) loads on demand — hosts without effects and viewers never load it.
 import type { LocalVideoTrack } from 'livekit-client'
 import { fxActive, loadFx, type FxSettings } from './settings'
 import type { FxProcessor, FxStatus } from './processor'
@@ -19,13 +19,13 @@ async function make(s: FxSettings): Promise<FxProcessor> {
   return p
 }
 
-/** 开摄像头时带上：本机保存的设置里有特效就给处理器，没有给 undefined */
+/** Attached when the camera opens: returns the processor if the locally saved settings have effects, undefined otherwise */
 export async function processorForCamera(): Promise<FxProcessor | undefined> {
   const s = loadFx()
   return fxActive(s) ? make(s) : undefined
 }
 
-/** 直播中改设置 */
+/** Change settings mid-stream */
 export async function applyFx(track: LocalVideoTrack | undefined, s: FxSettings) {
   if (!track) return
   const p = track.getProcessor() as FxProcessor | undefined

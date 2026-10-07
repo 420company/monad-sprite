@@ -1,5 +1,5 @@
-// 新建会议的「密码」「等候室」「在大厅公开」三个选项（等候室 2026-10-01），和大厅「正在进行的会议」列表的数据（2026-09-30 goat）。
-// 网页版流媒体页（desktop/pages/Streaming.tsx）和手机流媒体页（pages/Live.tsx）共用，样式由调用方传进来。
+// The new-meeting "password" / "waiting room" / "list in lobby" options (waiting room 2026-10-01), and the lobby "ongoing meetings" list data (2026-09-30 goat).
+// Shared by the web streaming page (desktop/pages/Streaming.tsx) and the mobile streaming page (pages/Live.tsx); styles come from the caller.
 import { useEffect, useState } from 'react'
 import { Lock } from 'lucide-react'
 import { api } from '@/lib/social'
@@ -10,14 +10,14 @@ export const MEET_PW_MIN = 4
 export const MEET_PW_MAX = 32
 
 export interface MeetAccess { pwOn: boolean; pw: string; listed: boolean; lobby: boolean }
-/** 默认（2026-10-01 晚 goat）：公开会议开、申请进入关、不设密码 =「开一个普通会议，别人在广场上看见就能点进来听」 */
+/** Defaults (2026-10-01 evening goat): public meeting on, request-to-join off, no password = "open a normal meeting — anyone who sees it in the plaza can tap in and listen" */
 export const DEFAULT_ACCESS: MeetAccess = { pwOn: false, pw: '', listed: true, lobby: false }
-/** 表单能不能提交：开了密码就要 4~32 位 */
+/** Whether the form can submit: a password must be 4–32 chars when enabled */
 export const accessOk = (a: MeetAccess) => !a.pwOn || (a.pw.length >= MEET_PW_MIN && a.pw.length <= MEET_PW_MAX)
-/** 发给服务器的字段 */
+/** Fields sent to the server */
 export const accessBody = (a: MeetAccess) => ({ listed: a.listed, lobby: a.lobby, ...(a.pwOn ? { password: a.pw } : {}) })
 
-/** 三个开关（顺序 2026-10-01 goat：申请进入、设置密码、公开会议）+ 密码框。inputWrap：调用方的输入框样式（网页版 / 手机不同） */
+/** Three toggles (order 2026-10-01 goat: request-to-join, set password, public meeting) + password box. inputWrap: the caller's input styles (web / mobile differ) */
 export function MeetAccessFields({ value, onChange, inputWrap }: { value: MeetAccess; onChange: (v: MeetAccess) => void; inputWrap: (input: React.ReactNode) => React.ReactNode }) {
   const set = (p: Partial<MeetAccess>) => onChange({ ...value, ...p })
   const short = value.pwOn && value.pw.length > 0 && value.pw.length < MEET_PW_MIN
@@ -39,7 +39,7 @@ function Toggle({ on, onToggle, title, desc, testId }: { on: boolean; onToggle: 
   </button>
 }
 
-/** 大厅「正在进行的会议」（公开接口，免登录），20 秒刷新；页面在后台时不拉 */
+/** Lobby "ongoing meetings" (public endpoint, no login), refreshed every 20 s; not fetched while the page is in the background */
 export function useActiveMeetings(): { list: ActiveMeeting[] | null; failed: boolean } {
   const [list, setList] = useState<ActiveMeeting[] | null>(null)
   const [failed, setFailed] = useState(false)
@@ -55,5 +55,5 @@ export function useActiveMeetings(): { list: ActiveMeeting[] | null; failed: boo
   return { list, failed }
 }
 
-/** 有密码的会议在列表里的锁标记 */
+/** Lock badge for password-protected meetings in the list */
 export const LockBadge = () => <span className="inline-flex items-center gap-1 rounded-full bg-white/[.08] px-2 py-0.5 text-[11px] text-muted"><Lock size={11} />{t('需要密码')}</span>

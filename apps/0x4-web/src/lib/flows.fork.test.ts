@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
-// 主网分叉端到端（2026-09-25 goat：「两条链转币、买币卖币，整个流程测一下」）。
+// Mainnet-fork end-to-end (2026-09-25 goat: "test the whole flow — moving tokens across two chains, buying and selling").
 //
-// 平时跳过；要跑时先起两个 anvil 分叉，再带环境变量：
+// Skipped normally; to run, start two anvil forks first, then pass the env vars:
 //   anvil --fork-url https://rpc.mainnet.chain.robinhood.com --port 8645 --chain-id 4663
 //   anvil --fork-url https://bsc-rpc.publicnode.com          --port 8646 --chain-id 56
 //   FORK=1 VITE_EVM_RPC_4663=http://127.0.0.1:8645 VITE_EVM_RPC_56=http://127.0.0.1:8646 npx vitest run src/lib/flows.fork.test.ts
 //
-// 走的全是 App 里真实的函数：getLifiQuote（真 LI.FI 报价）→ executeLifiStep（授权 + 发交易）、transferEvm（转账）。
-// 分叉只能证明「源链这一侧的交易真能执行成功、钱真的扣了/到了」。跨链的另一头到账靠桥的链下服务，本地模拟不了，要真钱验。
-// ⚠️ 测试钱包用新生成的私钥，别用 anvil 默认那把公开私钥：主网上它已被 7702 委托给扫币合约，转进去会被扫走。
+// Runs the app's real functions throughout: getLifiQuote (real LI.FI quote) → executeLifiStep (approve + send), transferEvm (transfer).
+// A fork only proves "the source-side tx truly executes and funds truly move". Arrival on the other side of the bridge depends on the bridge's off-chain service — not simulatable locally; verify with real money.
+// ⚠️ Use a freshly generated private key for the test wallet — never anvil's default publicized key: on mainnet it's already 7702-delegated to a sweeper contract, and anything sent in gets swept.
 import { describe, expect, it } from 'vitest'
 import { createPublicClient, erc20Abi, http, parseEther, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
@@ -35,7 +35,7 @@ const native = (id: number, a: string) => client(id).getBalance({ address: a as 
 const erc20 = (id: number, token: string, a: string) => client(id).readContract({ address: token as Hex, abi: erc20Abi, functionName: 'balanceOf', args: [a as Hex] })
 const signers = { solana: null, evm: me, solanaRpc: '' }
 
-/** 询价 + 执行，返回源链交易回执 */
+/** Quote + execute; returns the source-chain transaction receipt */
 async function swap(fromChain: number, fromToken: string, toChain: number, toToken: string, amount: bigint) {
   const step = await getLifiQuote({ fromChain, fromToken, toChain, toToken, fromAmount: amount, fromAddress: me.address, toAddress: me.address, slippage: 0.01 })
   const phases: string[] = []
@@ -68,7 +68,7 @@ describe.skipIf(!run)('主网分叉：Robinhood 链 / BNB Chain 转币与买卖'
     expect(phases).toContain('approving')
     console.log(`RH 卖：${Number(usdg / 3n) / 1e6} USDG → ETH（路线 ${step.toolDetails.name}，经过授权：${phases.join(' → ')}）`)
     expect(await erc20(RH, RH_USDG, me.address)).toBeLessThan(usdg)
-    expect(await native(RH, me.address)).toBeGreaterThan(eth0 - parseEther('0.001')) // 收回的 ETH 抵掉 gas 还有余
+    expect(await native(RH, me.address)).toBeGreaterThan(eth0 - parseEther('0.001')) // The reclaimed ETH covers gas with room to spare
   }, 120_000)
 
   it('Robinhood：转 USDG 和 ETH 给别人', async () => {

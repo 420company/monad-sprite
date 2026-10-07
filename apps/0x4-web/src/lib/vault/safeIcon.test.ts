@@ -1,4 +1,4 @@
-// 钱包公告图标的过滤（2026-10-03）：Phantom 的图标开头带换行，去掉空白后应该照常收下；非 data:image 的一律丢掉
+// Wallet announcement icon filtering (2026-10-03): Phantom's icon starts with a newline — it should be accepted after trimming whitespace; anything not data:image is dropped
 import { describe, expect, it } from 'vitest'
 import { safeIcon } from './external'
 

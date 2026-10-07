@@ -1,10 +1,10 @@
-// 礼物音效（目前只有哈基米，2026-09-30 goat 定的规则）：
-// · 同一个页面（= 同一个直播间 / 会议）同一时刻同一个音效只播一遍：正在播时再来的（不管谁送的）不重头播、不叠加、不排队补播；
-//   播完以后再送的才重新开始。所以连点 10 次、20 次只会听到一遍完整的。
-// · 每个音效文件一个 <audio>，全局单例，只加载一次、播完也留着缓存；两个不同音效互不影响。
-// · 默认音量 60%（比直播声小）；「礼物音效」开关记在本机（0x4.giftSound）。
-// · 浏览器还没被用户点过时不能自动出声：直接不播（画面照常），不报错。
-// · 页面隐藏时停掉，回来不补播。
+// Gift sound effects (currently only Hajimi; rules set by goat 2026-09-30):
+// - One page (= one live room / meeting) plays one sound effect at most once at a time: arrivals while playing (whoever sent them) don't restart, stack, or queue up;
+//   only gifts sent after it finishes restart it. So 10 or 20 rapid taps still play just one full round.
+// - One <audio> per sound file, a global singleton — loaded once, kept cached after playing; different sounds never interfere.
+// - Default volume 60% (quieter than the live audio); the "gift sounds" toggle is stored locally (0x4.giftSound).
+// - Browsers can't autoplay audio before user interaction: just don't play (visuals continue), no error.
+// - Stops when the page hides; no catch-up playback on return.
 
 export interface AudioLike {
   src: string
@@ -17,23 +17,23 @@ export interface AudioLike {
 }
 
 export interface GiftSoundOptions {
-  /** 造一个播放器（测试时换成假的）；默认 new Audio() */
+  /** Build a player (swapped for a fake in tests); defaults to new Audio() */
   create?: () => AudioLike
-  /** 用户是不是已经和页面交互过（浏览器自动播放规则）；默认看 navigator.userActivation */
+  /** Whether the user has interacted with the page (browser autoplay policy); defaults to navigator.userActivation */
   canAutoplay?: () => boolean
   volume?: number
-  /** 读 / 写「礼物音效」开关；默认 localStorage */
+  /** Read / write the "gift sounds" toggle; defaults to localStorage */
   store?: { get(): boolean; set(v: boolean): void }
 }
 
 const KEY = '0x4.giftSound'
 const localStore = {
   get() { try { return localStorage.getItem(KEY) !== '0' } catch { return true } },
-  set(v: boolean) { try { localStorage.setItem(KEY, v ? '1' : '0') } catch { /* 隐私模式 */ } },
+  set(v: boolean) { try { localStorage.setItem(KEY, v ? '1' : '0') } catch { /* Privacy mode */ } },
 }
 const defaultCanAutoplay = () => {
   const ua = (typeof navigator !== 'undefined' ? (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation : undefined)
-  return ua ? ua.hasBeenActive : true   // 老浏览器没有这个属性：试着播，被拒就算了
+  return ua ? ua.hasBeenActive : true   // Old browsers lack this property: try playing, give up if rejected
 }
 
 interface Slot { el: AudioLike; playing: boolean }
@@ -42,7 +42,7 @@ export class GiftSound {
   private slots = new Map<string, Slot>()
   private enabled: boolean
   private opts: Required<Omit<GiftSoundOptions, 'store'>> & { store: NonNullable<GiftSoundOptions['store']> }
-  /** 实际开始播放的次数（给测试和调试看） */
+  /** How many times playback actually started (for tests and debugging) */
   starts = 0
 
   constructor(o: GiftSoundOptions = {}) {
@@ -63,22 +63,22 @@ export class GiftSound {
     if (!v) this.stopAll()
   }
 
-  /** 预先加载（打开礼物面板 / 进房间时调用），不出声 */
+  /** Preload (called when opening the gift panel / entering a room), silent */
   preload(url: string) { this.slot(url) }
 
-  /** 送来一个带音效的礼物。返回这次有没有真的开始播 */
+  /** A gift with a sound effect arrived. Returns whether it actually started playing */
   play(url: string): boolean {
     if (!url || !this.enabled) return false
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false
     const s = this.slot(url)
-    if (s.playing) return false                 // 正在播：不重头、不叠加、不补播
-    if (!this.opts.canAutoplay()) return false  // 用户还没点过页面：只播画面
+    if (s.playing) return false                 // Already playing: no restart, no stacking, no catch-up
+    if (!this.opts.canAutoplay()) return false  // User hasn't tapped the page yet: visuals only
     s.playing = true
     s.el.currentTime = 0
     this.starts++
     try {
       const p = s.el.play()
-      if (p && typeof p.catch === 'function') p.catch(() => { s.playing = false })  // 浏览器拒绝自动播放：静默
+      if (p && typeof p.catch === 'function') p.catch(() => { s.playing = false })  // Browser rejected autoplay: stay silent
     } catch { s.playing = false }
     return true
   }
@@ -89,7 +89,7 @@ export class GiftSound {
     for (const s of this.slots.values()) {
       if (!s.playing) continue
       s.playing = false
-      try { s.el.pause(); s.el.currentTime = 0 } catch { /* 忽略 */ }
+      try { s.el.pause(); s.el.currentTime = 0 } catch { /* Ignore */ }
     }
   }
 
@@ -116,7 +116,7 @@ export class GiftSound {
 }
 
 let shared: GiftSound | null = null
-/** 整个页面共用一个（直播间、会议、预览页都用它） */
+/** One shared instance per page (live rooms, meetings, preview pages all use it) */
 export function giftSound(): GiftSound {
   shared ??= new GiftSound()
   return shared

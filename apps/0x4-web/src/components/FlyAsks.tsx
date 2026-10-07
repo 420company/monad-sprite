@@ -1,6 +1,6 @@
-// 合约逐笔确认（2026-09-28，GPT 审查 #8）：主人电脑端在线、开了「每笔交易先经我确认」时，小精灵的合约单不直接下，
-// 先生成一条申请（10 分钟有效），主人在电脑端游戏或这里点同意才会下单；拒绝或过期就不下。
-// 同意只是放行这一单：币种、方向、保证金、杠杆都是申请里写死的，交易进程执行前还会核对价格没有跑出 2%。
+// Per-order perp confirms (2026-09-28, GPT review #8): when the owner is online on desktop with "confirm each trade first" on, the sprite's perp orders don't go out directly —
+// a request is created first (valid 10 min); the order goes out only when the owner approves in the desktop game or here. Rejected or expired = no order.
+// Approving only greenlights this one order: coin, side, margin, and leverage are fixed in the request, and the trade process re-checks that the price hasn't moved beyond 2% before executing.
 import { useEffect, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import Button from './Button'
@@ -10,7 +10,7 @@ import { useSocial } from '@/store/social'
 import { t } from '@/lib/i18n'
 import { errorText } from '@/lib/errors'
 
-/** 开多 / 开空 / 平多 / 平空：平仓时方向和原仓位相反（卖出平多、买入平空） */
+/** Open-long / open-short / close-long / close-short: closing goes opposite the position (sell to close long, buy to close short) */
 export function askLabel(a: Pick<FlyAsk, 'side' | 'action'>) {
   if (a.action === 'close') return a.side === 'SELL' ? t('平多') : t('平空')
   return a.side === 'BUY' ? t('开多') : t('开空')
@@ -27,7 +27,7 @@ export default function FlyAsks({ flyId }: { flyId: string }) {
     api<{ list: FlyAsk[] }>('/api/fly/asks').then((r) => { if (alive) setList((r.list || []).filter((a) => a.flyId === flyId)) }).catch(() => {})
     return () => { alive = false }
   }, [flyId, seq])
-  // 倒计时每 15 秒刷新一次，过期的自己消失
+  // Countdown refreshes every 15s; expired ones vanish on their own
   useEffect(() => { const h = setInterval(() => setNow(Date.now()), 15_000); return () => clearInterval(h) }, [])
   const live = list.filter((a) => a.expiresAt > now)
   if (!live.length) return null
@@ -45,7 +45,7 @@ export default function FlyAsks({ flyId }: { flyId: string }) {
   return (
     <section className="mt-4 space-y-2" aria-label={t('等你确认的合约交易')}>
       {live.map((a) => {
-        const buy = a.action === 'open' ? a.side === 'BUY' : a.side === 'SELL'   // 开多 / 平多 用涨色
+        const buy = a.action === 'open' ? a.side === 'BUY' : a.side === 'SELL'   // Open-long / close-long use the up color
         return (
           <div key={a.id} className="rounded-2xl border border-accent/40 bg-accent/10 p-4">
             <div className="flex items-center justify-between text-xs text-muted">

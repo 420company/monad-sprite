@@ -1,12 +1,12 @@
-// 手机浏览器打开网页版（窄屏）时社区的一排标签（2026-10-03 goat：「为什么手机看没有流媒体」）。
-// 手机 App 的直播在底部单独一个「直播」标签；网页版底部是 行情 / 现货 / 合约 / 社区 / 小精灵，宽屏把流媒体放在社区左侧菜单里，
-// 窄屏用的是手机版社区页，原来只有 动态 / 消息 / 好友 / 排行，就找不到流媒体和群组。网页版窄屏在社区页和流媒体页（/live）顶上都放这一排，互相切换。
-// 只在网页版用；手机 App 照旧四个标签 + 底部「直播」。
+// The row of community tabs on narrow screens (web opened in a phone browser) (2026-10-03 goat: "why is there no streaming on phones").
+// The mobile app has a dedicated "Live" tab at the bottom; the web bottom bar is markets / spot / perps / community / sprite, and wide screens put streaming in the community's left menu,
+// while narrow screens use the mobile community page, which only had feed / messages / friends / rankings — streaming and groups were unreachable. Narrow web places this row atop both the community page and the streaming page (/live) to switch between them.
+// Web-only; the mobile app keeps its four tabs + the bottom "Live".
 import { useNavigate } from 'react-router-dom'
 import { t } from '@/lib/i18n'
 import { pageStore } from '@/lib/pageState'
 
-/** clubs = 群组（我的群 / 发现群 / 建群，10/03 goat「手机里还看不到群组」；手机 App 的群组在「消息」里，网页版单独一个标签，和宽屏左边菜单对应） */
+/** clubs = groups (my groups / discover / create, 10/03 goat: "groups still invisible on phones"; the mobile app's groups live under "messages", web gives them their own tab matching the wide-screen left menu) */
 export type CommunityTab = 'feed' | 'groups' | 'clubs' | 'friends' | 'rank'
 const ITEMS: { k: CommunityTab | 'live'; label: () => string }[] = [
   { k: 'feed', label: () => t('动态') },
@@ -17,14 +17,14 @@ const ITEMS: { k: CommunityTab | 'live'; label: () => string }[] = [
   { k: 'rank', label: () => t('排行') },
 ]
 
-/** active：当前在哪个；onTab：在社区页里切换（不传 = 在流媒体页，点了回社区页对应标签）；unread：消息上的红点 */
+/** active: the current tab; onTab: switch within the community page (absent = on the streaming page, tapping returns to the community page's tab); unread: the red dot on messages */
 export default function CommunityTabs({ active, onTab, unread = 0 }: { active: CommunityTab | 'live'; onTab?: (k: CommunityTab) => void; unread?: number }) {
   const nav = useNavigate()
   const go = (k: CommunityTab | 'live') => {
     if (k === active) return
     if (k === 'live') { nav('/live'); return }
     if (onTab) { onTab(k); return }
-    pageStore.set('community.tab', k)   // 社区页按这个记住的标签打开（Community.tsx 的 usePageState 同一个键）
+    pageStore.set('community.tab', k)   // The community page opens on this remembered tab (same key as Community.tsx's usePageState)
     nav('/community')
   }
   return (

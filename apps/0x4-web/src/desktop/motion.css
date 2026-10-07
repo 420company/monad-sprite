@@ -1,44 +1,44 @@
-/* 网页版动效（2026-10-03 goat：「该用动效的地方就要用动效」）。两种主题共用，只在 html[data-surface="web"] 下生效。
-   原则：只动 transform / opacity / 颜色 / 阴影，不动布局；每个都短（120~280ms）、有缓动；系统开了「减少动态效果」整层关掉。
-   页面切换本身走 lib/pageTransition.ts 的视图过渡（换栏目 = fade），这里只把网页版的「进场」改成淡入 + 轻微上浮。 */
+/* Web motion (2026-10-03 goat: "use motion where motion is due"). Shared by both themes, active only under html[data-surface="web"].
+   Principles: animate only transform / opacity / color / shadow, never layout; each short (120–280ms) with easing; the whole layer off when the OS has "reduce motion" on.
+   Page switches themselves use lib/pageTransition.ts view transitions (tab change = fade); this only changes the web's "entrance" to fade-in + slight rise. */
 
 html[data-surface="web"] {
   --w-ease: cubic-bezier(.2, .7, .2, 1);
-  /* 深色里的抬起阴影；浅色在 light.css 里换成带紫味的 */
+  /* Raised shadow in dark mode; light.css swaps it for a purple-tinted one */
   --w-shadow-lift: 0 12px 32px -14px rgb(0 0 0 / .6);
 }
 
-/* 换栏目：新页面淡入并从下面 8px 浮上来（手机那套是左右推，网页版只用这个） */
+/* Tab change: new page fades in rising 8px from below (mobile pushes left-right; web only uses this) */
 html[data-surface="web"][data-nav="fade"]::view-transition-old(root) { animation: vt-fade-out 90ms ease-out both; }
 html[data-surface="web"][data-nav="fade"]::view-transition-new(root) { animation: w-page-in 260ms var(--w-ease) both; }
 @keyframes w-page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-/* 可交互元素：颜色、阴影、位移都有过渡 */
+/* Interactive elements: color, shadow, and offset all transition */
 html[data-surface="web"] :is(.wc-btn, .tx-btn, .desk-nav-item, .wc-tabs button, .wc-seg button, .wc-set-nav button, .wc-tr, .tx-mrow, .cm-pc, .cm-side a, .cm-side button, .wc-input, .tx-field, .desk-me, .wc-empty > svg) {
   transition: background-color .16s var(--w-ease), border-color .16s var(--w-ease), color .16s var(--w-ease), box-shadow .22s var(--w-ease), transform .16s var(--w-ease), filter .16s var(--w-ease);
 }
 
-/* 按钮：按下回弹 */
+/* Buttons: press-and-spring-back */
 html[data-surface="web"] :is(.wc-btn, .tx-btn):active:not(:disabled) { transform: scale(.97); }
-/* 主按钮、买卖按钮：悬停轻微抬起 */
+/* Primary and buy/sell buttons: slight lift on hover */
 html[data-surface="web"] :is(.wc-btn.is-primary, .tx-btn.is-pearl, .tx-btn.is-up, .tx-btn.is-down):hover:not(:disabled) { transform: translateY(-1px); }
 html[data-surface="web"] :is(.wc-btn.is-primary, .tx-btn.is-pearl, .tx-btn.is-up, .tx-btn.is-down):active:not(:disabled) { transform: translateY(0) scale(.98); }
 
-/* 卡片：悬停抬起 */
+/* Cards: lift on hover */
 html[data-surface="web"] :is(.cm-pc, .wc-panel.is-link, a.wc-panel):hover { transform: translateY(-2px); box-shadow: var(--w-shadow-lift); }
 
-/* 导航、标签的下划线：从中间展开 */
+/* Nav and tab underlines: expand from the center */
 html[data-surface="web"] :is(.desk-nav-item.on::after, .wc-tabs button[aria-selected="true"]::after) { animation: w-underline .24s var(--w-ease) both; }
 @keyframes w-underline { from { transform: scaleX(.3); opacity: .4; } to { transform: scaleX(1); opacity: 1; } }
 
-/* 面板内容：首次出现时淡入（列表、表格、空状态），不等图标转圈那种） */
+/* Panel content: fade in on first appearance (lists, tables, empty states — not the spinner kind) */
 html[data-surface="web"] :is(.wc-panel, .tx-panel, .cm-panel) > :is(.wc-list, .wc-table, .wc-empty, .tx-table, .cm-feed) { animation: w-fade-in .28s var(--w-ease) both; }
 @keyframes w-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* 骨架屏流光（desk-content.css 的 .wc-sk 已有；light.css 给 .skeleton 也用它） */
+/* Skeleton shimmer (desk-content.css's .wc-sk already has it; light.css reuses it for .skeleton) */
 @keyframes w-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 
-/* 空状态图标：悬停面板时轻轻放大一点 */
+/* Empty-state icons: scale up slightly on panel hover */
 html[data-surface="web"] :is(.wc-panel, .tx-panel):hover .wc-empty > svg { transform: scale(1.06); }
 
 @media (prefers-reduced-motion: reduce) {

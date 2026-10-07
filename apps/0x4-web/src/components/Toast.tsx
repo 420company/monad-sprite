@@ -1,4 +1,4 @@
-// 通知共享同一计时器；页面与顶层弹层之间切换时不重复计时或播报。
+// Notifications share one timer; switching between the page and the top-level overlay doesn't double-time or double-announce.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { CircleCheck, CircleAlert, Info, X } from 'lucide-react'
@@ -29,8 +29,8 @@ export const useToast = create<ToastState>()((set, get) => ({
   items: [],
   push(text, kind = 'info') {
     const id = seq++
-    // 同一时间只显示一条：新的一来，旧的立刻收掉（2026-09-26 goat：连续操作会叠出两三条，上一条还没消失新的又来了）。
-    // 成功 / 提示 2.5 秒，错误留 6 秒多给点阅读时间
+    // Only one toast at a time: when a new one arrives, the old one dismisses immediately (2026-09-26 goat: rapid actions stacked two or three, the new arriving before the old vanished).
+    // Success / info: 2.5s; errors stay 6s for extra reading time
     for (const old of get().items) get().remove(old.id)
     timers.set(id, { remaining: kind === 'error' ? 6000 : 2500, started: Date.now(), paused: new Set(document.hidden ? ['document'] : []) })
     set({ items: [...get().items, { id, text, kind }] })
@@ -44,9 +44,9 @@ export const useToast = create<ToastState>()((set, get) => ({
 }))
 
 export const toast = {
-  // 原生壳里顺带给一次震动反馈：成功、失败各一种，网页里是空操作
+  // The native shell also gives one haptic feedback: one for success, one for failure; a no-op on web
   info: (t: string) => { hapticResult('info'); useToast.getState().push(t, 'info') },
-  // 报错统一过滤：用户自己取消的不弹；夹着交易原始数据的换成能看懂的一句话（lib/errors toastErrorText）
+  // Errors are filtered uniformly: user-cancelled ones don't pop; ones carrying raw tx data are swapped for a readable one-liner (lib/errors toastErrorText)
   error: (t: string) => { const text = toastErrorText(t); if (text === null) return; hapticResult('error'); useToast.getState().push(text, 'error') },
   success: (t: string) => { hapticResult('success'); useToast.getState().push(t, 'success') },
 }
@@ -57,7 +57,7 @@ export function ToastHost() {
   const [visible, setVisible] = useState(true)
 
   useLayoutEffect(() => {
-    // Sheet 只在最上层挂载自己的 ToastHost；页面挂载点需同时退出无障碍树。
+    // Sheets only mount their own ToastHost at the top layer; page mount points must also leave the accessibility tree.
     const update = () => setVisible(!!root.current?.closest('dialog') || !document.querySelector('dialog[open]'))
     update()
     const observer = new MutationObserver(update)

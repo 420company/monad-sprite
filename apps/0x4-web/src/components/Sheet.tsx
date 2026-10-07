@@ -1,4 +1,4 @@
-// 全屏页式弹层（2026-09-18 用户定的：不要底部抽屉，要覆盖整屏、带返回和关闭）；原生 dialog 负责焦点隔离与层级，从右侧滑入。
+// Full-screen page sheets (decided 2026-09-18: no bottom drawers; cover the whole screen with back and close buttons); the native dialog handles focus isolation and stacking, sliding in from the right.
 import { useId, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
 import { LiquidLayer } from '@/components/LiquidBackground'
 import { createPortal } from 'react-dom'
@@ -29,26 +29,26 @@ const notifyStack = () => {
 let previousOverflow = ''
 const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 const ease = 'cubic-bezier(.2,.8,.2,1)'
-// 半屏从底部升起：ease-out-cubic，前段不像上面那条冲得那么猛。WebKit 把动画交给系统合成要晚一两帧才上屏，
-// 前段太陡的曲线（试过 iOS 底部弹层的 .32,.72,0,1）第一帧就已经升了一半，看着还是「闪」出来的
+// Half sheets rise from the bottom: ease-out-cubic, with a gentler early segment than the curve above. WebKit hands animations to the system compositor a frame or two late before they appear,
+// and with a steep early curve (tried the iOS bottom sheet's .32,.72,0,1) the first frame already shows it halfway up — it still looks "flashed" in
 const halfEase = 'cubic-bezier(.33,1,.68,1)'
 
 export default function Sheet({ open, onClose, title, children, dismissible = true, half: halfProp = false, center: centerProp = false }: {
   open: boolean; onClose: () => void; title?: string; children: ReactNode; dismissible?: boolean
-  /** 半屏：从底部升起、固定 60% 屏幕高，上面露出页面（直播间送礼用，要能看到直播）。
-   *  ★ 固定高度而不是 max-h：内容异步加载（送礼的礼物列表、买卖的报价）时，按内容撑高的面板会在打开后突然往上长一截
-   *  （2026-09-26 模拟器录屏：送礼面板先 417px 高，礼物列表到了跳成 524px）。内容多了在面板里滚动。 */
+  /** Half sheet: rises from the bottom, fixed 60% of screen height, with the page peeking out above (gifting in live rooms needs the stream visible).
+   *  ★ Fixed height rather than max-h: with async content (gift lists for gifting, quotes for trading), a content-sized panel suddenly grows taller after opening
+   *  (2026-09-26 simulator recording: the gifting panel started 417px tall, jumped to 524px when the gift list arrived). Overflow scrolls inside the panel. */
   half?: boolean
-  /** 居中弹窗：屏幕正中间淡入放大，不贴底、不挡底部导航（发现页「更多链」这类短列表选择，2026-09-26 goat） */
+  /** Centered dialog: fades and scales in at screen center, not bottom-anchored, not covering the bottom nav (short list picks like "more chains" on Discover, 2026-09-26 goat) */
   center?: boolean
 }) {
-  // 网页版宽屏（VITE_SURFACE=web，≥ 900px）：一律是居中模态框（docs/WEB_DESIGN.md：电脑端不许用手机底部弹层 / 整屏弹层），
-  // 宽 440、圆角 14、实色面板、遮罩 60% 黑、不模糊背景；标题栏只有标题和关闭，没有手机的返回箭头。手机 App 不受影响（WEB_SURFACE 恒为 false）。
+  // Web wide screens (VITE_SURFACE=web, ≥ 900px): always a centered modal (docs/WEB_DESIGN.md: desktop must not use mobile bottom sheets / full-screen sheets),
+  // 440 wide, radius 14, solid panel, 60% black scrim, no background blur; the title bar has only a title and close — no mobile back arrow. The mobile app is unaffected (WEB_SURFACE is always false).
   const wide = useWide()
   const desk = WEB_SURFACE && wide
   const center = centerProp || desk
   const half = halfProp && !desk
-  // 三种弹层的「收起 / 展开」位置：整屏从右侧滑入，半屏从底部升起，居中弹窗原地缩放淡入
+  // The "collapsed / expanded" positions of the three sheet types: full-screen slides in from the right, half rises from the bottom, centered dialogs scale-fade in place
   const OFF = center ? 'scale(.94)' : half ? 'translateY(100%)' : 'translateX(100%)'
   const ON = center ? 'scale(1)' : half ? 'translateY(0)' : 'translateX(0)'
   const id = useId()
@@ -83,13 +83,13 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
       done?.()
       return
     }
-    // 居中弹窗除了缩放还要淡入淡出（从 0 透明到不透明），整屏 / 半屏只动位置
+    // Centered dialogs also fade (0 opacity to opaque) on top of scaling; full-screen / half sheets only move position
     const fade = center ? [{ opacity: panel.current.style.opacity || (transform === ON ? '0' : '1') }, { opacity: transform === ON ? '1' : '0' }] : null
     const a = panel.current.animate(fade ? [{ transform: panel.current.style.transform, ...fade[0] }, { transform, ...fade[1] }] : [{ transform: panel.current.style.transform }, { transform }], { duration, easing, fill: 'forwards' })
     const b = scrim.current.animate([{ opacity: scrim.current.style.opacity }, { opacity }], { duration, easing, fill: 'forwards' })
     animations.current = [a, b]
-    // ★ 不能只等 a.finished：动画被暂停（页面在后台、系统节流）或被取消时它不会按时到，
-    //   关闭流程卡在半路，对话框以看不见的状态一直挡住整个页面。用定时器保底，谁先到算谁。
+    // ★ Can't just await a.finished: when an animation is paused (page in background, system throttling) or cancelled, it never resolves on time,
+    //   and the close flow gets stuck halfway with the dialog invisibly blocking the whole page. A timer guarantees completion — whichever fires first wins.
     let settled = false
     const finish = () => {
       if (settled) return
@@ -97,8 +97,8 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
       clearTimeout(timer)
       if (panel.current) {
         panel.current.style.transform = transform
-        // 居中弹窗的淡入淡出也要落到最终值：原来只落了位置，取消动画后面板回到开场前设的透明度 0，
-        // 看起来就是「打开半秒自己消失」，其实对话框还开着挡在页面上（2026-09-26 活动页 / 发现页「更多」）
+        // The centered dialog's fade must also settle at its final value: previously only position settled, so after a cancelled animation the panel snapped back to the pre-intro opacity 0,
+        // looking like it "opened and vanished in half a second" while the dialog was actually still open blocking the page (2026-09-26 activity page / Discover "more")
         if (center) panel.current.style.opacity = transform === ON ? '' : '0'
       }
       if (scrim.current) scrim.current.style.opacity = opacity
@@ -107,7 +107,7 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
       done?.()
     }
     const timer = setTimeout(() => {
-      if (animations.current[0] !== a) return   // 已被新的动画接替，不抢
+      if (animations.current[0] !== a) return   // Already superseded by a newer animation; don't fight for it
       finish()
     }, duration + 150)
     a.finished.then(() => { if (animations.current[0] === a) finish() }).catch(() => {})
@@ -118,8 +118,8 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
     closing.current = true
     moveTo(OFF, '0', instant ? 0 : 180, () => {
       latest.current.onClose()
-      // ★ 兜底：外层没把 open 置回 false 时，对话框会一直以模态方式开着但内容在屏幕外，
-      //   整个页面被它挡住、什么都点不了（2026-09-24 真机现象）。等一拍还开着就直接关掉。
+      // ★ Fallback: when the outer layer doesn't set open back to false, the dialog stays open modally with its content off-screen,
+      //   blocking the entire page — nothing tappable (2026-09-24 on-device). If it's still open after a beat, close it directly.
       setTimeout(() => {
         const modal = dialog.current
         if (modal?.hasAttribute('open') && closing.current) {
@@ -137,9 +137,9 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
     const modal = dialog.current
     if (!open || !modal) return
     closing.current = false
-    // ★ 2026-09-24 真机（iOS 26.6）实锤：面板起始在屏幕右侧外，给标题 focus 时 WebKit 无视 preventScroll，
-    //   把对话框横向滚了一整屏去「露出」标题；面板滑到位后反而整个落在屏幕左侧外（left=-390），
-    //   对话框仍模态开着 → 整页点不动。overflow-clip 让对话框不可滚；这里再兜一层：被滚偏就立刻滚回。
+    // ★ Confirmed 2026-09-24 on-device (iOS 26.6): with the panel starting off-screen to the right, focusing the title made WebKit ignore preventScroll,
+    //   scrolling the dialog a full screen horizontally to "reveal" the title; once the panel slid into place it ended up entirely off the left edge (left=-390),
+    //   with the dialog still open modally → the whole page frozen. overflow-clip makes the dialog unscrollable; one more guard here: if it gets scrolled off, scroll it right back.
     const unscroll = () => {
       if (!modal.scrollLeft && !modal.scrollTop) return
       modal.scrollLeft = 0; modal.scrollTop = 0
@@ -153,7 +153,7 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
     openSheets.add(modal)
     const keyboard = document.activeElement?.matches(':focus-visible')
     fallback.current = typeof modal.showModal !== 'function'
-    // iOS 15.0-15.3 尚无 showModal；由本层接管焦点隔离与顶层关闭。
+    // iOS 15.0–15.3 has no showModal; this layer takes over focus isolation and top-layer dismissal.
     if (fallback.current) {
       modal.setAttribute('open', '')
       modal.style.display = 'block'
@@ -161,37 +161,37 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
     } else modal.showModal()
     heading.current?.focus({ preventScroll: true })
     notifyStack()
-    // 头两帧面板放在最终位置、但完全透明：让 WebKit 先把面板内容画好（放在屏幕外它不画，见下面 start 的注释）
+    // First two frames: panel sits at its final position but fully transparent, letting WebKit paint the panel content first (off-screen content isn't painted — see the start comment below)
     if (panel.current) { panel.current.style.transform = 'none'; panel.current.style.opacity = '0' }
     if (scrim.current) scrim.current.style.opacity = '0'
-    // ★ 进场动画等面板先画出来一帧再开始（2026-09-26 模拟器录屏实测）：弹层第一次上屏要把整块面板画出来
-    //   （链列表几十个带阴影的按钮、图标），这一帧要 50–130ms。原来在这里直接开动画，动画时钟已经在走、
-    //   画面却卡在第一帧，等画好时 220ms 的动画已过去一大半 → 看起来是面板「闪现」到位，没有升起 / 滑入的过程。
-    //   第一版改成「先放在屏幕外等一帧」没用：录屏里面板仍然是一出现就到了 85% 的高度——屏幕外的部分 WebKit 不画，
-    //   动画开始、面板进入屏幕时才去画。所以头两帧让面板停在最终位置但透明（内容照画、看不见），
-    //   两次 requestAnimationFrame（= 那一帧已经提交）之后再瞬间挪到屏幕外、恢复不透明、开始动画。
-    //   面板带 will-change: transform：一开始就是独立合成层，动画开始时不会再「升层」重画一遍。
-    //   页面在后台时 rAF 不跑，用 120ms 定时器兜底，谁先到算谁。
+    // ★ Entrance animation waits for the panel to paint one frame first (measured 2026-09-26 on simulator recording): the sheet's first paint has to draw the whole panel
+    //   (dozens of shadowed chain-list buttons and icons) — that frame takes 50–130ms. Starting the animation right here meant the animation clock was already running
+    //   while the picture was stuck on the first frame; by the time painting finished, most of the 220ms animation had elapsed → the panel looked like it "flashed" into place with no rise / slide-in.
+    //   The first attempt ("park off-screen and wait a frame") didn't work: recordings still showed the panel at 85% height the moment it appeared — WebKit doesn't paint off-screen parts,
+    //   only painting when the animation starts and the panel enters the screen. So the first two frames keep the panel at its final position but transparent (content paints, invisible),
+    //   and after two requestAnimationFrames (= that frame has been committed) it snaps off-screen, restores opacity, and starts the animation.
+    //   The panel carries will-change: transform — it's its own compositor layer from the start, so no layer "promotion" repaints it when the animation begins.
+    //   rAF doesn't run with the page in the background; a 120ms timer backs it up — whichever fires first wins.
     let started = false, raf1 = 0, raf2 = 0
     const start = () => {
       if (started) return
       started = true
       cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); clearTimeout(startTimer)
-      if (closing.current) return   // 还没开始就被关了：关闭动画已接手，面板保持透明即可
+      if (closing.current) return   // Closed before it started: the close animation has taken over; the panel just stays transparent
       if (panel.current) { panel.current.style.transform = OFF; panel.current.style.opacity = center ? '0' : '' }
       moveTo(ON, '1', keyboard ? 0 : half ? 320 : center ? 220 : 220)
     }
     const startTimer = setTimeout(start, 120)
     if (keyboard) start()
     else raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(start) })
-    // ★ 看门狗：打开 1.5 秒后面板还在屏幕外、又不是在关闭中 = 卡住了（对话框开着但看不见，整页被挡住）。
-    //   整屏弹层从右侧滑入，看横向；半屏弹层从底部升起，看纵向（横向永远在屏内，只看横向会漏判）。
+    // ★ Watchdog: 1.5s after opening the panel is still off-screen and not closing = stuck (dialog open but invisible, whole page blocked).
+    //   Full-screen sheets slide in from the right — check horizontally; half sheets rise from the bottom — check vertically (horizontal is always on-screen, so a horizontal-only check would miss it).
     const offscreen = () => {
       const rect = panel.current?.getBoundingClientRect()
       if (!rect) return false
       const w = window.innerWidth, h = modal.getBoundingClientRect().bottom || window.innerHeight
       if (rect.left >= w - 2 || rect.right <= 2) return true
-      // 半屏：面板顶边已经掉到可视区底部以下（或整体飞到上方）= 看不见
+      // Half sheet: the panel's top edge has fallen below the visible area's bottom (or the whole thing flew above) = invisible
       return half && (rect.top >= h - 2 || rect.bottom <= 2)
     }
     const watchdog = setTimeout(() => {
@@ -204,7 +204,7 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
       }
     }, 1500)
 
-    // visualViewport 随软键盘收缩；仅滚动弹层内部，保留背景阅读位置。
+    // visualViewport shrinks with the soft keyboard; scroll only inside the sheet, preserving the background's reading position.
     let frame = 0
     const fitViewport = () => {
       const viewport = window.visualViewport
@@ -257,7 +257,7 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
       if (!openSheets.size) document.body.style.overflow = previousOverflow
       if (fallback.current && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true })
     }
-    // 回调更新不会重开弹层，避免破坏焦点与拖动。
+    // Callback updates don't reopen the sheet, so focus and dragging aren't disturbed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -302,7 +302,7 @@ export default function Sheet({ open, onClose, title, children, dismissible = tr
   )
 }
 
-// 原生顶层会覆盖页面上的 ToastHost；只在最上层复用同一通知源。
+// The native top layer would cover the page's ToastHost; reuse the same notification source only at the topmost layer.
 function SheetFeedback({ modal }: { modal: RefObject<HTMLDialogElement | null> }) {
   const top = useSyncExternalStore(subscribe, topSheet)
   return top === modal.current ? <div role="status" aria-live="polite" aria-atomic="true" className="pointer-events-none [&>div]:absolute [&>div]:top-[max(16px,env(safe-area-inset-top))]"><ToastHost /></div> : null

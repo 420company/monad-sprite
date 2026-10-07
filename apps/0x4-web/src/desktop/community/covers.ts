@@ -1,7 +1,7 @@
-// 直播房间卡片的封面（2026-10-02 goat：官网首页的配图不合适，专门生成一组）：直播没有画面截图，
-// 封面用 11 张图（加上「自动」正好 3 列 4 行）（BytePlus 生成，没有人、文字和品牌，中间留空放主播头像），960 宽 webp。
-// 2026-10-02 goat：第一版 8 张都是同一种紫色霓虹风格太单调 → 换成各种风格颜色（咖啡馆、樱花、雪山、像素、海滩、星云、糖果、霓虹街），留 3 张原来的。
-// 主播可以在开播检查页自己选（2026-10-02 goat）；没选按房间 id 固定挑一张，同一个房间刷新多少次都是同一张。
+// Live room card covers (2026-10-02 goat: the official site's homepage art didn't fit, so a dedicated set was generated): live has no video screenshots,
+// covers use 11 images (12 with "auto" = exactly 3 columns × 4 rows) (BytePlus-generated; no people, text, or branding; center left empty for the streamer avatar), 960px-wide webp.
+// 2026-10-02 goat: the first 8 were all the same purple-neon style — too monotonous → switched to varied styles/colors (café, cherry blossom, snowy mountain, pixel, beach, nebula, candy, neon street), keeping 3 originals.
+// Streamers can pick on the go-live check page (2026-10-02 goat); unpicked rooms get a deterministic cover by room id — same room, same cover, however many refreshes.
 import cafe from '../assets/livecards/cafe.webp'
 import sakura from '../assets/livecards/sakura.webp'
 import snow from '../assets/livecards/snow.webp'
@@ -16,7 +16,7 @@ import lofi from '../assets/livecards/lofi.webp'
 
 import { t } from '@/lib/i18n'
 
-/** 可选的封面（编号和服务器 server/src/rooms.ts 的 ROOM_COVERS 一一对应）。主播在开播检查页选，没选按房间 id 自动配 */
+/** Selectable covers (ids one-to-one with the server's server/src/rooms.ts ROOM_COVERS). Streamers pick on the go-live check page; unpicked rooms auto-match by room id */
 export const COVER_LIST: { id: string; url: string; label: () => string }[] = [
   { id: 'cafe', url: cafe, label: () => t('咖啡馆') },
   { id: 'sakura', url: sakura, label: () => t('樱花') },
@@ -31,7 +31,7 @@ export const COVER_LIST: { id: string; url: string; label: () => string }[] = [
   { id: 'lofi', url: lofi, label: () => t('书桌') },
 ]
 
-/** 房间封面：主播选过的用选的，没选按房间 id 固定挑一张 */
+/** Room cover: the streamer's pick when chosen; otherwise a deterministic pick by room id */
 export function coverOf(id: string, cover?: string | null): string {
   const picked = cover && COVER_LIST.find((c) => c.id === cover)
   if (picked) return picked.url
