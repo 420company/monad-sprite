@@ -70,6 +70,8 @@ import { TokenRouter } from '@/pages/MonadToken' // monad-testnet renders the bo
 const MeetingRoom = lazy(() => import('@/pages/MeetingRoom'))
 // Share-link watch page (2026-09-30): viewable without login, login nudge after 15s
 const Watch = lazy(() => import('@/pages/Watch'))
+// Zalien-gated agent page (added 2026-10-07 for hackathon)
+const Agent = lazy(() => import('@/pages/Agent'))
 // Web desktop pages (2026-09-29 goat: web shouldn't look like the phone app): loaded only on wide screens with VITE_SURFACE=web; narrow screens fall back to the phone page
 const DeskMarkets = lazy(() => import('@/desktop/pages/Markets'))
 const DeskToken = lazy(() => import('@/desktop/pages/TokenTerminal'))
@@ -209,6 +211,8 @@ export default function App() {
             <Route path="/spot" element={desk(<DeskSpot />, <Spot />)} />
             {/* Monad testnet one-click launch (added 2026-10-07 for hackathon) */}
             <Route path="/launch" element={<Launch />} />
+            {/* Zalien-gated agent: BSC holder check -> chat that trades on Monad testnet (added 2026-10-07 for hackathon) */}
+            <Route path="/agent" element={<Suspense fallback={null}><Agent /></Suspense>} />
             {/* Perp trading and DMs are 0x4 Wallet exclusives (2026-09-30 goat): web with an external wallet shows the "0x4 Wallet exclusive" card instead (desktop/Ox4Only) */}
             {/* iOS store build ships without perps (lib/features PERP_ENABLED): this route bounces to home */}
             <Route path="/perp" element={PERP_ENABLED ? desk(<Ox4Only feature="perp"><DeskPerp /></Ox4Only>, <Need><Ox4Only feature="perp"><Perp /></Ox4Only></Need>) : <Navigate to="/" replace />} />
