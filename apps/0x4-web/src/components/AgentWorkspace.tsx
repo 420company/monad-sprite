@@ -46,6 +46,8 @@ export interface ChatMsg {
   videoUrl?: string
   videoStatus?: 'generating' | 'ready' | 'failed'
   audioBase64?: string
+  fileUrl?: string
+  fileName?: string
 }
 
 interface Conversation {
@@ -62,6 +64,8 @@ interface ApiReply {
   image_url?: string | null
   video_id?: string | null
   audio_base64?: string | null
+  file_url?: string | null
+  file_name?: string | null
   error?: string
 }
 
@@ -345,6 +349,24 @@ function MessageBubble({ msg, isLast, thinking, explorer, onConfirmTx, onCancelT
           )}
           {msg.videoId && <VideoCard videoId={msg.videoId} />}
           {msg.audioBase64 && <AudioPlayer base64={msg.audioBase64} />}
+          {msg.fileUrl && (
+            <div className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Paperclip size={18} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{msg.fileName || 'file'}</div>
+                <div className="text-xs text-muted">{t('点击下载')}</div>
+              </div>
+              <a
+                href={msg.fileUrl}
+                download={msg.fileName || 'file'}
+                className="rounded-xl bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/15"
+              >
+                {t('下载')}
+              </a>
+            </div>
+          )}
           {msg.tx && (
             <TxCard tx={msg.tx} explorer={explorer} onConfirm={() => onConfirmTx(msg.id, msg.tx!)} onCancel={() => onCancelTx(msg.id)} />
           )}
@@ -522,6 +544,7 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
       else if (data.image_url) push({ from: 'agent', text: data.reply, imageUrl: data.image_url })
       else if (data.video_id) push({ from: 'agent', text: data.reply, videoId: data.video_id })
       else if (data.audio_base64) push({ from: 'agent', text: data.reply, audioBase64: data.audio_base64 })
+      else if (data.file_url) push({ from: 'agent', text: data.reply, fileUrl: data.file_url, fileName: data.file_name || undefined })
       else reply(data.reply)
     } catch (e) {
       historyRef.current.pop()

@@ -9,6 +9,7 @@ import { codeRunnerPlugin } from './codeRunner.js';
 import { videoPlugin } from './video.js';
 import { voicePlugin } from './voice.js';
 import { webPlugin } from './web.js';
+import { filesPlugin } from './files.js';
 
 registry.register(monadTradingPlugin);
 registry.register(mediaPlugin);
@@ -16,5 +17,6 @@ registry.register(codeRunnerPlugin);
 registry.register(videoPlugin);
 registry.register(voicePlugin);
 registry.register(webPlugin);
+registry.register(filesPlugin);
 
 export { registry };

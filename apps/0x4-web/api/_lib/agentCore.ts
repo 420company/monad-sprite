@@ -15,6 +15,7 @@ Capabilities (use tools when the user asks):
 - generate_video: short AI videos from a text prompt (async, 1-3 min). Tell the user it's generating.
 - text_to_speech: convert text to voice audio when the user wants to hear it
 - web_search / web_fetch: look up current information, news, docs, prices — use this when you don't know something or it might be outdated
+- create_file: generate downloadable files (markdown docs, code, CSV, JSON) when the user asks for a document or export
 - run_code: run JavaScript for calculations, analysis, quick scripts
 
 Rules:
@@ -35,6 +36,8 @@ export interface AgentResult {
   image_url?: string | null;
   video_id?: string | null;
   audio_base64?: string | null;
+  file_url?: string | null;
+  file_name?: string | null;
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
@@ -73,6 +76,8 @@ export async function runAgent(opts: {
   let imageUrl: string | null = null;
   let videoId: string | null = null;
   let audioBase64: string | null = null;
+  let fileUrl: string | null = null;
+  let fileName: string | null = null;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const out = await chatCompletions({
@@ -83,7 +88,7 @@ export async function runAgent(opts: {
     usage = out.usage;
 
     if (!out.tool_calls || out.tool_calls.length === 0) {
-      return { reply: out.content ?? '', tx: pendingTx, image_url: imageUrl, video_id: videoId, audio_base64: audioBase64, usage };
+      return { reply: out.content ?? '', tx: pendingTx, image_url: imageUrl, video_id: videoId, audio_base64: audioBase64, file_url: fileUrl, file_name: fileName, usage };
     }
 
     convo.push({ role: 'assistant', content: out.content, tool_calls: out.tool_calls });
@@ -100,11 +105,15 @@ export async function runAgent(opts: {
       }
       const result = await registry.execute(tc.function.name, args);
       if (result.tx) pendingTx = result.tx;
-      const data = result as unknown as { image_url?: string; video_id?: string; audio_base64?: string };
+      const data = result as unknown as { image_url?: string; video_id?: string; audio_base64?: string; file_url?: string; filename?: string };
       if (result.ok && data.data && typeof data.data === 'object') {
         if ('image_url' in data.data) imageUrl = (data.data as { image_url: string }).image_url;
         if ('video_id' in data.data) videoId = (data.data as { video_id: string }).video_id;
         if ('audio_base64' in data.data) audioBase64 = (data.data as { audio_base64: string }).audio_base64;
+        if ('file_url' in data.data) {
+          fileUrl = (data.data as { file_url: string }).file_url;
+          fileName = (data.data as { filename: string }).filename || 'file';
+        }
       }
       convo.push({
         role: 'tool',
@@ -120,6 +129,8 @@ export async function runAgent(opts: {
     image_url: imageUrl,
     video_id: videoId,
     audio_base64: audioBase64,
+    file_url: fileUrl,
+    file_name: fileName,
     usage,
   };
 }
