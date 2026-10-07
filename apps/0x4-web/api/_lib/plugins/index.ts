@@ -10,6 +10,7 @@ import { videoPlugin } from './video.js';
 import { voicePlugin } from './voice.js';
 import { webPlugin } from './web.js';
 import { filesPlugin } from './files.js';
+import { memoryPlugin } from './memory.js';
 
 registry.register(monadTradingPlugin);
 registry.register(mediaPlugin);
@@ -18,5 +19,6 @@ registry.register(videoPlugin);
 registry.register(voicePlugin);
 registry.register(webPlugin);
 registry.register(filesPlugin);
+registry.register(memoryPlugin);
 
 export { registry };

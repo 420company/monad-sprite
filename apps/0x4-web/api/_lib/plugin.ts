@@ -17,6 +17,10 @@ export interface ToolResult {
   error?: string;
 }
 
+export interface PluginContext {
+  wallet?: string;
+}
+
 export interface AgentPlugin {
   /** Unique plugin id, e.g. "monad-trading" */
   name: string;
@@ -25,7 +29,7 @@ export interface AgentPlugin {
   /** Tool schemas exposed to the LLM */
   tools: ToolDef[];
   /** Execute one of this plugin's tools */
-  execute(toolName: string, args: Record<string, unknown>): Promise<ToolResult>;
+  execute(toolName: string, args: Record<string, unknown>, ctx?: PluginContext): Promise<ToolResult>;
 }
 
 class PluginRegistry {
@@ -51,12 +55,12 @@ class PluginRegistry {
     return [...this.plugins.values()].flatMap((p) => p.tools);
   }
 
-  async execute(toolName: string, args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(toolName: string, args: Record<string, unknown>, ctx?: PluginContext): Promise<ToolResult> {
     const pluginName = this.toolToPlugin.get(toolName);
     if (!pluginName) return { ok: false, error: `Unknown tool: ${toolName}` };
     const plugin = this.plugins.get(pluginName)!;
     try {
-      return await plugin.execute(toolName, args);
+      return await plugin.execute(toolName, args, ctx);
     } catch (e) {
       return { ok: false, error: `Plugin ${pluginName} error: ${(e as Error).message.slice(0, 300)}` };
     }

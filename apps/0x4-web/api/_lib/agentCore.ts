@@ -5,6 +5,7 @@
 import { chatCompletions, DEFAULT_MODEL, type ChatMessage, type ContentPart } from './router.js';
 import { registry } from './plugins/index.js';
 import { getConfig } from './config.js';
+import { formatMemoriesForPrompt } from './memory.js';
 
 export const SYSTEM_PROMPT = `You are Sprite, the AI agent of monad-sprite — a Monad-native memecoin terminal. You are a sharp, capable, slightly playful assistant, like a crypto-native friend who actually gets things done.
 
@@ -16,6 +17,7 @@ Capabilities (use tools when the user asks):
 - text_to_speech: convert text to voice audio when the user wants to hear it
 - web_search / web_fetch: look up current information, news, docs, prices — use this when you don't know something or it might be outdated
 - create_file: generate downloadable files (markdown docs, code, CSV, JSON) when the user asks for a document or export
+- save_memory / recall_memory: remember the user across sessions — save their name, preferences, goals when they share them; recall when relevant
 - run_code: run JavaScript for calculations, analysis, quick scripts
 
 Rules:
@@ -68,6 +70,11 @@ export async function runAgent(opts: {
       role: 'system',
       content: `The user's connected wallet is ${opts.wallet} (Monad testnet). Use it for portfolio lookups.`,
     });
+    // Inject long-term memories
+    const memPrompt = formatMemoriesForPrompt(opts.wallet);
+    if (memPrompt) {
+      sysMessages.push({ role: 'system', content: memPrompt });
+    }
   }
 
   const convo: ChatMessage[] = [...sysMessages, ...history];
@@ -103,7 +110,7 @@ export async function runAgent(opts: {
       if (tc.function.name === 'get_portfolio' && opts.wallet && !args.wallet) {
         args.wallet = opts.wallet;
       }
-      const result = await registry.execute(tc.function.name, args);
+      const result = await registry.execute(tc.function.name, args, { wallet: opts.wallet });
       if (result.tx) pendingTx = result.tx;
       const data = result as unknown as { image_url?: string; video_id?: string; audio_base64?: string; file_url?: string; filename?: string };
       if (result.ok && data.data && typeof data.data === 'object') {
