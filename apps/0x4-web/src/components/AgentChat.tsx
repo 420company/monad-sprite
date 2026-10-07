@@ -158,8 +158,24 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
   const listRef = useRef<HTMLDivElement>(null)
   // Conversation history sent to the backend (user/assistant only)
   const historyRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+  // Model selection
+  const [models, setModels] = useState<Array<{ id: string; label: string; group: string }>>([])
+  const [model, setModel] = useState('claude-sonnet-4-5-20250929')
 
   const explorer = chainById(AGENT_CHAIN_ID)?.viem?.blockExplorers?.default.url
+
+  // Load available models once
+  useEffect(() => {
+    fetch('/api/models')
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.models)) {
+          setModels(d.models.filter((m: { group: string }) => m.group === 'chat'))
+          if (d.default) setModel(d.default)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const el = listRef.current
@@ -199,6 +215,7 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
         body: JSON.stringify({
           messages: historyRef.current.slice(-20),
           wallet: evmAccount?.address,
+          model,
         }),
       })
       const data = (await res.json()) as ApiReply
@@ -291,12 +308,26 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
       </div>
 
       <div className="border-t border-line p-3">
-        <div className="mb-2 flex flex-wrap gap-2">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           {EXAMPLES.map((ex) => (
             <button key={ex} type="button" onClick={() => setInput(ex)} className="rounded-full bg-background px-3 py-1 text-xs text-muted hover:text-fg">
               {ex}
             </button>
           ))}
+          {models.length > 0 && (
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              aria-label="Choose AI model"
+              className="ml-auto max-w-[180px] truncate rounded-full bg-background px-3 py-1 text-xs text-muted outline-none ring-primary/30 focus:ring-2"
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <form
           className="flex gap-2"
