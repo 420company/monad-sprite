@@ -1,7 +1,6 @@
 // Admin: agent model configuration.
 // Protected by ADMIN_SECRET (entered once, stored in sessionStorage).
-// Lets the admin switch default models for the whole agent system at runtime.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Button from '@/components/Button';
 
 interface AgentConfig {
@@ -18,13 +17,116 @@ interface ModelInfo {
   id: string;
   label: string;
   group: string;
+  cost?: string;
+  official?: string;
+  discount?: number | null;
 }
 
-const FIELDS: Array<{ key: keyof AgentConfig; label: string; hint: string }> = [
-  { key: 'defaultChatModel', label: '对话模型', hint: 'agent 默认用的 LLM' },
-  { key: 'defaultImageModel', label: '画图模型', hint: 'generate_image 默认模型' },
-  { key: 'defaultVideoModel', label: '视频模型', hint: 'generate_video 默认模型' },
-  { key: 'defaultTtsModel', label: '语音模型', hint: 'TTS 默认模型' },
+/** Searchable dropdown that shows cost vs official price. */
+function ModelSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: ModelInfo[];
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = q
+      ? options.filter((m) => m.id.toLowerCase().includes(q) || m.label.toLowerCase().includes(q))
+      : options;
+    // priced models first (we know the numbers), then alphabetical
+    return [...list].sort((a, b) => Number(!!b.cost) - Number(!!a.cost) || a.label.localeCompare(b.label));
+  }, [options, query]);
+
+  const current = options.find((m) => m.id === value);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full rounded-xl bg-background px-3 py-2.5 text-left text-sm outline-none ring-primary/30 focus:ring-2"
+      >
+        <div className="font-medium">{current?.label || value}</div>
+        <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
+          {current?.cost && <span className="text-up">成本 {current.cost}</span>}
+          {current?.official && <span>官方 {current.official}</span>}
+          {current?.discount != null && current.discount > 0 && (
+            <span className="rounded bg-up/15 px-1 text-up">-{current.discount}%</span>
+          )}
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-80 w-full overflow-hidden rounded-xl border border-line bg-card shadow-xl">
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索模型…"
+            className="w-full border-b border-line bg-background px-3 py-2 text-sm outline-none"
+          />
+          <div className="max-h-64 overflow-y-auto">
+            {filtered.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  onChange(m.id);
+                  setOpen(false);
+                  setQuery('');
+                }}
+                className={`block w-full px-3 py-2 text-left text-sm hover:bg-background ${
+                  m.id === value ? 'bg-primary/10' : ''
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{m.label}</span>
+                  {m.id === value && <span className="text-primary">✓</span>}
+                </div>
+                <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
+                  {m.cost ? (
+                    <>
+                      <span className="text-up">成本 {m.cost}</span>
+                      {m.official && <span>官方 {m.official}</span>}
+                      {m.discount != null && m.discount > 0 && (
+                        <span className="rounded bg-up/15 px-1 text-up">-{m.discount}%</span>
+                      )}
+                    </>
+                  ) : (
+                    <span>价格未知</span>
+                  )}
+                </div>
+              </button>
+            ))}
+            {filtered.length === 0 && <div className="px-3 py-4 text-center text-sm text-muted">没有匹配的模型</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const FIELDS: Array<{ key: keyof AgentConfig; label: string; hint: string; group: string }> = [
+  { key: 'defaultChatModel', label: '对话模型', hint: 'agent 默认用的 LLM', group: 'chat' },
+  { key: 'defaultImageModel', label: '画图模型', hint: 'generate_image 默认模型', group: 'image' },
+  { key: 'defaultVideoModel', label: '视频模型', hint: 'generate_video 默认模型', group: 'video' },
+  { key: 'defaultTtsModel', label: '语音模型', hint: 'TTS 默认模型', group: 'chat' },
 ];
 
 export default function AdminModels() {
@@ -129,36 +231,17 @@ export default function AdminModels() {
         <span className="rounded-full bg-up/10 px-3 py-1 text-xs text-up">实时生效</span>
       </div>
 
-      {FIELDS.map(({ key, label, hint }) => {
-        const group = key === 'defaultImageModel' ? 'image' : key === 'defaultVideoModel' ? 'video' : 'chat';
-        const options = modelsFor(group);
-        return (
-          <div key={key} className="rounded-2xl bg-card p-4">
-            <div className="mb-1 font-semibold">{label}</div>
-            <div className="mb-2 text-xs text-muted">{hint}</div>
-            {options.length > 0 ? (
-              <select
-                value={config[key] as string}
-                onChange={(e) => setConfig({ ...config, [key]: e.target.value })}
-                className="w-full rounded-xl bg-background px-3 py-2.5 text-sm outline-none ring-primary/30 focus:ring-2"
-              >
-                {options.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label} ({m.id})
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={config[key] as string}
-                onChange={(e) => setConfig({ ...config, [key]: e.target.value })}
-                className="w-full rounded-xl bg-background px-3 py-2.5 font-mono text-sm outline-none ring-primary/30 focus:ring-2"
-              />
-            )}
-            <div className="mt-1 font-mono text-[11px] text-muted">当前: {config[key] as string}</div>
-          </div>
-        );
-      })}
+      {FIELDS.map(({ key, label, hint, group }) => (
+        <div key={key} className="rounded-2xl bg-card p-4">
+          <div className="mb-1 font-semibold">{label}</div>
+          <div className="mb-2 text-xs text-muted">{hint}</div>
+          <ModelSelect
+            value={config[key] as string}
+            options={modelsFor(group)}
+            onChange={(id) => setConfig({ ...config, [key]: id })}
+          />
+        </div>
+      ))}
 
       <div className="rounded-2xl bg-card p-4">
         <div className="mb-1 font-semibold">TTS 音色</div>
@@ -202,9 +285,7 @@ export default function AdminModels() {
         </Button>
       </div>
 
-      <p className="text-xs text-muted">
-        修改立即生效，无需重新部署。serverless 冷启动后会回到环境变量默认值。
-      </p>
+      <p className="text-xs text-muted">修改立即生效，无需重新部署。serverless 冷启动后会回到环境变量默认值。</p>
     </div>
   );
 }

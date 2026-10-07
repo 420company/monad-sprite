@@ -4,6 +4,7 @@
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getConfig } from './_lib/config.js';
+import { getPrice, formatPrice, discountPct } from './_lib/pricing.js';
 
 const BASE = (process.env.ROUTER_AI_BASE_URL || 'https://api.router.ai').replace(/\/$/, '');
 
@@ -17,6 +18,12 @@ interface ModelInfo {
   id: string;
   label: string;
   group: 'chat' | 'image' | 'video' | 'other';
+  /** luna.gift cost, e.g. "$0.063/$0.126/1M" */
+  cost?: string;
+  /** official retail price for comparison */
+  official?: string;
+  /** discount % vs official (null if unknown) */
+  discount?: number | null;
 }
 
 function classify(id: string): ModelInfo['group'] {
@@ -48,7 +55,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await r.json();
     const ids: string[] = (data.data || []).map((m: { id: string }) => m.id).filter(Boolean);
 
-    const models: ModelInfo[] = ids.map((id) => ({ id, label: label(id), group: classify(id) }));
+    const models: ModelInfo[] = ids.map((id) => {
+      const price = getPrice(id);
+      return {
+        id,
+        label: label(id),
+        group: classify(id),
+        cost: price ? formatPrice(price) : undefined,
+        official: price?.officialIn
+          ? price.unit === '1M'
+            ? `$${price.officialIn}/$${price.officialOut}/1M`
+            : `$${price.officialIn}${price.unit === 'img' ? '/张' : '/秒'}`
+          : undefined,
+        discount: price ? discountPct(price) : null,
+      };
+    });
     // Sort: chat first, then alphabetical
     const order = { chat: 0, image: 1, video: 2, other: 3 };
     models.sort((a, b) => order[a.group] - order[b.group] || a.id.localeCompare(b.id));
