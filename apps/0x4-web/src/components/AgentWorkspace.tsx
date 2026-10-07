@@ -400,6 +400,10 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
   const [listening, setListening] = useState(false)
   const [attachedImages, setAttachedImages] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [balance, setBalance] = useState<number | null>(null)
+  const [showTopup, setShowTopup] = useState(false)
+  const [depositAddr, setDepositAddr] = useState<string | null>(null)
+  const walletAddress = useWallet((s) => s.evmAccount?.address ?? s.evmAddress ?? null)
 
   const nextId = useRef(1)
   const sendingRef = useRef(false)
@@ -411,6 +415,18 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
   const active = convs.find((c) => c.id === activeId) ?? null
   const msgs: ChatMsg[] = active?.messages ?? []
   const model = active?.model ?? 'deepseek-v4-flash'
+
+  // Load billing balance
+  useEffect(() => {
+    if (!walletAddress) return
+    fetch(`/api/billing/balance?wallet=${walletAddress}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d.balance_usd === 'number') setBalance(d.balance_usd)
+        if (d.deposit_address) setDepositAddr(d.deposit_address)
+      })
+      .catch(() => {})
+  }, [walletAddress])
 
   // Load models
   useEffect(() => {
@@ -534,10 +550,17 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
           model,
         }),
       })
-      const data = (await res.json()) as ApiReply
+      const data = (await res.json()) as ApiReply & { billing?: { charged_usd: number; balance_usd: number } }
       if (!res.ok) {
         historyRef.current.pop()
+        if (res.status === 402) {
+          setShowTopup(true)
+          return reply(t('余额不足，请充值 USDT 后继续。'), 'error')
+        }
         return reply(`Backend hiccup: ${data.error || res.status}. Try again in a moment.`, 'error')
+      }
+      if (data.billing && typeof data.billing.balance_usd === 'number') {
+        setBalance(data.billing.balance_usd)
       }
       historyRef.current.push({ role: 'assistant', content: data.reply })
       if (data.tx) proposeTx(data.reply || data.tx.description, data.tx)
@@ -695,8 +718,19 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
             )}
           </div>
 
-          <div className="border-t border-line p-3 text-[11px] text-muted">
-            {t('Monad 测试网 · 交易需钱包签名')}
+          <div className="border-t border-line p-3">
+            {balance !== null && (
+              <button
+                onClick={() => setShowTopup(true)}
+                className="mb-2 flex w-full items-center justify-between rounded-xl bg-primary/10 px-3 py-2 text-sm hover:bg-primary/15"
+              >
+                <span className="text-muted">{t('余额')}</span>
+                <span className="font-semibold text-primary">${balance.toFixed(3)}</span>
+              </button>
+            )}
+            <div className="text-[11px] text-muted">
+              {t('Monad 测试网 · 交易需钱包签名')}
+            </div>
           </div>
         </div>
       </aside>
@@ -869,6 +903,56 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
           </div>
         </div>
       </div>
+
+      {showTopup && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-6" onClick={() => setShowTopup(false)}>
+          <div className="w-full max-w-md rounded-3xl bg-card p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-2 text-lg font-bold">{t('充值 USDT')}</h2>
+            <p className="mb-4 text-sm text-muted">
+              {t('向以下地址转账 USDT (BSC)，1 USDT = $1.00 额度。到账后点击"检查到账"。')}
+            </p>
+            {depositAddr ? (
+              <div className="mb-4 rounded-xl bg-background p-3">
+                <div className="mb-1 text-xs text-muted">BSC {t('充值地址')}</div>
+                <div className="break-all font-mono text-sm">{depositAddr}</div>
+              </div>
+            ) : (
+              <p className="mb-4 text-sm text-down">{t('充值地址未配置，请联系管理员')}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  if (!walletAddress) return
+                  try {
+                    const r = await fetch('/api/billing/deposit', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ wallet: walletAddress }),
+                    })
+                    const d = await r.json()
+                    if (typeof d.balance_usd === 'number') setBalance(d.balance_usd)
+                  } catch {}
+                }}
+                disabled={!depositAddr}
+                className="flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-40"
+              >
+                {t('检查到账')}
+              </button>
+              <button
+                onClick={() => setShowTopup(false)}
+                className="rounded-xl border border-line px-4 py-2.5 text-sm text-muted hover:text-fg"
+              >
+                {t('关闭')}
+              </button>
+            </div>
+            {balance !== null && (
+              <p className="mt-3 text-center text-sm text-muted">
+                {t('当前余额')}: <span className="font-semibold text-primary">${balance.toFixed(3)}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
