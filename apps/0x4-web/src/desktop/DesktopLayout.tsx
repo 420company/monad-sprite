@@ -4,7 +4,7 @@
 // · Bottom status bar: real connection status of the market feed, community service, and wallet.
 // · Narrow screens (web opened in a phone browser): the top bar keeps only the brand and language; tabs move to the bottom capsule bar, as easy to tap as the mobile app.
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { BarChart3, CandlestickChart, Cat, MessageCircle, Moon, Mountain, Repeat, Sun, UserRound, Wallet, WifiOff } from 'lucide-react'
+import { BarChart3, Bot, CandlestickChart, Cat, MessageCircle, Moon, Mountain, Repeat, Rocket, Sun, UserRound, Wallet, WifiOff } from 'lucide-react'
 import { connectWallet, useWalletGate } from './walletGate'
 import { useMarket } from '@/store/market'
 import { isWalletConnected, useWallet } from '@/store/wallet'
@@ -33,6 +33,9 @@ const NAV = [
   // 2026-10-01 goat community merge: "streaming" and "rankings" folded into community (community's left menu: feed / live / meetings / rankings / messages / groups)
   { to: '/community', label: () => t('社区||web-nav'), icon: MessageCircle, match: ['/community', '/live', '/room', '/meet', '/meetings', '/rank', '/messages', '/groups', '/friends', '/g/', '/dm/', '/u/', '/post/', '/official'] },
   { to: '/flies', label: () => t('小精灵||web-nav'), icon: Cat, match: ['/flies', '/fly'] },
+  // Monad hackathon (2026-10-07): AI agent trading + one-click launch on Monad testnet
+  { to: '/agent', label: () => t('Monad AI||web-nav'), icon: Bot, match: ['/agent'] },
+  { to: '/launch', label: () => t('发币||web-nav'), icon: Rocket, match: ['/launch'] },
 ]
 /**
  * Narrow screens (phone browsers) get an extra "Me" in the bottom capsule bar (2026-10-07 goat: the profile center is invisible on phones, its entry buried in the top-right avatar menu):
