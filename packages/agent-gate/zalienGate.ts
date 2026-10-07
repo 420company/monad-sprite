@@ -17,7 +17,7 @@ export const ZALIEN_CONTRACT = "0x40223d0fcF191F573c5B3f6c286D09B363aAdF2D" as c
 /** Zalien testnet counterpart (BSC testnet), for dev only */
 export const ZALIEN_TESTNET_CONTRACT = "0x812dC300b17F1Dc1E520F0649848e1e92E3b56e2" as const;
 /** SpritePass on Monad testnet — free mint, unlocks the agent (deployed 2026-10-07) */
-export const SPRITEPASS_CONTRACT = "0x815250d0314f32fc11c40ddcb60e7439534efb78" as const;
+export const SPRITEPASS_CONTRACT = "0xbf39b3cdc1ae8b29e60715adfb4d962675bb9a6d" as const; // SpritePass v2 - real Zalien artwork via api.zalien.io
 
 const ERC721_MIN_ABI = [
   {
