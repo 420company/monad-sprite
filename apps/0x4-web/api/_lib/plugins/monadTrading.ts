@@ -1,10 +1,9 @@
 /**
- * Tool definitions + executors for the Sprite agent.
- * Trading tools are read-only or return unsigned tx payloads;
- * signing always happens client-side in the user's MetaMask.
+ * Plugin: monad-trading — Monad testnet memecoin tools.
+ * Read-only queries + unsigned tx builders. The server never signs.
  */
-import type { ToolDef } from './router.js';
-import { generateImage } from './router.js';
+import type { AgentPlugin, ToolResult } from '../plugin.js';
+import type { ToolDef } from '../router.js';
 import {
   findToken,
   listTokens,
@@ -13,7 +12,7 @@ import {
   priceFromReserves,
   LAUNCHER,
   type TokenInfo,
-} from './monad.js';
+} from '../monad.js';
 import { encodeFunctionData, parseEther, type Address } from 'viem';
 
 const LAUNCHER_ABI_TX = [
@@ -46,7 +45,7 @@ const LAUNCHER_ABI_TX = [
   },
 ] as const;
 
-export const TOOLS: ToolDef[] = [
+const tools: ToolDef[] = [
   {
     type: 'function',
     function: {
@@ -79,8 +78,7 @@ export const TOOLS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'get_portfolio',
-      description:
-        'Get a wallet\'s MON balance and memecoin holdings on Monad testnet. Needs the user\'s wallet address.',
+      description: "Get a wallet's MON balance and memecoin holdings on Monad testnet.",
       parameters: {
         type: 'object',
         properties: {
@@ -138,64 +136,25 @@ export const TOOLS: ToolDef[] = [
       },
     },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'generate_image',
-      description:
-        'Generate an image with AI (Seedream). Use for memes, art, profile pictures — anything visual the user asks for. Returns a URL to the generated image.',
-      parameters: {
-        type: 'object',
-        properties: {
-          prompt: {
-            type: 'string',
-            description: 'Detailed image prompt in English for best results',
-          },
-        },
-        required: ['prompt'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'run_code',
-      description:
-        'Execute JavaScript code in a sandbox and return stdout/result. For calculations, data processing, quick scripts. No network, no filesystem. Timeout 5s.',
-      parameters: {
-        type: 'object',
-        properties: {
-          code: { type: 'string', description: 'JavaScript code. Use console.log or a final expression for output.' },
-        },
-        required: ['code'],
-      },
-    },
-  },
 ];
-
-export interface ToolResult {
-  ok: boolean;
-  data?: unknown;
-  /** Unsigned tx for the frontend to sign (buy/sell/launch). */
-  tx?: { to: string; data: string; value: string; description: string };
-  error?: string;
-}
 
 function txPayload(to: string, data: string, value: string, description: string): ToolResult {
   return { ok: true, tx: { to, data, value, description } };
 }
 
-export async function executeTool(
-  name: string,
-  args: Record<string, unknown>,
-): Promise<ToolResult> {
-  try {
-    switch (name) {
+export const monadTradingPlugin: AgentPlugin = {
+  name: 'monad-trading',
+  version: '1.0.0',
+  description: 'Monad testnet memecoin trading: prices, portfolio, unsigned buy/sell/launch transactions',
+  tools,
+
+  async execute(toolName: string, args: Record<string, unknown>): Promise<ToolResult> {
+    switch (toolName) {
       case 'get_token_price': {
         const t = await findToken(String(args.query));
         if (!t) return { ok: false, error: `Token "${args.query}" not found on MemeLauncher` };
         const price = priceFromReserves(t.reserveMON, t.reserveToken);
-        const mcap = parseFloat(t.reserveMON) * 2; // rough: curve holds ~half supply value
+        const mcap = parseFloat(t.reserveMON) * 2;
         return {
           ok: true,
           data: {
@@ -261,12 +220,7 @@ export async function executeTool(
           functionName: 'sell',
           args: [BigInt(t.id), amount],
         });
-        return txPayload(
-          LAUNCHER,
-          data,
-          '0',
-          `Sell ${args.amount_tokens} ${t.symbol}`,
-        );
+        return txPayload(LAUNCHER, data, '0', `Sell ${args.amount_tokens} ${t.symbol}`);
       }
       case 'prepare_launch': {
         const data = encodeFunctionData({
@@ -274,46 +228,10 @@ export async function executeTool(
           functionName: 'createToken',
           args: [String(args.name), String(args.symbol)],
         });
-        return txPayload(
-          LAUNCHER,
-          data,
-          '0',
-          `Launch token ${args.name} (${args.symbol})`,
-        );
-      }
-      case 'generate_image': {
-        const url = await generateImage(String(args.prompt));
-        return { ok: true, data: { image_url: url, prompt: args.prompt } };
-      }
-      case 'run_code': {
-        const code = String(args.code);
-        if (code.length > 2000) return { ok: false, error: 'Code too long (max 2000 chars)' };
-        // Block obvious escape attempts
-        if (/require\s*\(|import\s|process|globalThis|constructor|prototype|__proto__|fetch\s*\(|XMLHttpRequest/.test(code)) {
-          return { ok: false, error: 'Blocked: code uses restricted APIs' };
-        }
-        const logs: string[] = [];
-        const sandboxConsole = { log: (...a: unknown[]) => logs.push(a.map(String).join(' ')) };
-        try {
-          const fn = new Function(
-            'console',
-            'Math',
-            'JSON',
-            `"use strict"; const out = (function(){ ${code} })(); return out;`,
-          );
-          const result = fn(sandboxConsole, Math, JSON);
-          return {
-            ok: true,
-            data: { logs, result: result === undefined ? null : String(result).slice(0, 2000) },
-          };
-        } catch (e) {
-          return { ok: false, error: `Execution error: ${(e as Error).message.slice(0, 300)}` };
-        }
+        return txPayload(LAUNCHER, data, '0', `Launch token ${args.name} (${args.symbol})`);
       }
       default:
-        return { ok: false, error: `Unknown tool: ${name}` };
+        return { ok: false, error: `Unknown tool: ${toolName}` };
     }
-  } catch (e) {
-    return { ok: false, error: `Tool error: ${(e as Error).message.slice(0, 300)}` };
-  }
-}
+  },
+};

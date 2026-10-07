@@ -3,7 +3,7 @@
  * and the Telegram webhook (api/telegram.ts).
  */
 import { chatCompletions, DEFAULT_MODEL, type ChatMessage } from './router.js';
-import { TOOLS, executeTool } from './tools.js';
+import { registry } from './plugins/index.js';
 
 export const SYSTEM_PROMPT = `You are Sprite, the AI agent of monad-sprite — a Monad-native memecoin terminal. You are a sharp, capable, slightly playful assistant, like a crypto-native friend who actually gets things done.
 
@@ -58,7 +58,7 @@ export async function runAgent(opts: {
     const out = await chatCompletions({
       model: opts.model || DEFAULT_MODEL,
       messages: convo,
-      tools: TOOLS,
+      tools: registry.allTools(),
     });
     usage = out.usage;
 
@@ -78,7 +78,7 @@ export async function runAgent(opts: {
       if (tc.function.name === 'get_portfolio' && opts.wallet && !args.wallet) {
         args.wallet = opts.wallet;
       }
-      const result = await executeTool(tc.function.name, args);
+      const result = await registry.execute(tc.function.name, args);
       if (result.tx) pendingTx = result.tx;
       const data = result as unknown as { image_url?: string };
       if (result.ok && data.data && typeof data.data === 'object' && 'image_url' in data.data) {
