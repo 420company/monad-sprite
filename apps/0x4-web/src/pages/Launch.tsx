@@ -27,12 +27,17 @@ const HOW_IT_WORKS = [
   { title: '开始交易', desc: 'bonding curve 定价，越早买越便宜' },
 ] as const
 
+/** Emoji icon picker — pure UI (the contract only stores name/symbol on-chain) */
+const ICON_CHOICES = ['🚀', '🐱', '🐶', '🦄', '🐸', '🔥', '💎', '🌙', '⚡', '🍌', '🐳', '👻'] as const
+
 export default function Launch() {
   const nav = useNavigate()
   const connected = useWallet(isWalletConnected)
   const evmAccount = useWallet((s) => s.evmAccount)
   const [name, setName] = useState('')
   const [symbol, setSymbol] = useState('')
+  const [icon, setIcon] = useState<string>(ICON_CHOICES[0])
+  const [desc, setDesc] = useState('')
   const [busy, setBusy] = useState(false)
   const [monBalance, setMonBalance] = useState<string | null>(null)
   const [recent, setRecent] = useState<LauncherToken[] | null>(null)
@@ -125,6 +130,24 @@ export default function Launch() {
           </div>
 
           <div className="space-y-3 rounded-2xl bg-card p-4">
+            <div>
+              <span className="mb-1.5 block text-sm text-muted">{t('图标')}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {ICON_CHOICES.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setIcon(e)}
+                    aria-label={t('选择图标 {e}', { e })}
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl transition ${
+                      icon === e ? 'bg-primary/20 ring-2 ring-primary' : 'bg-background hover:bg-background/70'
+                    }`}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
             <label className="block">
               <span className="mb-1 block text-sm text-muted">{t('币名')}</span>
               <input
@@ -145,6 +168,35 @@ export default function Launch() {
                 className="w-full rounded-xl bg-background px-3 py-2.5 text-[15px] uppercase outline-none ring-primary/30 focus:ring-2"
               />
             </label>
+            <label className="block">
+              <span className="mb-1 block text-sm text-muted">{t('简介（选填）')}</span>
+              <textarea
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder={t('一句话介绍你的币，比如：第一只登上 Monad 的猫')}
+                maxLength={140}
+                rows={2}
+                className="w-full resize-none rounded-xl bg-background px-3 py-2.5 text-[15px] outline-none ring-primary/30 focus:ring-2"
+              />
+            </label>
+          </div>
+
+          {/* Live preview — pump.fun style card */}
+          <div className="rounded-2xl border border-line bg-card p-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{t('预览')}</div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-2xl">
+                {icon}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-bold">{name.trim() || t('你的币名')}</div>
+                <div className="text-xs text-muted">${symbol.trim() || 'TICKER'}</div>
+                {desc.trim() && <div className="mt-0.5 truncate text-xs text-muted">{desc.trim()}</div>}
+              </div>
+              <span className="shrink-0 rounded-full bg-accent/15 px-2 py-1 text-[11px] font-semibold text-accent">
+                bonding curve
+              </span>
+            </div>
           </div>
 
           <Button onClick={submit} disabled={busy || !name.trim() || !symbol.trim()} className="w-full">

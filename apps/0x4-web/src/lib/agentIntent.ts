@@ -13,6 +13,7 @@ export type AgentIntent =
   | { kind: 'buy'; monWei: bigint; amount: string; token: TokenRef }
   | { kind: 'sell'; tokenWei: bigint; amount: string; token: TokenRef }
   | { kind: 'price'; token: TokenRef }
+  | { kind: 'portfolio' }
   | { kind: 'help' }
   | { kind: 'unknown'; reason: string }
 
@@ -45,11 +46,12 @@ export function tokenLabel(ref: TokenRef): string {
 }
 
 export const HELP_TEXT =
-  'I understand three commands:\n' +
+  'Here is what I can do:\n' +
   '- buy <amount> MON of <TOKEN>   e.g. "buy 0.1 MON of SPRITE"\n' +
   '- sell <amount> <TOKEN>         e.g. "sell 100 SPRITE"\n' +
   '- price <TOKEN>                 e.g. "price SPRITE"\n' +
-  'TOKEN can be a ticker or a 0x contract address. Every trade asks for confirmation first.'
+  '- portfolio                     show everything you hold\n' +
+  'TOKEN can be a ticker or a 0x contract address. I always show a confirmation card before anything goes on-chain.'
 
 /** Parse one chat line into an intent. Never throws. */
 export function parseIntent(input: string): AgentIntent {
@@ -60,6 +62,10 @@ export function parseIntent(input: string): AgentIntent {
   const verb = lower[0]
 
   if (verb === 'help' || verb === '?' || verb === 'commands') return { kind: 'help' }
+
+  if (verb === 'portfolio' || verb === 'holdings' || verb === 'balance' || verb === 'balances' || lower.join(' ') === 'my holdings' || lower.join(' ') === 'my portfolio') {
+    return { kind: 'portfolio' }
+  }
 
   if (verb === 'buy') {
     // buy <amount> [mon] [worth] [of] <token>

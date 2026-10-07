@@ -8,7 +8,7 @@ const CACHE_MS = 60_000
 let cache: { at: number; tokens: LauncherToken[] } | null = null
 
 /** All launcher tokens (first 50 by creation order, see listLauncherTokens), cached for a minute */
-async function launcherTokens(force = false): Promise<LauncherToken[]> {
+export async function launcherTokens(force = false): Promise<LauncherToken[]> {
   if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache.tokens
   const addresses = await listLauncherTokens()
   const infos = await Promise.all(addresses.map((a) => getLauncherToken(a)))

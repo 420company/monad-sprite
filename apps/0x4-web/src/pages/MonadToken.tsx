@@ -16,7 +16,6 @@ import { chainById } from '@/lib/chains'
 import { getEvmTokenBalance } from '@/lib/evm'
 import {
   MONAD_TESTNET_ID,
-  LAUNCHER_ADDRESS,
   getLauncherToken,
   getLauncherPrice,
   quoteLauncherBuy,
@@ -146,6 +145,8 @@ export default function MonadToken() {
   }
 
   const priceMon = price !== null ? Number(price) / WEI : null
+  // Market cap in MON = current price × total supply
+  const mcapMon = priceMon !== null && info ? priceMon * (Number(info.supply) / WEI) : null
 
   return (
     <div className="safe-top pb-24">
@@ -176,10 +177,10 @@ export default function MonadToken() {
         <section className="page-gutter mt-2" aria-label={t('市场数据')}>
           <dl className="grid grid-cols-2 gap-x-5">
             {[
+              [t('市值'), mcapMon !== null ? `${fmtAmount(mcapMon, 4)} MON` : '--'],
               [t('发行量'), fmtAmount(Number(info.supply) / WEI, 0)],
               [t('储备 MON'), fmtAmount(Number(info.reserve) / WEI, 4)],
               [t('我的持仓'), balance !== null ? `${fmtAmount(Number(balance) / WEI, 4)} ${info.symbol}` : '--'],
-              [t('合约'), shortAddr(LAUNCHER_ADDRESS)],
             ].map(([k, v]) => (
               <div key={k} className="min-w-0 border-b border-line py-3">
                 <dt className="text-xs text-muted">{k}</dt>
@@ -189,12 +190,37 @@ export default function MonadToken() {
           </dl>
         </section>
 
+        {/* Bonding curve visual — pump.fun style */}
+        <section className="page-gutter mt-4" aria-label={t('价格曲线')}>
+          <div className="rounded-2xl bg-card p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-semibold">{t('Bonding Curve')}</span>
+              <span className="text-xs text-muted">{t('买入推高价格，卖出沿曲线赎回')}</span>
+            </div>
+            <BondingCurveChart supply={Number(info.supply) / WEI} />
+          </div>
+        </section>
+
         {!connected ? (
           <p className="page-gutter mt-6 text-sm text-muted">{t('连接钱包后可买卖')}</p>
         ) : (
           <section className="page-gutter mt-6 space-y-4" aria-label={t('买卖')}>
             <div className="rounded-2xl bg-card p-4">
               <h2 className="mb-3 text-sm font-semibold text-up">{t('买入')}</h2>
+              <div className="mb-2 flex gap-1.5">
+                {['0.1', '0.5', '1', '5'].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setBuyAmt(v)}
+                    className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition ${
+                      buyAmt === v ? 'bg-up/20 text-up' : 'bg-background text-muted hover:text-fg'
+                    }`}
+                  >
+                    {v} MON
+                  </button>
+                ))}
+              </div>
               <div className="flex gap-2">
                 <input
                   value={buyAmt}
@@ -254,6 +280,36 @@ export default function MonadToken() {
         </p>
       </div>
     </div>
+  )
+}
+
+/** Simple bonding-curve visualization: price rises with supply (SVG, no deps) */
+function BondingCurveChart({ supply }: { supply: number }) {
+  const W = 320
+  const H = 120
+  const P = 12
+  const pts: string[] = []
+  for (let i = 0; i <= 40; i++) {
+    const x = (i / 40) * (W - 2 * P) + P
+    const y = H - P - Math.pow(i / 40, 1.8) * (H - 2 * P)
+    pts.push(`${x.toFixed(1)},${y.toFixed(1)}`)
+  }
+  const t = 0.85
+  const curX = P + t * (W - 2 * P)
+  const curY = H - P - Math.pow(t, 1.8) * (H - 2 * P)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Bonding curve">
+      <defs>
+        <linearGradient id="bcurve" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <polygon points={`${P},${H - P} ${pts.join(' ')} ${W - P},${H - P}`} fill="url(#bcurve)" />
+      <polyline points={pts.join(' ')} fill="none" stroke="var(--color-primary)" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx={curX} cy={curY} r="5" fill="var(--color-primary)" stroke="#fff" strokeWidth="2" />
+      <text x={P} y={H - 1} fontSize="9" fill="var(--color-muted)">{supply > 0 ? 'supply →' : 'be the first buy'}</text>
+    </svg>
   )
 }
 

@@ -14,7 +14,7 @@ import { getEvmTokenBalance } from '@/lib/evm'
 import { errorText } from '@/lib/errors'
 import { fmtAmount, shortAddr } from '@/lib/format'
 import { HELP_TEXT, parseIntent } from '@/lib/agentIntent'
-import { resolveLauncherToken } from '@/lib/agentTokens'
+import { launcherTokens, resolveLauncherToken } from '@/lib/agentTokens'
 import {
   MONAD_TESTNET_ID,
   buyLauncherToken,
@@ -28,6 +28,13 @@ import {
 /** Hard guard: the agent may only send real transactions on Monad testnet */
 const AGENT_CHAIN_ID = 10143
 const FAUCET_URL = 'https://faucet.monad.xyz'
+
+/** Rotating status lines while the agent "thinks" — gives it a living feel */
+const THINKING_LINES = [
+  'Reading Monad testnet…',
+  'Checking the bonding curve…',
+  'Asking the chain…',
+]
 
 type TxStatus = 'pending' | 'sending' | 'done' | 'failed' | 'cancelled'
 
@@ -54,7 +61,7 @@ interface Msg {
 /** Wei (18 decimals) to a short display string */
 const fmtWei = (wei: bigint, digits = 4) => fmtAmount(Number(formatEther(wei)), digits)
 
-const EXAMPLES = ['price SPRITE', 'buy 0.1 MON of SPRITE', 'sell 100 SPRITE']
+const EXAMPLES = ['price SPRITE', 'buy 0.1 MON of SPRITE', 'portfolio']
 
 export default function AgentChat({ zalienCount }: { zalienCount: number }) {
   const evmAccount = useWallet((s) => s.evmAccount)
@@ -63,17 +70,19 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
       id: 0,
       from: 'agent',
       text:
-        `Agent unlocked by your Zalien${zalienCount > 1 ? ` (${zalienCount} held)` : ''}. ` +
-        'I trade MemeLauncher tokens on Monad testnet. Try "price SPRITE" or "buy 0.1 MON of SPRITE". ' +
-        'I always ask before sending a transaction.',
+        `Hey! Your Zalien${zalienCount > 1 ? `s (${zalienCount} held)` : ''} unlocked me. ` +
+        `I'm your on-chain trader for Monad testnet — I can check prices, buy and sell bonding-curve tokens, ` +
+        `and show your portfolio. Let me take a quick look at your wallet…`,
     },
   ])
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
+  const [thinkLine, setThinkLine] = useState(0)
   const nextId = useRef(1)
   // Synchronous lock so a double click cannot send the same proposal twice
   const sendingRef = useRef(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const briefedRef = useRef(false)
 
   const explorer = chainById(MONAD_TESTNET_ID)?.viem?.blockExplorers?.default.url
 
@@ -82,6 +91,55 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
     const el = listRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [msgs, thinking])
+
+  // Rotate the thinking line so it feels alive
+  useEffect(() => {
+    if (!thinking) return
+    const t = setInterval(() => setThinkLine((n) => (n + 1) % THINKING_LINES.length), 1200)
+    return () => clearInterval(t)
+  }, [thinking])
+
+  // Proactive portfolio briefing right after unlock: MON balance + launcher holdings
+  useEffect(() => {
+    if (briefedRef.current || !evmAccount) return
+    briefedRef.current = true
+    ;(async () => {
+      try {
+        const me = evmAccount.address
+        const [monBal, tokens] = await Promise.all([
+          getEvmTokenBalance(MONAD_TESTNET_ID, me, NATIVE_EVM),
+          launcherTokens(),
+        ])
+        const holdings: { token: LauncherToken; bal: bigint }[] = []
+        for (const tk of tokens) {
+          try {
+            const b = await getEvmTokenBalance(MONAD_TESTNET_ID, me, tk.address)
+            if (b > 0n) holdings.push({ token: tk, bal: b })
+          } catch { /* skip unreadable balances */ }
+        }
+        const monStr = fmtWei(monBal)
+        if (!holdings.length) {
+          push({
+            from: 'agent',
+            text:
+              `You've got ${monStr} MON in the wallet and no launcher tokens yet. ` +
+              `Want me to check a price, or shall we grab some SPRITE to start? Try "price SPRITE".`,
+          })
+        } else {
+          const lines = holdings.map((h) => `• ${fmtWei(h.bal, 2)} ${h.token.symbol}`).join('\n')
+          push({
+            from: 'agent',
+            text:
+              `Here's what I see:\n${lines}\n• ${monStr} MON ready to trade\n\n` +
+              `Say "portfolio" anytime for a refresh, or tell me what to buy.`,
+          })
+        }
+      } catch {
+        push({ from: 'agent', text: 'Wallet check hiccuped — but I\'m ready. Try "price SPRITE" or "portfolio".' })
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evmAccount])
 
   const push = (m: Omit<Msg, 'id'>) => setMsgs((list) => [...list, { ...m, id: nextId.current++ }])
   const reply = (text: string, tone?: 'error') => push({ from: 'agent', text, tone })
@@ -102,24 +160,46 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
     push({ from: 'user', text })
     const intent = parseIntent(text)
     if (intent.kind === 'help') return reply(HELP_TEXT)
-    if (intent.kind === 'unknown') return reply(intent.reason)
+    if (intent.kind === 'unknown') return reply(`Hmm, I didn't catch that. ${intent.reason}`)
 
     setThinking(true)
     try {
+      // Portfolio: MON balance + every launcher token holding
+      if (intent.kind === 'portfolio') {
+        if (!evmAccount) return reply('Connect a wallet first and I\'ll show you everything in it.', 'error')
+        const me = evmAccount.address
+        const [monBal, tokens] = await Promise.all([
+          getEvmTokenBalance(MONAD_TESTNET_ID, me, NATIVE_EVM),
+          launcherTokens(),
+        ])
+        const holdings: { token: LauncherToken; bal: bigint }[] = []
+        for (const tk of tokens) {
+          try {
+            const b = await getEvmTokenBalance(MONAD_TESTNET_ID, me, tk.address)
+            if (b > 0n) holdings.push({ token: tk, bal: b })
+          } catch { /* skip */ }
+        }
+        if (!holdings.length) {
+          return reply(`Your wallet holds ${fmtWei(monBal)} MON and no launcher tokens yet. Say "price SPRITE" and let's change that.`)
+        }
+        const lines = holdings.map((h) => `• ${fmtWei(h.bal, 2)} ${h.token.symbol} (${h.token.name})`).join('\n')
+        return reply(`Here's your Monad testnet portfolio:\n${lines}\n• ${fmtWei(monBal)} MON\n\nWant to buy more of something, or cash out?`)
+      }
+
       const found = await resolveLauncherToken(intent.token)
       if (!found.ok) return reply(found.error, 'error')
       const { token, duplicates } = found
-      const dupNote = duplicates ? ` Note: ${duplicates + 1} tokens use the ticker ${token.symbol}; using the newest one (${shortAddr(token.address)}).` : ''
+      const dupNote = duplicates ? ` (Heads up: ${duplicates + 1} tokens share the ticker ${token.symbol} — I'm using the newest, ${shortAddr(token.address)}.)` : ''
 
       if (intent.kind === 'price') {
         const price = await getLauncherPrice(token.address)
         return reply(
-          `${token.symbol} (${token.name}): ${fmtWei(price, 8)} MON per token, read on-chain from the bonding curve. ` +
-            `Reserve ${fmtWei(token.reserve)} MON, supply ${fmtWei(token.supply, 0)}.${dupNote}`,
+          `${token.symbol} (${token.name}) is going for ${fmtWei(price, 8)} MON per token right now, straight off the bonding curve. ` +
+            `There's ${fmtWei(token.reserve)} MON in reserve backing ${fmtWei(token.supply, 0)} tokens.${dupNote} Want some?`,
         )
       }
 
-      if (!evmAccount) return reply('Connect a wallet to trade.', 'error')
+      if (!evmAccount) return reply('Connect a wallet first — I can\'t trade without one.', 'error')
       const me = evmAccount.address
 
       if (intent.kind === 'buy') {
@@ -128,9 +208,13 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
           quoteLauncherBuy(token.address, intent.monWei),
         ])
         if (balance < intent.monWei) {
-          return reply(`Not enough testnet MON: you have ${fmtWei(balance)} MON, this buy needs ${intent.amount} MON (plus gas). Get test MON at ${FAUCET_URL}`, 'error')
+          return reply(
+            `That'd cost ${intent.amount} MON plus gas, but you've only got ${fmtWei(balance)} MON. ` +
+              `Top up at ${FAUCET_URL} and we'll try again.`,
+            'error',
+          )
         }
-        return proposeTx(`Here is the trade I would place. Please confirm.${dupNote}`, {
+        return proposeTx(`Got it — ${intent.amount} MON into ${token.symbol}, which should get you around ${fmtWei(quote, 2)} tokens at the current curve. Take a look and confirm if you're happy.${dupNote}`, {
           side: 'buy', token, amountWei: intent.monWei, quoteWei: quote,
         })
       }
@@ -141,13 +225,13 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
         quoteLauncherSell(token.address, intent.tokenWei),
       ])
       if (balance < intent.tokenWei) {
-        return reply(`Not enough ${token.symbol}: you hold ${fmtWei(balance)}, tried to sell ${intent.amount}.`, 'error')
+        return reply(`You only hold ${fmtWei(balance)} ${token.symbol}, so selling ${intent.amount} won't work. Want to sell what you've got?`, 'error')
       }
-      return proposeTx(`Here is the trade I would place. Please confirm.${dupNote}`, {
+      return proposeTx(`Selling ${intent.amount} ${token.symbol} should get you back about ${fmtWei(quote, 6)} MON. Confirm and I'll send it.${dupNote}`, {
         side: 'sell', token, amountWei: intent.tokenWei, quoteWei: quote,
       })
     } catch (e) {
-      reply(`Could not reach Monad testnet: ${e instanceof Error ? e.message.split('\n')[0] : 'unknown error'}`, 'error')
+      reply(`The chain didn't answer: ${e instanceof Error ? e.message.split('\n')[0] : 'unknown error'}. Give it a moment and try again.`, 'error')
     } finally {
       setThinking(false)
     }
@@ -201,7 +285,7 @@ export default function AgentChat({ zalienCount }: { zalienCount: number }) {
             </div>
           </div>
         ))}
-        {thinking && <p className="pl-9 text-xs text-muted">Reading Monad testnet...</p>}
+        {thinking && <p className="pl-9 text-xs text-muted">{THINKING_LINES[thinkLine]}</p>}
       </div>
 
       <div className="border-t border-line p-3">
@@ -275,12 +359,12 @@ function TxCard({ tx, explorer, onConfirm, onCancel }: { tx: TxProposal; explore
           </Button>
         </div>
       )}
-      {tx.status === 'sending' && <p className="mt-3 text-xs text-muted">Waiting for your wallet and the chain...</p>}
-      {tx.status === 'cancelled' && <p className="mt-3 text-xs text-muted">Cancelled. Nothing was sent.</p>}
+      {tx.status === 'sending' && <p className="mt-3 text-xs text-muted">Waiting for your wallet signature and the chain…</p>}
+      {tx.status === 'cancelled' && <p className="mt-3 text-xs text-muted">No worries — cancelled, nothing left your wallet.</p>}
       {tx.status === 'failed' && <p className="mt-3 text-xs text-down">{tx.error}</p>}
       {tx.status === 'done' && tx.hash && (
         <p className="mt-3 text-xs text-up">
-          Confirmed on Monad testnet.{' '}
+          Done — it's on-chain.{' '}
           {explorer ? (
             <a href={`${explorer}/tx/${tx.hash}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary">
               View transaction <ExternalLink size={12} />

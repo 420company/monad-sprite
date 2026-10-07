@@ -3878,5 +3878,13 @@
  "还没有人发币，来当第一个": "No launches yet — be the first",
  "比如：Monad Sprite": "e.g. Monad Sprite",
  "Monad AI": "Monad AI",
- "发币": "Launch"
+ "发币": "Launch",
+ "图标": "Icon",
+ "选择图标 {e}": "Pick icon {e}",
+ "简介（选填）": "Description (optional)",
+ "一句话介绍你的币，比如：第一只登上 Monad 的猫": "One line about your coin, e.g. the first cat on Monad",
+ "预览": "Preview",
+ "你的币名": "Your coin name",
+ "Bonding Curve": "Bonding Curve",
+ "买入推高价格，卖出沿曲线赎回": "Buys push the price up, sells redeem along the curve"
 }
