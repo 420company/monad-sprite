@@ -1,0 +1,32 @@
+# 密钥与本地配置 —— 绝不提交
+.env
+.env.local
+*.pem
+*.key
+id_ed25519*
+config.local.yaml
+
+# 依赖与构建
+node_modules/
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# 日志与本地数据
+*.log
+packages/cli/data/
+*.json.bak
+__pycache__/
+*.pyc
+
+# 系统
+.DS_Store
+.idea/
+.vscode/

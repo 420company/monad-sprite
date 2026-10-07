@@ -1,0 +1,21 @@
+# monad小精灵配置（YAML 默认值 < 环境变量覆盖）
+# 复制一份改，别直接提交带真实值的版本（本文件只放默认值）
+
+chain:
+  id: 10143                       # Monad testnet；mainnet=143（P2）
+  rpc: https://testnet-rpc.monad.xyz
+
+radar:
+  api: ""                         # Rug Radar 服务地址，如 http://localhost:3001；为空则跳过评分门禁
+
+executor:
+  monPriceUsd: 1                  # 测试网 MON 计价（paper 只关心相对收益）
+
+guard:
+  equity: 1000
+  minRadarScore: 60
+  dangerScore: 35
+  maxSlippagePct: 0.03
+
+paper:
+  intervalMs: 30000               # paper 循环间隔

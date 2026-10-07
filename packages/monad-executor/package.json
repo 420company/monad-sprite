@@ -1,0 +1,15 @@
+{
+  "name": "@monad-sprite/monad-executor",
+  "version": "0.1.0",
+  "description": "Monad 执行层：viem 直连 testnet，paper/live 双模式",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "viem": "^2.57.3"
+  }
+}
