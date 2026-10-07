@@ -1,0 +1,69 @@
+// 通话提示音：用 WebAudio 现场合成，不带音频文件。
+//   来电 ring：两声短促的双音（像手机铃），每 2.4 秒一轮
+//   回铃 ringback：主叫等待时 1 秒长音、停 3 秒（国内回铃音 450Hz）
+//
+// iOS / 部分浏览器要求 AudioContext 在用户点按里创建或恢复，来电时往往没有点按，
+// 所以第一次触屏就先把上下文解锁好，之后来电就能直接响。解锁不了就只震动。
+let ctx: AudioContext | null = null
+let timer: ReturnType<typeof setInterval> | null = null
+let master: GainNode | null = null
+
+function context(): AudioContext | null {
+  if (ctx) return ctx
+  const AC = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext
+    || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!AC) return null
+  try { ctx = new AC() } catch { return null }
+  return ctx
+}
+
+/** 挂一次：之后的第一次触屏顺手解锁音频 */
+export function primeRingtone(): void {
+  if (typeof window === 'undefined') return
+  const unlock = () => { const c = context(); if (c && c.state === 'suspended') void c.resume().catch(() => {}) }
+  window.addEventListener('pointerdown', unlock, { once: true, capture: true })
+}
+
+function beep(c: AudioContext, out: AudioNode, freqs: number[], start: number, dur: number, vol: number) {
+  const g = c.createGain()
+  g.gain.setValueAtTime(0, start)
+  g.gain.linearRampToValueAtTime(vol, start + 0.02)
+  g.gain.setValueAtTime(vol, start + dur - 0.04)
+  g.gain.linearRampToValueAtTime(0, start + dur)
+  g.connect(out)
+  for (const f of freqs) {
+    const o = c.createOscillator()
+    o.type = 'sine'
+    o.frequency.value = f
+    o.connect(g)
+    o.start(start)
+    o.stop(start + dur + 0.02)
+  }
+}
+
+export function stopRingtone(): void {
+  if (timer) { clearInterval(timer); timer = null }
+  if (master) { try { master.disconnect() } catch { /* ignore */ } master = null }
+}
+
+export function playRingtone(kind: 'ring' | 'ringback'): void {
+  stopRingtone()
+  const c = context()
+  if (!c) return
+  if (c.state === 'suspended') void c.resume().catch(() => {})
+  const out = c.createGain()
+  out.connect(c.destination)
+  master = out
+  const round = () => {
+    const now = c.currentTime + 0.05
+    if (kind === 'ring') {
+      beep(c, out, [880, 1318.5], now, 0.18, 0.16)
+      beep(c, out, [880, 1318.5], now + 0.26, 0.18, 0.16)
+      beep(c, out, [1046.5, 1568], now + 0.52, 0.28, 0.14)
+    } else {
+      beep(c, out, [450], now, 1, 0.12)
+    }
+  }
+  round()
+  timer = setInterval(round, kind === 'ring' ? 2400 : 4000)
+}

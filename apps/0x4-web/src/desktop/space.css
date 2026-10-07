@@ -1,0 +1,262 @@
+/* 网页版第三种外观「空间」（2026-10-03 goat 从 Gemini 方向里选了 5「空间悬浮」，参考 Vision Pro，资料 docs/art-src/glass-directions/03-flash）。
+   建在深色主题上（<html data-theme="dark" data-look="space">，文字是白的），只在网页版、宽屏下有：
+   ① 背景：一张虚化的照片（space.ts 铺的 .sp-wall，内置 7 张或用户自己的图），压一层暗角，玻璃才看得清。
+   ② 窗口：深色烟晶玻璃，大圆角，没有边框和分割线，只有顶边一道细天光；交易终端的面板更不透明。
+   ③ 漂浮控件：栏目变成左边一根竖着的玻璃图标栏；品牌、右上工具各自一颗胶囊；底部状态栏缩成居中的一颗胶囊。
+   ④ 颜色焦点：主按钮暖橙到珊瑚的渐变带光晕（goat：玻璃界面里主按钮要有颜色、会发光）；买入绿光、卖出红光。
+   ⑤ 弹窗出来时，后面的主窗口往后退一点（缩小），有空间纵深。
+   液态选中块、水波、透镜的机制和香芋白共用（light.css 里写成 :is(light, space)，liquid.ts / lens.ts）。
+   ★只写标准 backdrop-filter / mask。★带 backdrop-filter 的元素会成为里面 position:fixed 元素的定位框：左边图标栏是 fixed，
+     所以顶栏那几颗胶囊的玻璃画在 ::before 上，不写在 .desk-bar-in 本身。
+   ★弹窗时主窗口只用 transform 后退，不用 filter / opacity：那两个会让里面的玻璃面板「看不到」背景照片。 */
+
+html:root[data-surface="web"][data-look="space"] {
+  --w-bg: rgb(10 12 18 / .45);
+  --w-panel: rgb(22 24 34 / .55);
+  --w-raised: rgb(255 255 255 / .08);
+  --w-hover: rgb(255 255 255 / .13);
+  --w-line: rgb(255 255 255 / .08);
+  --w-line-2: rgb(255 255 255 / .16);
+  --w-mute: #aeb4c2;
+  --w-faint: #7f8696;
+  --w-status-h: 46px;
+  /* 玻璃三档：普通窗口 / 看数字的窗口 / 浮在最上面的（菜单、弹窗、胶囊） */
+  --sp-glass: rgb(20 22 32 / .58);
+  --sp-glass-dense: rgb(16 18 27 / .76);
+  --sp-glass-top: rgb(30 32 44 / .62);
+  --sp-blur: blur(16px) saturate(170%);
+  --sp-edge: inset 0 1px 1px rgb(255 255 255 / .2), inset 0 -1px 1px rgb(0 0 0 / .35), inset 0 0 0 1px rgb(255 255 255 / .05);
+  --sp-shadow: var(--sp-edge), 0 30px 60px -22px rgb(0 0 0 / .6);
+  --sp-cta: linear-gradient(100deg, #ffa246 0%, #ff6247 55%, #ff3f7a 100%);
+  --lq-spring: cubic-bezier(.34, 1.36, .64, 1);
+}
+
+/* ---------- ① 背景照片 ---------- */
+.sp-wall { display: none; }
+html[data-surface="web"][data-look="space"] body { background: #12141b; }
+html[data-surface="web"][data-look="space"] .desk { background: transparent; }
+/* 只在宽屏铺照片：窄屏（手机浏览器打开网页版）用的是手机版页面，直接压在照片上对比度不稳，按深色底显示 */
+@media (min-width: 900px) {
+  html[data-surface="web"][data-look="space"] .sp-wall { display: block; position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: #12141b; }
+}
+/* 铺得比屏幕大一圈：模糊的边缘和视差平移都不会露底 */
+.sp-wall i { position: absolute; inset: -48px; background: center / cover no-repeat; filter: blur(18px) saturate(1.12) brightness(.94); transform: translate3d(var(--sp-x, 0px), var(--sp-y, 0px), 0); will-change: transform; transition: opacity .6s; }
+/* 暗角 + 整体压暗一点：标题这些在窗口外面的字也看得清 */
+/* --sp-dim 由 space.ts 按这张图的平均亮度算（暗图 .12、很亮的图到 .5）：换成亮背景时窗口外的字照样看得清 */
+.sp-wall::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 95% at 50% 42%, rgb(6 8 14 / 0), rgb(6 8 14 / .4)), linear-gradient(rgb(6 8 14 / var(--sp-dim, .2)), rgb(6 8 14 / calc(var(--sp-dim, .2) + .1))); transition: background .6s; }
+/* 窗口外面的字加一点影子（交易终端不加：数字跳得快，影子每次都要重画）。只在宽屏：窄屏没有照片背景，影子只会让手机版页面的字发虚（私信气泡里尤其明显） */
+@media (min-width: 900px) {
+  html[data-surface="web"][data-look="space"] .desk:not(.desk-term) .desk-main { text-shadow: 0 1px 10px rgb(0 0 0 / .35); }
+}
+html[data-surface="web"][data-look="space"] :is(.wc-title, .tx-mkt-head h1, .cm-side-t) { color: #fff; text-shadow: 0 2px 16px rgb(0 0 0 / .45); }
+
+/* ---------- ② 窗口 ---------- */
+html[data-surface="web"][data-look="space"] :is(.wc-panel, .cm-panel, .cm-pc, .cm-meetbar, .desk-need, .desk-gate-card, .desk:not(.desk-term) .tx-panel) {
+  position: relative;
+  background: radial-gradient(520px circle at var(--lx) var(--ly), rgb(255 255 255 / .07), rgb(255 255 255 / 0) 55%), var(--sp-glass);
+  /* 面板本身不模糊：照片已经在底板虚化过（方向 5 规范「窗口内部不再叠加多重模糊」），也让里面的吸顶表头能用半透明玻璃（见 light.css 面板那条） */
+  border-color: transparent;
+  box-shadow: var(--sp-shadow);
+}
+html[data-surface="web"][data-look="space"] :is(.wc-panel, .cm-pc, .desk:not(.desk-term) .tx-panel) { border-radius: 30px; }
+html[data-surface="web"][data-look="space"] .desk-term .tx-panel {
+  background: radial-gradient(460px circle at var(--lx) var(--ly), rgb(255 255 255 / .05), rgb(255 255 255 / 0) 55%), var(--sp-glass-dense);
+  border-color: transparent; border-radius: 20px; box-shadow: var(--sp-shadow);
+}
+/* 顶边一道细天光（晶体白边），下边几乎看不见 */
+html[data-surface="web"][data-look="space"] :is(.wc-panel, .cm-panel, .cm-pc, .desk-gate-card, .tx-panel)::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 6;
+  background: radial-gradient(260px circle at var(--lx) var(--ly), rgb(255 255 255 / .55), rgb(255 255 255 / 0) 70%), linear-gradient(180deg, rgb(255 255 255 / .3), rgb(255 255 255 / .05) 35%, rgb(255 255 255 / .03) 75%, rgb(255 255 255 / .1));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+}
+/* 窗口里的分割线去掉一半力道 */
+html[data-surface="web"][data-look="space"] :is(.wc-tr, .tx-mrow, .tx-tabs, .wc-tabs, .tx-chains) { border-color: rgb(255 255 255 / .05); }
+/* 吸顶表头：几乎透明 + 强模糊，和窗口融成一体（底色一厚就分成两截，10/03 goat），滚上去的行靠模糊糊掉 */
+html[data-surface="web"][data-look="space"] :is(.wc-tr.is-th, .tx-table th, .tx-mhead) { background: rgb(20 22 32 / .12); backdrop-filter: blur(24px) saturate(150%); color: #aeb4c2; }
+html[data-surface="web"][data-look="space"] .desk-gate-card { backdrop-filter: var(--sp-blur); }
+/* 行：悬停时泛起一层柔和的白光 */
+html[data-surface="web"][data-look="space"] :is(.wc-tr, .tx-mrow):hover { background: linear-gradient(90deg, rgb(255 255 255 / .02), rgb(255 255 255 / .08) 50%, rgb(255 255 255 / .02)); }
+
+/* 菜单、弹窗：最上层的玻璃 */
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal, .desk-pop, .tx-pop) { background: var(--sp-glass-top); backdrop-filter: blur(36px) saturate(180%); border-color: rgb(255 255 255 / .1); box-shadow: var(--sp-edge), 0 40px 90px -24px rgb(0 0 0 / .7); }
+html[data-surface="web"][data-look="space"] .desk-pop { border-radius: 20px; }
+/* 弹窗：照 goat 选定的设计稿做（2026-10-05 goat 问「和空间原来的设计一致吗」后对照 docs/art-src/glass-directions/03-flash/preview-5.html
+   的 .spatial-modal-*；10/03 第一版只粗略套了 --sp-glass-top，和设计稿差好几处）：
+   · 卡片 = 深色烟晶玻璃 rgb(24 30 50 / .85) + 模糊 48 / 饱和 220，亮边 .28 + 顶边高光 .4，大圆角 36，没有分割线
+   · 遮罩 = 压暗 55% + 模糊 20px（主窗口同时往后退，见下面 .desk-main）
+   · 里面：输入槽是往下凹的暗槽（黑 .35 + 边 .12）；标签 / 档位 / 小块没选中是白 .06 + 边 .12，选中是白 .24 + 边 .4 + 白字；
+     次按钮像设计稿的小胶囊（白 .1 + 边 .2）；主按钮是暖橙发光（和全站空间主按钮同一个 --sp-cta，设计稿「主操作必须高饱和渐变带光晕」） */
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal) {
+  background: rgb(24 30 50 / .85); backdrop-filter: blur(48px) saturate(220%);
+  border: 1px solid rgb(255 255 255 / .28); border-radius: 36px;
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / .4), 0 40px 100px -20px rgb(0 0 0 / .9);
+}
+html[data-surface="web"][data-look="space"] dialog .bg-black\/60[aria-hidden="true"] { background: rgb(5 7 15 / .55); backdrop-filter: blur(20px); }
+/* 行情页点币弹出的交易窗口（2026-10-05）：和弹窗同一套深色烟晶，里面的面板是玻璃，底色不够实会透出后面的行情列表 */
+html[data-surface="web"][data-look="space"] .tx-tokpop { background: rgb(18 22 38 / .9); backdrop-filter: blur(48px) saturate(220%); border: 1px solid rgb(255 255 255 / .22); border-radius: 30px; padding: 10px;
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / .3), 0 40px 100px -20px rgb(0 0 0 / .9); }
+html[data-surface="web"][data-look="space"] .tx-tokpop-scrim { background: rgb(5 7 15 / .55); backdrop-filter: blur(20px); }
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal) .desk-modal-head { border-bottom-color: transparent; }
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal) :is(.bg-card, .ui-field:not(.ui-field-bare)) { background: rgb(0 0 0 / .35); border-color: rgb(255 255 255 / .12); box-shadow: none; }
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal) .bg-card2 { background: rgb(255 255 255 / .06); border-color: rgb(255 255 255 / .12); }
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal) .glass-lite { background: rgb(255 255 255 / .1); border-color: rgb(255 255 255 / .2); box-shadow: none; }
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal) .ui-button { border-radius: 999px; }
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal) .desk-modal-x { border-radius: 999px; color: #fff; background: rgb(255 255 255 / .1); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .2); }
+html[data-surface="web"][data-look="space"] :is(.desk-modal, .tx-modal) .desk-modal-x:hover:not(:disabled) { background: rgb(255 255 255 / .25); }
+/* 弹窗出来：主窗口往后退一点 */
+html[data-surface="web"][data-look="space"] .desk-main { transition: transform .5s var(--lq-spring); transform-origin: 50% 40%; }
+html[data-surface="web"][data-look="space"] body:has(dialog[open]) .desk-main { transform: scale(.975); }
+
+/* ---------- ③ 漂浮控件 ---------- */
+/* 顶部：滚动边缘（.desk-edge，内容滚到这里先糊掉压暗），品牌、工具各一颗胶囊 */
+html[data-surface="web"][data-look="space"] .desk-bar { background: transparent; border-bottom-color: transparent; }
+html[data-surface="web"][data-look="space"] .desk-edge {
+  display: block; position: fixed; left: 0; right: 0; top: 0; height: calc(var(--w-bar-h) + 8px); z-index: 39; pointer-events: none;
+  background: linear-gradient(rgb(10 12 18 / .5), rgb(10 12 18 / .38)); backdrop-filter: blur(18px) saturate(140%);
+  mask: linear-gradient(#000 calc(100% - 8px), transparent);
+}
+html[data-surface="web"][data-look="space"] .desk-bar-in { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 14px; background: none; }
+html[data-surface="web"][data-look="space"] :is(.desk-brand-link, .desk-tools) { position: relative; isolation: isolate; height: 40px; border-radius: 999px; }
+html[data-surface="web"][data-look="space"] .desk-brand-link { align-items: center; padding: 0 16px; }
+html[data-surface="web"][data-look="space"] .desk-tools { padding: 0 5px; }
+html[data-surface="web"][data-look="space"] :is(.desk-brand-link, .desk-tools)::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: var(--sp-glass-top); backdrop-filter: var(--lens, brightness(1)) blur(24px) saturate(180%); box-shadow: var(--sp-edge), 0 14px 30px -14px rgb(0 0 0 / .55);
+}
+html[data-surface="web"][data-look="space"] :is(.desk-theme, .desk-lang, .desk-me) { background: rgb(255 255 255 / .07); border-color: transparent; border-radius: 999px; }
+html[data-surface="web"][data-look="space"] :is(.desk-theme, .desk-me):hover { background: rgb(255 255 255 / .14); }
+html[data-surface="web"][data-look="space"] .desk-lang button { border-radius: 999px; }
+html[data-surface="web"][data-look="space"] .desk-lang button[aria-pressed="true"] { background: rgb(255 255 255 / .16); color: #fff; }
+
+/* 左边竖着的图标栏（宽屏才有；窄屏照旧是底部胶囊栏） */
+.desk-nav-ic { display: none; }
+@media (min-width: 900px) {
+  html[data-surface="web"][data-look="space"] .desk-nav {
+    position: fixed; left: 16px; top: 50%; z-index: 41; transform: translateY(-50%);
+    flex-direction: column; height: auto; gap: 4px; padding: 8px; border-radius: 32px;
+    background: var(--sp-glass-top); backdrop-filter: var(--lens, brightness(1)) blur(24px) saturate(180%); box-shadow: var(--sp-shadow);
+  }
+  html[data-surface="web"][data-look="space"] .desk-nav-item { flex-direction: column; justify-content: center; gap: 5px; width: 62px; height: 60px; padding: 0; border-radius: 24px; font-size: 10.5px; font-weight: 500; color: rgb(255 255 255 / .6); }
+  html[data-surface="web"][data-look="space"] .desk-nav-item:hover { color: #fff; }
+  html[data-surface="web"][data-look="space"] .desk-nav-item.on { color: #fff; }
+  html[data-surface="web"][data-look="space"] .desk-nav-item.on::after { display: none; }
+  html[data-surface="web"][data-look="space"] .desk-nav-ic { display: block; transition: transform .35s var(--lq-spring); }
+  html[data-surface="web"][data-look="space"] .desk-nav-item:hover .desk-nav-ic { transform: scale(1.14); }
+  html[data-surface="web"][data-look="space"] .desk-nav-item:active .desk-nav-ic { transform: scale(.92); }
+  html[data-surface="web"][data-look="space"] .desk-nav .desk-dot { top: 8px; right: 12px; }
+  /* 内容让出图标栏的位置 */
+  html[data-surface="web"][data-look="space"] .desk-main { padding-left: 112px; }
+  html[data-surface="web"][data-look="space"] .desk-term .desk-main { padding-left: 98px; }
+
+  /* 底部状态栏：缩成居中的一颗胶囊 */
+  html[data-surface="web"][data-look="space"] .desk-status {
+    position: sticky; bottom: 10px; width: fit-content; max-width: calc(100% - 140px); height: 34px; margin: 0 auto 10px; padding: 0 18px;
+    border: 0; border-radius: 999px; background: var(--sp-glass-top); backdrop-filter: blur(24px) saturate(180%); box-shadow: var(--sp-shadow);
+  }
+  /* 胶囊里只留三个连接状态（10/03 goat：四个法律链接挤在一起很丑）；服务条款 / 隐私政策 / 风险披露 / 下载中心在 设置 → 关于 里 */
+  html[data-surface="web"][data-look="space"] .desk-status { gap: 16px; height: 32px; padding: 0 16px; }
+  html[data-surface="web"][data-look="space"] .desk-status-legal { display: none; }
+  html[data-surface="web"][data-look="space"] .desk-status-item { gap: 7px; color: rgb(255 255 255 / .72); }
+  html[data-surface="web"][data-look="space"] .desk-status-item.ok i { box-shadow: 0 0 8px rgb(47 212 154 / .8); }
+}
+
+/* ---------- 液态选中块、按钮 ---------- */
+/* 「底色当字色」（text-bg：选中的分段按钮、杠杆档位、买入绿按钮等浅色底上的深色字）：空间外观的底色是半透明的（透出照片），
+   直接拿来当字色会变成半透明灰、看不清（2026-10-05 goat 问三种外观对不对时发现）。这里给实色 */
+html[data-surface="web"][data-look="space"] .text-bg { color: #0c0e13; }
+html[data-surface="web"][data-look="space"] .lq-ind-pill::before {
+  border-radius: 999px; background: rgb(255 255 255 / .15); backdrop-filter: var(--lens-ind, brightness(1)) brightness(1.25) saturate(1.2);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / .32), inset 0 -1px 2px rgb(0 0 0 / .25), 0 6px 16px -6px rgb(0 0 0 / .55);
+}
+html[data-surface="web"][data-look="space"] .desk-nav.lq-ind-pill::before { border-radius: 24px; }
+html[data-surface="web"][data-look="space"] .lq-ind-line::before { top: calc(var(--iy) + var(--ih) - 3px); height: 3px; border-radius: 3px; background: linear-gradient(90deg, #ffb36b, #ff5f6d); box-shadow: 0 0 10px rgb(255 110 80 / .7); }
+html[data-surface="web"][data-look="space"] :is(.wc-seg, .cm-seg, .tx-seg) { background: rgb(0 0 0 / .22); border-color: rgb(255 255 255 / .07); border-radius: 999px; box-shadow: inset 0 1px 3px rgb(0 0 0 / .3); }
+html[data-surface="web"][data-look="space"] :is(.wc-seg, .cm-seg, .tx-seg, .tx-chains) button { border-radius: 999px; }
+html[data-surface="web"][data-look="space"] .tx-chains button:is(.on, [aria-pressed="true"]) { color: #fff; }
+
+/* 主按钮：暖橙到珊瑚，带光晕（视线的落点） */
+/* 通用按钮组件的主按钮（Button 的 .pearl-button，弹窗和页面都用）也照设计稿换暖橙发光胶囊，原来是浅紫珍珠色（2026-10-05 goat「肯定要一起改」）；
+   选中状态（分段按钮、杠杆档位、持有方式等带 aria-pressed / aria-checked / aria-selected 的 .bg-accent）照设计稿的 .spatial-tab.active：白 .24 + 边 .4 + 白字。
+   只认带选中属性的：bg-accent 还被当成发送按钮、自己发的聊天气泡、勾选标记用，那些不动 */
+html[data-surface="web"][data-look="space"] :is(.pearl-button, .ui-button.bg-accent) {
+  background: var(--sp-cta); color: #fff; border-radius: 999px; text-shadow: 0 1px 1px rgb(90 20 0 / .3);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / .6), 0 0 28px rgb(255 87 34 / .55), 0 8px 24px -4px rgb(255 59 112 / .75);
+}
+html[data-surface="web"][data-look="space"] :is(.pearl-button, .ui-button.bg-accent):hover:not(:disabled) { filter: brightness(1.08) saturate(1.05); }
+html[data-surface="web"][data-look="space"] :is([aria-pressed="true"], [aria-checked="true"], [aria-selected="true"]).bg-accent { background: rgb(255 255 255 / .24); color: #fff; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .4), 0 4px 16px rgb(0 0 0 / .3); }
+html[data-surface="web"][data-look="space"] :is(.wc-btn.is-primary, .tx-btn.is-pearl, .cm-btn:not(.is-quiet, .is-red, .is-sm), .desk-connect) {
+  position: relative; overflow: hidden; color: #fff; background: var(--sp-cta); border-color: transparent; border-radius: 999px; text-shadow: 0 1px 1px rgb(90 20 0 / .3);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / .45), inset 0 -2px 5px rgb(120 20 30 / .25), 0 0 22px rgb(255 98 71 / .42), 0 10px 26px -10px rgb(255 63 122 / .7);
+}
+html[data-surface="web"][data-look="space"] :is(.wc-btn.is-primary, .tx-btn.is-pearl, .desk-connect):hover:not(:disabled) { background: var(--sp-cta); filter: brightness(1.08) saturate(1.05); }
+html[data-surface="web"][data-look="space"] .desk-connect { height: 32px; }
+/* 买入绿光、卖出红光 */
+html[data-surface="web"][data-look="space"] .tx-btn.is-up:not(:disabled) { box-shadow: inset 0 1px 1px rgb(255 255 255 / .35), 0 0 20px rgb(47 212 154 / .38); }
+html[data-surface="web"][data-look="space"] .tx-btn.is-down:not(:disabled) { box-shadow: inset 0 1px 1px rgb(255 255 255 / .3), 0 0 20px rgb(255 92 108 / .38); }
+/* 普通按钮：透明玻璃胶囊 */
+html[data-surface="web"][data-look="space"] :is(.wc-btn, .tx-btn, .cm-btn.is-quiet):not(.is-primary, .is-ghost, .is-pearl, .is-up, .is-down, .is-danger, .is-sm) {
+  background: rgb(255 255 255 / .09); backdrop-filter: var(--lens, brightness(1)) blur(10px) saturate(150%); border-color: rgb(255 255 255 / .1); border-radius: 999px;
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / .16), 0 6px 16px -8px rgb(0 0 0 / .5);
+}
+html[data-surface="web"][data-look="space"] :is(.wc-btn, .tx-btn, .cm-btn.is-quiet):not(.is-primary, .is-ghost, .is-pearl, .is-up, .is-down, .is-danger, .is-sm):hover:not(:disabled) { background: rgb(255 255 255 / .16); }
+html[data-surface="web"][data-look="space"] :is(.wc-btn.is-sm, .tx-btn-sm, .tx-trade) { border-radius: 999px; }
+html[data-surface="web"][data-look="space"] .tx-trade { color: #fff; background: rgb(255 255 255 / .09); border-color: rgb(255 255 255 / .1); }
+html[data-surface="web"][data-look="space"] a.tx-mrow:hover .tx-trade { background: var(--sp-cta); border-color: transparent; box-shadow: 0 0 16px rgb(255 98 71 / .45); }
+/* 水波：白光 */
+html[data-surface="web"][data-look="space"] .lq-rip::after {
+  background: radial-gradient(circle at var(--rx) var(--ry), rgb(255 255 255 / 0) calc(var(--rr) - 16px), rgb(255 255 255 / .35) var(--rr), rgb(255 255 255 / 0) calc(var(--rr) + 10px));
+}
+
+/* 输入框：内凹的暗槽 */
+html[data-surface="web"][data-look="space"] :is(.wc-input, .tx-field, .tx-pop-search, .tx-mkt-search, .cm-meetbar label) { background: rgb(0 0 0 / .24); border-color: rgb(255 255 255 / .09); box-shadow: inset 0 1px 3px rgb(0 0 0 / .3); }
+html[data-surface="web"][data-look="space"] :is(.wc-input, .tx-field, .tx-pop-search, .tx-mkt-search, .cm-meetbar label):focus-within { border-color: rgb(255 160 120 / .5); box-shadow: inset 0 1px 3px rgb(0 0 0 / .3), 0 0 0 4px rgb(255 120 90 / .14); }
+/* 两张「彩色细边框」卡（连接钱包里的 0x4 Wallet、0x4 Wallet 专属提示）：边框是 border-box 渐变 + padding-box 底色的写法，
+   底色变量在这里是半透明，会把渐变整片透出来变成浅色卡、白字看不清，所以单独给实底 */
+html[data-surface="web"][data-look="space"] .cw-ox4 { background: linear-gradient(rgb(36 38 52 / .94), rgb(36 38 52 / .94)) padding-box, linear-gradient(120deg, #ffd9c2, #dccdff 50%, #b6ecff) border-box; }
+html[data-surface="web"][data-look="space"] .ox4-only { background: linear-gradient(rgb(26 28 40 / .9), rgb(26 28 40 / .9)) padding-box, linear-gradient(140deg, rgb(255 217 194 / .7), rgb(220 205 255 / .7) 50%, rgb(182 236 255 / .7)) border-box; backdrop-filter: var(--sp-blur); }
+/* 社区、设置左边的菜单：垫一块玻璃（不然背景换成亮的照片时菜单字看不清） */
+html[data-surface="web"][data-look="space"] :is(.cm-side, .wc-set-nav) { padding: 10px; border-radius: 28px; background: var(--sp-glass); box-shadow: var(--sp-shadow); }
+html[data-surface="web"][data-look="space"] .cm-side { min-height: calc(100dvh - var(--w-bar-h) - var(--w-status-h) - 40px); }
+html[data-surface="web"][data-look="space"] .cm-side-t { padding-top: 8px; }
+/* 社区左边的「发动态」：一颗亮一点的玻璃（同一屏只留一个橙色主按钮） */
+html[data-surface="web"][data-look="space"] .cm-post { color: #fff; background: rgb(255 255 255 / .14); border-color: rgb(255 255 255 / .12); border-radius: 999px; box-shadow: inset 0 1px 1px rgb(255 255 255 / .25), 0 10px 24px -12px rgb(0 0 0 / .6); backdrop-filter: blur(12px) saturate(150%); }
+html[data-surface="web"][data-look="space"] .cm-post:hover { background: rgb(255 255 255 / .2); }
+/* 社区、设置左侧菜单的当前项 */
+html[data-surface="web"][data-look="space"] :is(.cm-mi.on, .wc-set-nav button[aria-current="true"]) { background: rgb(255 255 255 / .12); box-shadow: inset 0 1px 1px rgb(255 255 255 / .18); }
+
+/* 涨跌：暗玻璃上像发光的晶体 */
+html[data-surface="web"][data-look="space"] .tx-mrow > .r:is(.up, .down) { justify-self: end; display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; font-weight: 600; font-variant-numeric: tabular-nums; }
+html[data-surface="web"][data-look="space"] .tx-mrow > .r.up { color: #5ff2b8; background: rgb(12 220 140 / .15); box-shadow: 0 0 14px rgb(12 220 140 / .16); }
+html[data-surface="web"][data-look="space"] .tx-mrow > .r.down { color: #ff8591; background: rgb(255 70 85 / .15); box-shadow: 0 0 14px rgb(255 70 85 / .16); }
+
+/* ---------- 会议（/meet/，2026-10-03 goat：空间里会议的按钮、菜单还是旧的深色实底） ----------
+   会议用自己的一套颜色变量（meet/meet.css 的 --mt-*），这里换成玻璃；带 .meet-glass 的菜单、侧栏、弹窗加模糊；
+   底部控制条中间那组（.meet-dock）变成一颗漂浮胶囊；圆按钮是玻璃，打开状态是亮白；「复制邀请链接」是橙色主按钮 */
+html[data-surface="web"][data-look="space"] {
+  --mt-page: transparent;
+  --mt-panel: rgb(30 32 44 / .76);
+  --mt-surface: rgb(20 22 32 / .6);
+  --mt-tile: rgb(16 18 26 / .62);
+  --mt-tile-grad: radial-gradient(80% 80% at 50% 40%, rgb(44 46 60 / .62), rgb(16 18 26 / .62));
+  --mt-line: rgb(255 255 255 / .1);
+  --mt-shadow: rgb(0 0 0 / .6);
+}
+html[data-surface="web"][data-look="space"] .meet-glass { backdrop-filter: blur(28px) saturate(170%); }
+html[data-surface="web"][data-look="space"] .meet-ui :is(aside, .meet-fx).meet-glass { border-radius: 26px; box-shadow: var(--sp-shadow); }
+html[data-surface="web"][data-look="space"] .meet-ctl { background: rgb(255 255 255 / .1); box-shadow: inset 0 1px 1px rgb(255 255 255 / .18); }
+html[data-surface="web"][data-look="space"] .meet-ctl:hover:not(:disabled) { background: rgb(255 255 255 / .18); }
+html[data-surface="web"][data-look="space"] .meet-ctl[data-on="true"] { background: rgb(255 255 255 / .92); color: #15161c; box-shadow: 0 0 18px rgb(255 255 255 / .25); }
+html[data-surface="web"][data-look="space"] .meet-ctl[data-off="true"] { background: rgb(255 107 118 / .2); color: #ff8b94; }
+html[data-surface="web"][data-look="space"] .meet-dock { flex: 0 0 auto; margin-inline: auto; padding: 8px 10px; border-radius: 999px; background: var(--sp-glass-top); backdrop-filter: blur(28px) saturate(180%); box-shadow: var(--sp-shadow); }
+html[data-surface="web"][data-look="space"] .meet-dock [data-testid="leave"] { box-shadow: 0 0 20px rgb(255 107 118 / .45); }
+html[data-surface="web"][data-look="space"] .meet-btn-primary { color: #fff; background: var(--sp-cta); border-radius: 999px; text-shadow: 0 1px 1px rgb(90 20 0 / .3); box-shadow: inset 0 1px 1px rgb(255 255 255 / .45), 0 0 22px rgb(255 98 71 / .42); }
+html[data-surface="web"][data-look="space"] .meet-btn-ghost { background: rgb(255 255 255 / .1); border-radius: 999px; backdrop-filter: blur(16px) saturate(150%); box-shadow: inset 0 1px 1px rgb(255 255 255 / .16), inset 0 0 0 1px rgb(255 255 255 / .07); }
+html[data-surface="web"][data-look="space"] .meet-btn-ghost:hover:not(:disabled) { background: rgb(255 255 255 / .17); }
+html[data-surface="web"][data-look="space"] .meet-input { background: rgb(0 0 0 / .24); }
+
+/* ---------- 跑不动 / 减少动态效果 ---------- */
+html.lq-lite[data-look="space"] .sp-wall i { will-change: auto; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-surface="web"][data-look="space"] .desk-main { transition: none; }
+  html[data-surface="web"][data-look="space"] .desk-nav-ic { transition: none; }
+}

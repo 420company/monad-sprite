@@ -1,0 +1,190 @@
+{
+ "action": {
+  "fromToken": {
+   "address": "bitcoin",
+   "chainId": 20000000000001,
+   "symbol": "BTC",
+   "decimals": 8,
+   "name": "Bitcoin",
+   "coinKey": "BTC",
+   "logoURI": "https://assets.coingecko.com/coins/images/1/standard/bitcoin.png",
+   "priceUSD": "83354.4788291497",
+   "tags": [
+    "major_asset"
+   ],
+   "verificationStatus": "verified",
+   "verificationStatusBreakdown": [
+    {
+     "provider": "hypernative",
+     "result": "verified",
+     "providerResult": "accept"
+    }
+   ]
+  },
+  "fromAmount": "100000",
+  "toToken": {
+   "address": "0x55d398326f99059fF775485246999027B3197955",
+   "chainId": 56,
+   "symbol": "USDT",
+   "decimals": 18,
+   "name": "USDT",
+   "coinKey": "USDT",
+   "logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png",
+   "priceUSD": "1.0013864725",
+   "tags": [
+    "stablecoin"
+   ],
+   "verificationStatus": "verified",
+   "verificationStatusBreakdown": [
+    {
+     "provider": "hypernative",
+     "result": "verified",
+     "providerResult": "accept"
+    }
+   ]
+  },
+  "fromChainId": 20000000000001,
+  "toChainId": 56,
+  "slippage": 0.01,
+  "fromAddress": "bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97",
+  "toAddress": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+ },
+ "estimate": {
+  "tool": "layerswap",
+  "fromAmount": "100000",
+  "toAmount": "81954668000000000000",
+  "toAmountMin": "81135121000000000000",
+  "gasCosts": [
+   {
+    "type": "SEND",
+    "price": "3",
+    "estimate": "210",
+    "limit": "210",
+    "amount": "630",
+    "amountUSD": "0.5251",
+    "token": {
+     "address": "bitcoin",
+     "chainId": 20000000000001,
+     "symbol": "BTC",
+     "decimals": 8,
+     "name": "Bitcoin",
+     "coinKey": "BTC",
+     "logoURI": "https://assets.coingecko.com/coins/images/1/standard/bitcoin.png",
+     "priceUSD": "83354.4788291497",
+     "tags": [
+      "major_asset"
+     ],
+     "verificationStatus": "verified",
+     "verificationStatusBreakdown": [
+      {
+       "provider": "hypernative",
+       "result": "verified",
+       "providerResult": "accept"
+      }
+     ]
+    }
+   }
+  ],
+  "executionDuration": 933,
+  "approvalAddress": "bc1qz8p3w089t3tq3uvqmzhgdh5vuzm7gxr45xjppj",
+  "feeCosts": [
+   {
+    "name": "LIFI Fixed Fee",
+    "description": "Fixed LIFI fee, independent of any other fee",
+    "token": {
+     "address": "bitcoin",
+     "chainId": 20000000000001,
+     "symbol": "BTC",
+     "decimals": 8,
+     "name": "Bitcoin",
+     "coinKey": "BTC",
+     "logoURI": "https://assets.coingecko.com/coins/images/1/standard/bitcoin.png",
+     "priceUSD": "83354.4788291497",
+     "tags": [
+      "major_asset"
+     ],
+     "verificationStatus": "verified",
+     "verificationStatusBreakdown": [
+      {
+       "provider": "hypernative",
+       "result": "verified",
+       "providerResult": "accept"
+      }
+     ]
+    },
+    "amount": "250",
+    "amountUSD": "0.2084",
+    "percentage": "0.0025",
+    "included": true,
+    "feeSplit": {
+     "lifiFee": "250",
+     "integratorFee": "0",
+     "recipients": [
+      {
+       "name": "lifi",
+       "type": "FIXED",
+       "fee": "250"
+      }
+     ]
+    }
+   },
+   {
+    "name": "LayerSwap fee",
+    "description": "LayerSwap bridge fee",
+    "percentage": "0.0134",
+    "token": {
+     "address": "bitcoin",
+     "chainId": 20000000000001,
+     "symbol": "BTC",
+     "decimals": 8,
+     "name": "Bitcoin",
+     "coinKey": "BTC",
+     "logoURI": "https://assets.coingecko.com/coins/images/1/standard/bitcoin.png",
+     "priceUSD": "83354.4788291497",
+     "tags": [
+      "major_asset"
+     ],
+     "verificationStatus": "verified",
+     "verificationStatusBreakdown": [
+      {
+       "provider": "hypernative",
+       "result": "verified",
+       "providerResult": "accept"
+      }
+     ]
+    },
+    "amount": "1334",
+    "amountUSD": "1.111075",
+    "included": true
+   }
+  ],
+  "toolData": {
+   "quote": {
+    "data": {
+     "quote": {
+      "receive_amount": 81.954668,
+      "min_receive_amount": 81.135121,
+      "total_fee": 0.00001334,
+      "total_fee_in_usd": 1.111075,
+      "avg_completion_time": "00:00:33.3308595",
+      "source_token": {
+       "symbol": "BTC",
+       "contract": null,
+       "decimals": 8
+      }
+     }
+    }
+   }
+  },
+  "fromAmountUSD": "83.3545",
+  "toAmountUSD": "82.0683"
+ },
+ "transactionRequest": {
+  "to": "bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf",
+  "value": "100000",
+  "data": "70736274ff0100c50200000001a444c92afebce30b5972e7e480be682e2f85a1fb9b65ee7e61dd3d06b3fd10790100000000fdffffff04a685010000000000225120f9ba507bc8114718a0e16d70a22059162f24a7996ac4d1db1f26330c91c761de0000000000000000146a12313134643261613b3d7c6c696669426d998797a37208d30b00002200204364063fac8829a931a752ecd9049e43425e2cebf83681876c556002bf389b0026010000000000001600149ab105ce5f65cc9d3e51e4b2403eef1831eb5bfd000000000001012b542d7408d30b00002200204364063fac8829a931a752ecd9049e43425e2cebf83681876c556002bf389b000000000000"
+ },
+ "tool": "layerswap",
+ "type": "lifi",
+ "id": "834767d2-515e-4646-9935-45b2f9de2109:0"
+}

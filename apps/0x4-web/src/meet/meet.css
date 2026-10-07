@@ -1,0 +1,67 @@
+/* 会议跟主题走的颜色（2026-10-02 网页版午夜黑 / 香芋白；手机 App 的浅色也用这套）：
+   --mt-1~4 = 在底色上提一点亮 / 压一点暗；panel = 菜单弹层；page = 会议整页底色；surface = 侧栏 / 预览框；tile = 视频格子没画面时的底。
+   压在视频上的名字、按钮（黑色半透明底）一律白字，两种主题都一样。 */
+:root {
+  --mt-1: rgb(255 255 255 / .03); --mt-2: rgb(255 255 255 / .05); --mt-3: rgb(255 255 255 / .08); --mt-4: rgb(255 255 255 / .14);
+  --mt-line: rgb(255 255 255 / .08); --mt-panel: #171a23; --mt-page: #07080c; --mt-surface: #0f1117; --mt-tile: #12141b;
+  --mt-tile-grad: radial-gradient(80% 80% at 50% 40%, #1b1e28, #101218); --mt-shadow: rgb(0 0 0 / .8);
+}
+:root[data-theme="light"] {
+  --mt-1: rgb(52 36 102 / .03); --mt-2: rgb(52 36 102 / .05); --mt-3: rgb(52 36 102 / .08); --mt-4: rgb(52 36 102 / .14);
+  --mt-line: rgb(52 36 102 / .1); --mt-panel: #ffffff; --mt-page: var(--w-bg, #f5f2fb); --mt-surface: #ffffff; --mt-tile: #e9e4f5;
+  --mt-tile-grad: radial-gradient(80% 80% at 50% 40%, #f1ecfb, #e2dbf2); --mt-shadow: rgb(44 32 84 / .22);
+}
+/* 会议室样式（2026-09-29 从 meet/src/index.css 搬进 App）。类名都带 meet- 前缀，不影响 App 其它页面。
+   品牌渐变 蜜桃 #ffc9a8 → 淡紫 #cdbdff → 冰青 #8fe0ff，与猫头 logo 一致。没有整屏模糊，只动 transform / opacity。 */
+.meet-brand-fill { background: linear-gradient(120deg, #ffc9a8, #cdbdff 50%, #8fe0ff); }
+.meet-btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; height: 2.75rem; padding: 0 1.15rem; border-radius: .9rem; font-size: .9rem; font-weight: 600; white-space: nowrap; transition: filter .15s, background-color .15s, transform .15s, opacity .15s; }
+.meet-btn:disabled { opacity: .45; }
+.meet-btn:active:not(:disabled) { transform: translateY(1px); }
+.meet-btn-primary { background: linear-gradient(120deg, #ffc9a8, #cdbdff 55%, #8fe0ff); color: #121318; box-shadow: 0 10px 30px -10px rgb(205 189 255 / .55), inset 0 1px 0 rgb(255 255 255 / .6); }
+.meet-btn-primary:hover:not(:disabled) { filter: brightness(1.06); }
+/* 开始直播：和社区「开直播」同一个红色，一眼能看到（2026-10-02 goat） */
+.meet-btn-live { background: linear-gradient(120deg, #ff6b86, #ff3b5c); color: #fff; box-shadow: 0 12px 32px -10px rgb(255 59 92 / .65), inset 0 1px 0 rgb(255 255 255 / .35); }
+.meet-btn-live:hover:not(:disabled) { filter: brightness(1.08); }
+.meet-btn-ghost { background: var(--mt-2); color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--mt-3); }
+.meet-btn-ghost:hover:not(:disabled) { background: var(--mt-3); }
+.meet-btn-danger { background: #ff6b76; color: #19090b; }
+.meet-btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+.meet-input { height: 2.75rem; width: 100%; border-radius: .9rem; background: var(--mt-2); box-shadow: inset 0 0 0 1px var(--mt-3); padding: 0 1rem; font-size: .92rem; color: var(--color-fg); outline: none; transition: box-shadow .15s, background-color .15s; }
+.meet-input::placeholder { color: var(--color-muted); }
+.meet-input:focus { box-shadow: inset 0 0 0 1px rgb(205 189 255 / .6), 0 0 0 4px rgb(205 189 255 / .12); background: var(--mt-2); }
+.meet-select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239097a6' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .9rem center; padding-right: 2.25rem; text-overflow: ellipsis; }
+.meet-select option { background: var(--mt-panel); }
+.meet-card { background: var(--mt-1); box-shadow: inset 0 0 0 1px var(--mt-3); border-radius: 1.25rem; }
+.meet-hairline { box-shadow: inset 0 0 0 1px var(--mt-3); }
+/* 控制条圆按钮 */
+.meet-ctl { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 3rem; height: 3rem; border-radius: 999px; background: var(--mt-3); color: var(--color-fg); transition: background-color .15s, transform .15s, color .15s; }
+.meet-ctl:hover:not(:disabled) { background: var(--mt-4); }
+.meet-ctl:disabled { opacity: .4; }
+.meet-ctl[data-off="true"] { background: rgb(255 107 118 / .16); color: #ff6b76; }
+/* 全员禁言中（服务器已收回推流权限）：按钮变暗，悬停提示举手申请（2026-09-30） */
+.meet-ctl[data-locked="true"] { opacity: .45; cursor: not-allowed; }
+.meet-ctl[data-on="true"] { background: linear-gradient(120deg, #ffc9a8, #cdbdff 55%, #8fe0ff); color: #121318; }
+.meet-tip { position: relative; }
+.meet-tip[data-tip]:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: .75rem; font-weight: 500; color: var(--color-fg); background: var(--mt-panel); padding: .35rem .6rem; border-radius: .5rem; box-shadow: 0 8px 24px rgb(0 0 0 / .45), inset 0 0 0 1px var(--mt-3); pointer-events: none; z-index: 50; }
+/* 说话中的描边 */
+.meet-speaking { box-shadow: 0 0 0 2px rgb(143 224 255 / .9), 0 0 24px -4px rgb(143 224 255 / .5); }
+/* 表情飘起 */
+@keyframes meet-float-up { 0% { transform: translateY(0) scale(.6); opacity: 0; } 12% { opacity: 1; transform: translateY(-20px) scale(1.1); } 100% { transform: translateY(-260px) scale(1); opacity: 0; } }
+.meet-float-up { animation: meet-float-up 2.8s ease-out forwards; }
+@keyframes meet-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.meet-fade { animation: meet-fade .35s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .meet-float-up, .meet-fade { animation: none; } }
+
+/* 会议室里的大标题用和官网一样的像素字 */
+.meet-ui .font-display { font-family: "Pixelify Sans", "Geist", var(--font-sans); letter-spacing: .01em; }
+/* 只有自己一人时，右上角「复制邀请链接」一圈轻微的提示光晕（2026-09-30 goat：替代舞台中间的浮条）；有人进来后恢复普通 */
+.meet-invite-glow { animation: meet-invite-glow 2.4s ease-in-out infinite; }
+@keyframes meet-invite-glow { 0%, 100% { box-shadow: 0 0 0 0 rgb(205 189 255 / .0), 0 10px 30px -10px rgb(205 189 255 / .55); } 50% { box-shadow: 0 0 0 6px rgb(205 189 255 / .18), 0 0 28px 2px rgb(143 224 255 / .35); } }
+@media (prefers-reduced-motion: reduce) { .meet-invite-glow { animation: none; box-shadow: 0 0 0 4px rgb(205 189 255 / .2); } }
+
+/* 会议画廊视图（2026-10-02）：容器量自己的宽高，每格取「按列数放得下的宽」和「按行数放得下的高 × 16/9」中小的那个 */
+.meet-gallery { container-type: size; height: 100%; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: 12px; }
+.meet-gallery > div { aspect-ratio: 16 / 9; width: min(calc((100cqw - (var(--cols) - 1) * 12px) / var(--cols)), calc((100cqh - (var(--rows) - 1) * 12px) / var(--rows) * 16 / 9)); }
+
+/* 会议右边的「画面特效」侧栏（2026-10-03）：里面是直播那块特效面板（.gift-dock，desktop.css），在会议里铺满这个圆角卡片，底色和边框由外层给 */
+.meet-fx .gift-dock { width: 100%; flex: 1; min-height: 0; border-left: 0; background: transparent; animation: none; }

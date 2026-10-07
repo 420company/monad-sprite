@@ -4,7 +4,7 @@
 > 信号（果蝇脑 + 量化引擎）→ 风控（现货模型）→ 执行（Monad bonding curve 代币），
 > 全链路可在 Monad testnet 上真实跑通。默认 paper 模式，不动真钱。
 
-**Monad Metropolis 黑客松提交作品** · 赛道：On-chain Finance & Trading · MIT 许可证
+**Monad Metropolis 黑客松提交作品** · 赛道：On-chain Finance & Trading · PolyForm-Noncommercial 1.0.0（source-available，非商用）
 
 ## 一句话
 
@@ -63,6 +63,9 @@ cd contracts && forge test   # 9 个测试
 ## 合规声明（Monad Metropolis 规则 4.1 / 4.3）
 
 ### Pre-existing 组件（作者自研，赛前已存在，README 标识）
+- `apps/0x4-web/`：0x4 多链自托管交易钱包前端（钱包/行情/闪兑/社交 UI）——
+  作者 2026 年 9 月起自研。本次提交为**比赛分支快照**，与线上产品隔离；
+  敏感配置已脱敏（见仓库内 SCRUB-REPORT.md），密钥全部走环境变量
 - `packages/engine/signals/`：zalien 量化信号引擎（`analyze.js` 多因子打分、
   `screener.js`、`picks.js`、`sectors.js`、`economy.js`、`memory.js`、`crypto.js`）——
   作者 2026 年 9~10 月自研，纯公开数据源，零密钥，可选的 6551 消息面已降级为 stub
@@ -70,6 +73,11 @@ cd contracts && forge test   # 9 个测试
   真实 `aster.py` 为作者私有代码，**不在本仓库**，仓库内仅含 `SignalProvider` 接口 + mock
 
 ### 赛期内新增（2026-10-07 ~ 2026-10-14，本次提交的主体）
+- `apps/0x4-web/` 内 Monad 集成（赛期新增代码）：
+  `src/lib/chains.ts` 的 Monad testnet（10143）链配置、
+  `src/lib/monadLauncher.ts` 合约交互层、
+  `src/pages/Launch.tsx` 一键发币页、
+  `src/pages/MonadToken.tsx` bonding curve 代币详情页（链上价格+合约买卖）
 - `contracts/`：MemeLauncher / MemeToken 合约、测试、部署脚本 + 测试网部署
 - `packages/radar/`：Rug Radar AI 风险评分服务（5 类信号）
 - `packages/monad-executor/`：viem 执行层（paper/live 双模式、滑点保护）
@@ -84,7 +92,8 @@ cd contracts && forge test   # 9 个测试
 所有提交前经作者审查。AI 生成内容不改变"作者原创作品"属性（规则 4.3）。
 
 ### 许可证
-MIT（工具类）。详见 LICENSE。
+PolyForm-Noncommercial 1.0.0（source-available：代码公开可读、可学习、可用于非商业目的；
+**不可用于商业用途**，不可商用分发。详见 LICENSE。）
 
 ## 风险提示
 
@@ -108,6 +117,8 @@ monad-sprite/
 │   ├── radar/                 # Rug Radar 评分服务（赛期）
 │   ├── backtest/              # 回测
 │   └── cli/                   # 统一 CLI（赛期）
-├── apps/demo-ui/              # Next.js 前端（赛期）
+├── apps/
+│   ├── 0x4-web/               # 0x4 钱包前端（pre-existing，作者自研；Monad 集成部分为赛期新增）
+│   └── demo-ui/               # Next.js 前端（赛期）
 └── docs/                      # RISK-MODEL / ARCHITECTURE / FLY-BRAIN
 ```

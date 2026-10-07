@@ -1,0 +1,49 @@
+// 小精灵看图点评的摘要（2026-10-02 goat 第三批）：只整理图上已有的数字；仓位只带比例。
+import { describe, expect, it } from 'vitest'
+import type { Candle } from './aster'
+import { buildBrief } from './chartBrief'
+
+/** n 根 K 线：收盘价从 100 起每根 +1，偶数根收涨、奇数根收跌一点，成交量前面 10、最后 5 根 30 */
+const candles = (n: number): Candle[] => Array.from({ length: n }, (_, i) => {
+  const close = 100 + i
+  return { time: 60 * i, open: i % 2 === 0 ? close - 1 : close + 0.5, high: close + 2, low: close - 2, close, volume: i >= n - 5 ? 30 : 10 }
+})
+
+describe('看图摘要', () => {
+  it('K 线太少或周期不认识：不出摘要', () => {
+    expect(buildBrief({ market: 'perp', symbol: 'BTC', interval: '1h', candles: candles(4) })).toBeNull()
+    expect(buildBrief({ market: 'perp', symbol: 'BTC', interval: '2h', candles: candles(50) })).toBeNull()
+    expect(buildBrief({ market: 'perp', symbol: 'BTC', interval: '1h', candles: [] })).toBeNull()
+  })
+
+  it('涨跌、区间、收涨根数、放量倍数', () => {
+    const b = buildBrief({ market: 'spot', symbol: 'WIF', interval: '15m', candles: candles(40) })!
+    expect(b).toMatchObject({ market: 'spot', symbol: 'WIF', interval: '15m', bars: 40, last: 139, hi: 141, lo: 98, upBars: 5, volRatio: 3 })
+    expect(b.chgAll).toBeCloseTo(139 / 99 - 1, 5)          // 第一根开盘 99
+    expect(b.chgRecent).toBeCloseTo(139 / 129 - 1, 5)      // 往前数第 11 根收盘 129
+    // 现货：不带买卖力量、大单、仓位（就算传了）
+    const s = buildBrief({ market: 'spot', symbol: 'WIF', interval: '15m', candles: candles(40), flow: [{ time: 1, delta: 5, cum: 5 }], big: [], bigSince: 1, position: { isLong: true, leverage: 3, roe: 0.1, liquidationPx: 90 } })!
+    expect(s.flow).toBeUndefined(); expect(s.big).toBeUndefined(); expect(s.position).toBeUndefined()
+    // 不够 25 根：不算放量倍数
+    expect(buildBrief({ market: 'spot', symbol: 'WIF', interval: '15m', candles: candles(20) })!.volRatio).toBeUndefined()
+  })
+
+  it('合约：买卖力量取最近 10 根和累计；大单按方向合计；还没回补到大单就不带', () => {
+    const flow = Array.from({ length: 30 }, (_, i) => ({ time: i, delta: i < 20 ? 100 : -50, cum: i < 20 ? (i + 1) * 100 : 2000 - (i - 19) * 50 }))
+    const big = [{ id: 1, time: 1, px: 100, usd: 1000.4, isBuy: true }, { id: 2, time: 2, px: 100, usd: 2000, isBuy: false }, { id: 3, time: 3, px: 100, usd: 500, isBuy: false }]
+    const b = buildBrief({ market: 'perp', symbol: 'BTC', interval: '1m', candles: candles(30), flow, big, bigSince: 1_000_000, now: 1_000_000 + 38 * 60_000 + 20_000 })!
+    expect(b.flow).toEqual({ recent: -500, all: 1500 })
+    expect(b.big).toEqual({ buyUsd: 1000, buyN: 1, sellUsd: 2500, sellN: 2, minutes: 38 })
+    expect(buildBrief({ market: 'perp', symbol: 'BTC', interval: '1m', candles: candles(30), big, bigSince: 0 })!.big).toBeUndefined()
+    expect(buildBrief({ market: 'perp', symbol: 'BTC', interval: '1m', candles: candles(30), flow: [] })!.flow).toBeUndefined()
+  })
+
+  it('仓位只带比例：浮盈、离强平 / 止盈 / 止损的距离；没有数量和金额', () => {
+    const b = buildBrief({ market: 'perp', symbol: 'BTC', interval: '1h', candles: candles(30), position: { isLong: true, leverage: 10, roe: 0.15234, liquidationPx: 116.1 }, tpPx: 135.45, slPx: 0 })!
+    expect(b.last).toBe(129)
+    expect(b.position).toEqual({ isLong: true, lev: 10, roe: 0.1523, liqDist: 0.1, hasTp: true, hasSl: false, tpDist: 0.05 })
+    expect(JSON.stringify(b.position)).not.toMatch(/size|usd|margin|entry/i)
+    // 逐仓没有强平价时不带距离
+    expect(buildBrief({ market: 'perp', symbol: 'BTC', interval: '1h', candles: candles(30), position: { isLong: false, leverage: 3, roe: -0.02, liquidationPx: null } })!.position).toEqual({ isLong: false, lev: 3, roe: -0.02, hasTp: false, hasSl: false })
+  })
+})

@@ -1,0 +1,523 @@
+@import "tailwindcss";
+
+/* 中性表面承载内容，品牌色与行情涨跌分工。 */
+@theme {
+  /* 底色是实心深色（液态背景的底、以及压在品牌色按钮上的深色字都用它）；
+     卡片 / 线条是半透明，让背后的流体柔光透出来（2026-09-25 液态玻璃改版） */
+  --color-bg: #0c0e13;
+  --color-card: rgb(34 37 47 / .52);
+  --color-card2: rgb(52 56 70 / .55);
+  --color-line: rgb(255 255 255 / .09);
+  --color-fg: #f5f6f7;
+  --color-muted: #a7adb2;
+  /* 品牌色：珍珠淡紫（2026-09-25 改名 0x4 时换掉荧光绿 #8cff4d，goat 嫌太「AI」）。
+     深字压在它上面对比度够；高光渐变用蜜桃 #ffc9a8 → 淡紫 → 冰青 #8fe0ff，与猫头 logo 一致 */
+  --color-accent: #cdbdff;
+  /* 主按钮的珍珠渐变（白 → 淡紫），和猫头 logo 的脸同一套 */
+  --pearl: linear-gradient(145deg, #ffffff 0%, #ece6ff 55%, #d9ccff 100%);
+  --color-accent-dark: #b8a5f5;
+  --color-up: #43d6a0;
+  --color-down: #ff727c;
+  --color-social: #286db3;
+  --color-warning: #e9ba72;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Noto Sans SC", "Segoe UI", Roboto, sans-serif;
+}
+
+html, body, #root { min-height: 100%; }
+
+/* ---------- 液态流体背景（components/LiquidBackground） ---------- */
+.liquid-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--color-bg); }
+.liquid-layer { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+/* 外层只管位置和漂移（transform 动画），自己不画东西；柔光画在里面两张 128px 的小 canvas 上，
+   两张交叉淡入淡出换色（opacity 是合成层动画，不重画）。透明度已烘进 canvas，外层不要再设 opacity。
+   为什么这样做、显存怎么算，见 LiquidBackground.tsx 文件头。 */
+.liquid-blob { position: absolute; will-change: transform; }
+.liquid-blob > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 1; transition: opacity 5s ease; }
+[data-face="0"] > .liquid-blob > canvas[data-f="1"], [data-face="1"] > .liquid-blob > canvas[data-f="0"] { opacity: 0; }
+/* ⚠️ 显存：光斑原来每团 85–95vmax，iPhone 3 倍屏上一团就是约 2900×2900 像素的图层（约 30MB），四团 100MB+，
+   长时间开着会被 iOS 判内存超标、杀掉网页进程，App 看起来就是「自己刷新了一下」（2026-09-25 goat 反馈）。
+   现在元素只做原尺寸的 1/3，用 transform: scale(3) 放大显示：柔光渐变放大看不出差别，图层显存降到约 1/9。
+   中心位置保持和原来一致（新 left/top = 原 left/top + 原宽度/3）。动画里的 scale 也都乘 3。
+   09-26 起光斑画在固定 128×128 的 canvas 上，显存已和显示尺寸无关；这套 1/3 + scale(3) 的几何保留只是为了位置和动画不变。 */
+.liquid-a { width: 31.67vmax; height: 31.67vmax; left: -13.33vmax; top: -8.33vmax; transform: scale(3); animation: liquid-a 23s ease-in-out infinite alternate; }
+.liquid-b { width: 28.33vmax; height: 28.33vmax; right: -16.67vmax; top: 38.33vmax; transform: scale(3); animation: liquid-b 29s ease-in-out infinite alternate; }
+.liquid-c { width: 30vmax; height: 30vmax; left: 0vmax; bottom: -25vmax; transform: scale(3); animation: liquid-c 31s ease-in-out infinite alternate; }
+.liquid-d { width: 20vmax; height: 20vmax; right: -5vmax; bottom: 10vmax; transform: scale(3); animation: liquid-d 19s ease-in-out infinite alternate; }
+@keyframes liquid-a { to { transform: translate(28vmax, 22vmax) scale(3.54); } }
+@keyframes liquid-b { to { transform: translate(-30vmax, 18vmax) scale(2.58); } }
+@keyframes liquid-c { to { transform: translate(24vmax, -26vmax) scale(3.36); } }
+@keyframes liquid-d { to { transform: translate(-26vmax, -34vmax) scale(3.75); } }
+/* 所有品牌色实心块（bg-accent：各页主按钮、选中态）统一叠珍珠渐变。
+   写在层外，优先级高于 Tailwind 工具类；bg-accent/20 这类半透明是另一个类名，不受影响 */
+.bg-accent { background-image: var(--pearl); }
+/* 内容层压在背景上面 */
+.app-shell { position: relative; z-index: 1; }
+.status-glass { position: fixed; inset: 0 0 auto 0; height: env(safe-area-inset-top); z-index: 60; pointer-events: none;
+  background: color-mix(in oklab, var(--color-bg) 55%, transparent); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); }
+/* 弹层面板 / 吸顶栏：深色半透明 + 背景模糊，流体颜色隐约透出来 */
+/* 弹层面板：实心底色 + 面板里的 <LiquidLayer />（和背景同一组颜色，一起变） */
+.sheet-glass { position: relative; background: var(--color-bg); }
+.sheet-glass > :not(.liquid-layer) { position: relative; z-index: 1; }
+/* 通知条：实心底色（页面底色上叠一层卡片色），不再透出下面的列表；亮暗主题都走变量 */
+.toast-solid { background-color: var(--color-bg); background-image: linear-gradient(var(--color-card), var(--color-card)); }
+.bar-glass { background: rgb(12 14 19 / .66); -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%); }
+html { height: 100%; color-scheme: dark; }
+body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+input, textarea { font-family: inherit; }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+@layer base {
+  button, a, input, select, textarea { touch-action: manipulation; }
+  button:not(:disabled), select { cursor: pointer; }
+  :where(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  /* 玻璃：glass = 真毛玻璃（背后内容会被模糊，只用在导航、弹层、首页资产卡这些少数大块上，
+     列表里大量使用会让手机滚动掉帧）；glass-lite = 半透明卡片（背景本身是柔光，透出来就是毛玻璃感） */
+  .glass { background: rgb(28 31 40 / .5); -webkit-backdrop-filter: blur(26px) saturate(160%); backdrop-filter: blur(26px) saturate(160%);
+    border: 1px solid rgb(255 255 255 / .09); box-shadow: 0 22px 44px rgb(0 0 0 / .38), inset 0 1px 0 rgb(255 255 255 / .09); }
+  .glass-lite { background: rgb(34 37 47 / .46); border: 1px solid rgb(255 255 255 / .07); box-shadow: 0 12px 28px rgb(0 0 0 / .22), inset 0 1px 0 rgb(255 255 255 / .07); }
+  .pearl-button { background: var(--pearl); color: #15161a; box-shadow: 0 12px 28px rgb(170 150 255 / .32), inset 0 1px 0 #fff; }
+  .page-gutter { padding-inline: 20px; }
+  .page-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-height: 80px; padding-block: 12px; }
+  .page-title { font-size: 1.5rem; line-height: 1.25; font-weight: 650; }
+  .section-title { font-size: 1.0625rem; line-height: 1.5; font-weight: 600; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 3.25rem; }
+  .number { font-variant-numeric: tabular-nums; }
+  .ui-button {
+    position: relative; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; font-weight: 700; line-height: 1.4;
+    transition: background-color 140ms ease, color 140ms ease, transform 120ms ease;
+  }
+  .ui-button:active:not(:disabled) { transform: scale(.98); }
+  .ui-button:disabled { opacity: .45; cursor: not-allowed; }
+  .ui-button-content { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; }
+  .ui-button-content > svg { flex-shrink: 0; }
+  .ui-field {
+    width: 100%; min-width: 0; border: 1px solid var(--color-line); border-radius: 1rem;
+    background: rgb(0 0 0 / .28); padding: .75rem 1rem; font-size: 1rem; color: var(--color-fg);
+  }
+  .ui-field::placeholder { color: var(--color-muted); }
+  .ui-field:focus { border-color: var(--color-accent); }
+  .ui-field[aria-invalid=true] { border-color: var(--color-down); }
+  .ui-field:disabled { opacity: .5; }
+  /* 助记词遮蔽用 text-security 而不是 type=password：后者会招来 iOS 的密码自动填充条 */
+  .field-masked { -webkit-text-security: disc; text-security: disc; }
+  .ui-label { display: block; margin-bottom: .5rem; font-size: .8125rem; font-weight: 500; color: var(--color-muted); }
+  .icon-button {
+    position: relative; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center;
+    width: 44px; height: 44px; border-radius: 50%; color: var(--color-muted);
+    transition: background-color 140ms ease, color 140ms ease, transform 120ms ease;
+  }
+  .icon-button:active:not(:disabled) { background: var(--color-card2); transform: scale(.96); }
+  .icon-button:disabled { opacity: .5; cursor: not-allowed; }
+  .text-action { display: inline-flex; min-height: 2.75rem; align-items: center; gap: .375rem; font-size: .8125rem; color: var(--color-muted); }
+  .app-nav { border-radius: 999px; }
+  /* 胶囊后面的「地板」（2026-09-29 goat 真机：导航没在最底部、下面露出别的页面）：
+     原来是「遮罩 + 背景模糊」，iOS 的 WKWebView 不支持两者叠用，模糊没生效，只剩半透明一层，滚动内容从胶囊下面清楚透出来。
+     现在直接用页面底色盖：上沿一小段渐隐（内容滚到胶囊附近淡出），胶囊上沿往下完全不透明，一直铺到屏幕底边；不再用模糊，也省显卡 */
+  .nav-floor::before { content: ''; position: absolute; inset: 0; z-index: -1;
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--color-bg) 0%, transparent) 0%, color-mix(in srgb, var(--color-bg) 82%, transparent) 26%, var(--color-bg) 42%, var(--color-bg) 100%); }
+  .nav-tab { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: .2rem; min-height: 3.5rem; font-size: .6875rem; font-weight: 600; color: var(--color-muted); border-radius: 999px; transition: color 160ms ease; }
+  .nav-tab[aria-current=page] { color: var(--color-fg); text-shadow: 0 0 16px rgb(190 170 255 / .8); }
+  .nav-tab[aria-current=page] svg { filter: drop-shadow(0 0 8px rgb(190 170 255 / .75)); }
+  .nav-tab:active { background: rgb(255 255 255 / .05); }
+  .account-tools { display: flex; align-items: center; }
+  .account-tools > button { min-width: 44px; min-height: 44px; }
+  .account-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 8px; }
+  .account-summary > * { white-space: nowrap; }
+  /* 数字保持完整一行；上限只约束展示金额，浏览器整页缩放仍可使用。 */
+  .balance-value { font-size: min(2.25rem, 48px); line-height: 1.2; font-weight: 600; white-space: nowrap; }
+  .balance-value[data-long=true] { font-size: min(1.75rem, 40px); }
+  /* 首页地址下的账户勋章（2026-09-29）：普通账户是中性玻璃，VIP 是金色玻璃；按钮本身留出 32px 高的点按区域 */
+  .tier-badge { position: relative; isolation: isolate; display: inline-flex; min-height: 2rem; align-items: center; gap: .25rem; padding-inline: .5rem; font-size: .6875rem; font-weight: 600; letter-spacing: .02em; white-space: nowrap; color: var(--color-muted); }
+  .tier-badge::before { content: ""; position: absolute; inset: .3125rem 0; z-index: -1; border-radius: 999px; border: 1px solid rgb(255 255 255 / .1); background: rgb(255 255 255 / .06); box-shadow: inset 0 1px 0 rgb(255 255 255 / .08); }
+  .tier-badge[data-vip=true] { color: #f5d58c; }
+  .tier-badge[data-vip=true]::before { border-color: rgb(245 205 120 / .45); background: linear-gradient(135deg, rgb(245 205 120 / .26), rgb(190 140 50 / .1)); box-shadow: inset 0 1px 0 rgb(255 240 200 / .3), 0 4px 14px rgb(214 160 60 / .18); }
+  /* 「账户种类」面板顶部的 VIP 卡片：和勋章同一套金色 */
+  .tier-card-vip { border: 1px solid rgb(245 205 120 / .35); background: linear-gradient(135deg, rgb(245 205 120 / .18), rgb(190 140 50 / .06)); box-shadow: inset 0 1px 0 rgb(255 240 200 / .18); }
+  .tier-gold { color: #f5d58c; }
+  .wallet-action { display: flex; min-width: 0; min-height: 84px; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; font-size: .8125rem; font-weight: 500; white-space: nowrap; }
+  /* 首页四个操作圆钮（2026-09-26 goat 定案）：深色 = 四个一样的深灰玻璃圆 + 白图标；浅色 = 四个一样的珠光圆 + 深色图标。不再单独突出「收款」 */
+  .wallet-action-icon { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; transition: transform 120ms ease; color: #fff;
+    background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .12); box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), 0 10px 24px rgb(0 0 0 / .3); }
+  .wallet-action:active .wallet-action-icon { transform: scale(.94); }
+  .list-row { display: flex; align-items: center; gap: .75rem; min-height: 5rem; padding-block: 1rem; border-bottom: 1px solid rgb(52 56 59 / .55); }
+  .list-row:active { background: var(--color-card); }
+  .token-row, .holding-row { flex-wrap: wrap; }
+  .token-rank { width: 16px; flex-shrink: 0; }
+  .token-identity { flex: 1; min-width: 80px; }
+  .token-price { max-width: 100%; margin-left: auto; white-space: nowrap; text-align: right; }
+  .view-tab { min-height: 3rem; padding-inline: .25rem; border-bottom: 2px solid transparent; color: var(--color-muted); font-size: 1rem; font-weight: 600; }
+  .view-tab[aria-pressed=true] { border-color: var(--color-accent); color: var(--color-fg); }
+  .empty-state { padding-block: 2.25rem; text-align: center; }
+  .empty-state > svg { margin: 0 auto 1rem; color: var(--color-muted); }
+  .status-notice { display: flex; align-items: center; gap: .75rem; padding-block: .75rem; font-size: .8125rem; color: var(--color-warning); }
+  html.kb-open .nav-floor { display: none; }
+  .welcome-content { display: flex; flex-direction: column; min-height: calc(100svh - env(safe-area-inset-top) - var(--kb-h, 0px)); padding: 2rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom)); }
+  .welcome-brand { display: flex; flex: 1; flex-direction: column; justify-content: center; align-items: flex-start; padding-block: 2rem 3rem; }
+  .onboarding-content { padding: 1.5rem 1.25rem calc(2rem + env(safe-area-inset-bottom)); }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .icon-button:hover, .list-row:hover { background: var(--color-card); color: var(--color-fg); }
+  .text-action:hover { color: var(--color-fg); }
+  [data-tooltip]:hover::after, [data-tooltip]:focus-visible::after {
+    content: attr(data-tooltip); position: absolute; top: calc(100% + .375rem); right: 0; z-index: 60;
+    width: max-content; max-width: 12rem; padding: .375rem .625rem; border-radius: .375rem;
+    background: var(--color-fg); color: var(--color-bg); font-size: .75rem; font-weight: 500; pointer-events: none;
+  }
+}
+
+@media (max-width: 359px) {
+  .page-gutter { padding-inline: 16px; }
+  .token-rank { display: none; }
+  .list-row { gap: .625rem; }
+}
+@media (min-width: 600px) {
+  #root { max-width: 480px; margin-inline: auto; border-inline: 1px solid var(--color-line); }
+}
+@media (max-height: 650px) {
+  .welcome-content { padding-top: 1.25rem; }
+  .welcome-brand { padding-block: 1rem 2rem; }
+}
+
+/* 隐藏滚动条但保留滚动 */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+/* 全 App 隐藏滚动条（2026-09-26 goat：选币、代币门槛等弹层右边那根滑杆很丑）。
+   手机上本来就是滑动时才出现的细条；这里主要是网页版在电脑浏览器里会显示一根常驻的粗滚动条。内容照样能滚 */
+html, body, * { scrollbar-width: none; }
+::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* 安全区（刘海屏 / Home 指示条） */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+@keyframes pulse-soft { 0%, 100% { opacity: 1 } 50% { opacity: .45 } }
+.skeleton { background: var(--color-card2); border-radius: .5rem; animation: pulse-soft 1.4s ease-in-out infinite; }
+
+@keyframes slide-up { from { transform: translateY(100%) } to { transform: translateY(0) } }
+.sheet-enter { animation: slide-up .22s cubic-bezier(.2,.8,.2,1); }
+
+/* 弹性缓动：阻尼弹簧（阻尼比 0.7，冲过头约 4.6% 再回稳），猫头落下用；不支持 linear() 的系统退回带一次过冲的三次贝塞尔 */
+:root { --ease-spring: cubic-bezier(.3, 1.32, .5, 1); }
+@supports (transition-timing-function: linear(0, 1)) {
+  :root { --ease-spring: linear(0, 0.0339, 0.1184, 0.2317, 0.3574, 0.4835, 0.6018, 0.7073, 0.7974, 0.8713, 0.9296, 0.9736, 1.005, 1.026, 1.0386, 1.0447, 1.0459, 1.0439, 1.0397, 1.0343, 1.0285, 1.0227, 1.0174, 1.0126, 1.0086, 1.0054, 1.0028, 1.0009, 0.9996, 0.9987, 0.9982, 0.9979, 1); }
+/* ── 页面切换（lib/pageTransition.ts，2026-09-29 goat：「切换很生硬」）──
+   浏览器截下旧页（::view-transition-old(root)）和新页（::view-transition-new(root)），按 <html data-nav> 播：
+   进入下一级 forward：新页从右边推进来，旧页往左让 28% 并变暗；返回 back：反过来；底部标签之间 tab：很短的淡入淡出。
+   曲线用 ease-out-cubic（和半屏弹层同一条，见 Sheet.tsx 的 halfEase 注释：WebKit 交给系统合成要晚一两帧，
+   前段太陡的 iOS 曲线第一帧就走了一大截，看着像闪出来的），尾段收得柔；只动位置和透明度，不掉帧。
+   底部导航和状态栏玻璃单独截图（view-transition-name），切页时原地不动，只有页面内容在动。 */
+}
+:root { --vt-dur: 380ms; --vt-ease: cubic-bezier(.33,1,.68,1); }
+::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; animation-duration: var(--vt-dur); animation-timing-function: var(--vt-ease); animation-fill-mode: both; }
+:root[data-nav="forward"]::view-transition-new(root) { animation-name: vt-in-right; box-shadow: -10px 0 30px rgb(0 0 0 / .32); }
+:root[data-nav="forward"]::view-transition-old(root) { animation-name: vt-out-left; }
+:root[data-nav="back"]::view-transition-old(root) { animation-name: vt-out-right; z-index: 2; box-shadow: -10px 0 30px rgb(0 0 0 / .32); }
+:root[data-nav="back"]::view-transition-new(root) { animation-name: vt-in-left; }
+:root[data-nav="tab"]::view-transition-old(root) { animation: vt-fade-out 110ms ease-out both; }
+:root[data-nav="tab"]::view-transition-new(root) { animation: vt-fade-in 170ms ease-out both; }
+/* 电脑网页版换栏目（lib/pageTransition.ts webNavDirection）：只做短淡入淡出，不横推；顶栏和底部状态栏单独截图原地不动 */
+:root[data-nav="fade"]::view-transition-old(root) { animation: vt-fade-out 90ms ease-out both; }
+:root[data-nav="fade"]::view-transition-new(root) { animation: vt-fade-in 150ms ease-out both; }
+.desk-bar { view-transition-name: desk-bar; }
+.desk-status { view-transition-name: desk-status; }
+::view-transition-group(desk-bar), ::view-transition-group(desk-status),
+::view-transition-old(desk-bar), ::view-transition-new(desk-bar), ::view-transition-old(desk-status), ::view-transition-new(desk-status) { animation: none; }
+@keyframes vt-in-right { from { transform: translateX(100%); } }
+@keyframes vt-out-left { to { transform: translateX(-28%); opacity: .55; } }
+@keyframes vt-out-right { to { transform: translateX(100%); } }
+@keyframes vt-in-left { from { transform: translateX(-28%); opacity: .55; } }
+@keyframes vt-fade-out { to { opacity: 0; } }
+@keyframes vt-fade-in { from { opacity: 0; } }
+.nav-floor { view-transition-name: app-nav; }
+.status-glass { view-transition-name: status-glass; }
+::view-transition-group(app-nav), ::view-transition-group(status-glass) { animation-duration: 180ms; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-blob { animation: none !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .ui-button:active, .icon-button:active, .wallet-action:active .wallet-action-icon { transform: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .glass-lite, .app-nav { background: #1b1e26; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .liquid-blob { display: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --color-muted: #d3d7db; --color-line: #777e85; }
+  .app-nav { background: var(--color-bg); backdrop-filter: none; }
+}
+
+@keyframes alert-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+
+/* 合约页杠杆滑条：轨道和已选段由外层 div 画，这里只保留一个白色圆钮（2026-09-24 按设计稿） */
+.lev-range { -webkit-appearance: none; appearance: none; background: transparent; margin: 0; height: 28px; cursor: pointer; }
+.lev-range::-webkit-slider-runnable-track { background: transparent; height: 28px; }
+.lev-range::-moz-range-track { background: transparent; height: 28px; }
+.lev-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: 5px; border-radius: 50%; background: var(--color-fg); box-shadow: 0 0 0 4px rgba(205, 189, 255, .3); }
+.lev-range::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: var(--color-fg); box-shadow: 0 0 0 4px rgba(205, 189, 255, .3); }
+.lev-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(205, 189, 255, .5); }
+
+/* ---------- 浅色外观（lib/theme.ts 写 <html data-theme="light">） ----------
+   深色是默认；这里只覆盖颜色变量和少数写死深色的玻璃 / 输入底。
+   品牌淡紫在浅底上当文字太淡，浅色下换成深一档的紫；珍珠按钮保持白底，文字固定深色。 */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #eef0f6;
+  --color-card: rgb(255 255 255 / .6);
+  --color-card2: rgb(255 255 255 / .85);
+  --color-line: rgb(20 24 33 / .09);
+  --color-fg: #141821;
+  --color-muted: #5b6372;
+  --color-accent: #6b4de6;
+  --color-accent-dark: #5a3fd0;
+  --color-up: #0f9a72;
+  --color-down: #dc3d52;
+  --color-warning: #a8680f;
+}
+:root[data-theme="light"] .glass { background: rgb(255 255 255 / .55); border-color: rgb(255 255 255 / .9); box-shadow: 0 18px 40px rgb(96 108 140 / .2), inset 0 1px 0 #fff; }
+:root[data-theme="light"] .glass-lite { background: rgb(255 255 255 / .55); border-color: rgb(255 255 255 / .8); box-shadow: 0 10px 24px rgb(96 108 140 / .14), inset 0 1px 0 #fff; }
+:root[data-theme="light"] .wallet-action-icon { color: #15161a; background: var(--pearl); border: 0; box-shadow: 0 10px 24px rgb(107 77 230 / .22), inset 0 1px 0 #fff, 0 0 0 1px rgb(20 24 33 / .06); }
+:root[data-theme="light"] .list-row { border-bottom-color: var(--color-line); }
+:root[data-theme="light"] .tier-badge::before { background: rgb(255 255 255 / .62); border-color: rgb(20 24 33 / .08); box-shadow: inset 0 1px 0 #fff; }
+:root[data-theme="light"] .tier-badge[data-vip=true] { color: #85560b; }
+:root[data-theme="light"] .tier-badge[data-vip=true]::before { border-color: rgb(190 140 50 / .45); background: linear-gradient(135deg, rgb(252 230 170 / .95), rgb(236 198 118 / .6)); box-shadow: inset 0 1px 0 #fff, 0 4px 12px rgb(190 140 50 / .2); }
+:root[data-theme="light"] .tier-card-vip { border-color: rgb(190 140 50 / .35); background: linear-gradient(135deg, rgb(252 230 170 / .8), rgb(236 198 118 / .35)); box-shadow: inset 0 1px 0 #fff; }
+:root[data-theme="light"] .tier-gold { color: #85560b; }
+:root[data-theme="light"] .bar-glass { background: rgb(238 240 246 / .7); }
+:root[data-theme="light"] .ui-field { background: rgb(255 255 255 / .7); }
+:root[data-theme="light"] .bg-black\/30 { background-color: rgb(20 24 33 / .06); }
+:root[data-theme="light"] .bg-accent { color: #15161a; }
+:root[data-theme="light"] .pearl-button, :root[data-theme="light"] .bg-accent { box-shadow: 0 10px 24px rgb(107 77 230 / .22), inset 0 1px 0 #fff, 0 0 0 1px rgb(20 24 33 / .06); }
+:root[data-theme="light"] .nav-tab[aria-current=page] { text-shadow: 0 0 14px rgb(107 77 230 / .35); }
+:root[data-theme="light"] .nav-tab[aria-current=page] svg { filter: drop-shadow(0 0 6px rgb(107 77 230 / .4)); }
+
+/* 聊天里的图片消息不套气泡：气泡里只有一张图时去掉底色和内边距，图片自己带 12px 圆角。
+   气泡在 GroupChat / DmChat 里，这里用 :has 控制，不改那两个页面；不在图层里，所以能压过 Tailwind 的 bg-* / px-* */
+div:has(> [data-chat-image]:only-child) { background: transparent; padding: 0; }
+
+/* ---------- 欢迎页 / 解锁页开场（components/welcome/WelcomeIntro，2026-09-25 像素版） ----------
+   背景就是全局液态流体，这里不铺底色；标语和猫头画在 canvas 上，按钮沿用 App 的珍珠主按钮 / 玻璃次按钮，
+   亮暗主题都跟着全局变量走。时间线在 WelcomeIntro.tsx 的 T / T_FAST，按钮延迟经 --t-cta / --t-note 传进来。 */
+.welcome-stage { position: relative; min-height: 100svh; }
+/* 欢迎页 / 解锁页的 WebGL 流体背景铺在最底下，内容全部抬到它上面 */
+.welcome-stage > .fluid-bg { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.welcome-stage > .welcome-content { position: relative; z-index: 1; }
+.welcome-stage .welcome-brand { padding-block: 1rem 2.5rem; }
+/* 猫头入场（2026-09-29 goat：原来的马赛克显影和整体不搭，改成从上方落下、带弹性和对焦）
+   外层不动，图片做「落下」（位移 + 缩放，弹性缓动）和「对焦」（模糊透明 → 清晰，缓出）两段互不干扰的动画；
+   落定（约第 37% 时刻第一次到位）时脚下柔光扩开、8 颗像素颗粒散开、地面淡影收拢。只动 transform / opacity / filter。 */
+.welcome-cat { position: relative; display: block; flex-shrink: 0; --cat-land: calc(var(--cat-delay, 0s) + var(--cat-dur, .9s) * .34); }
+.welcome-cat-img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.welcome-cat.is-dropping .welcome-cat-img {
+  animation: cat-fall var(--cat-dur, .9s) var(--ease-spring) var(--cat-delay, 0s) both,
+             cat-focus calc(var(--cat-dur, .9s) * .55) cubic-bezier(.2, .7, .2, 1) var(--cat-delay, 0s) both;
+  will-change: transform, opacity, filter;
+}
+@keyframes cat-fall { from { transform: translate3d(0, -64px, 0) scale(.84) } to { transform: none } }
+@keyframes cat-focus { from { opacity: 0; filter: blur(9px) saturate(1.4) } 60% { opacity: 1 } to { opacity: 1; filter: none } }
+/* 地面淡影：猫头越近越实，落定时收成一道椭圆 */
+.welcome-cat-shadow { position: absolute; left: 16%; right: 16%; bottom: -8px; height: 9px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(0 0 0 / .38), transparent); opacity: 0; transform: scaleX(.35);
+  animation: cat-shadow calc(var(--cat-dur, .9s) * .45) cubic-bezier(.2, .7, .2, 1) var(--cat-delay, 0s) forwards; }
+@keyframes cat-shadow { 70% { opacity: .9 } to { opacity: .4; transform: none } }
+/* 落定柔光：品牌四色的一圈光，扩开后散掉 */
+.welcome-cat-halo { position: absolute; inset: -45%; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--sg-2) 42%, transparent) 0%, color-mix(in srgb, var(--sg-3) 22%, transparent) 42%, color-mix(in srgb, var(--sg-1) 8%, transparent) 62%, transparent 78%);
+  transform: scale(.55); animation: cat-halo 1.1s cubic-bezier(.16, 1, .3, 1) var(--cat-land) forwards; }
+@keyframes cat-halo { 0% { opacity: 0; transform: scale(.55) } 25% { opacity: .7 } 100% { opacity: 0; transform: scale(1.12) } }
+/* 像素颗粒：从猫头底部向两侧扬起、边走边淡（在猫头图片后面出来）；方块不抗锯齿，保持像素感 */
+.welcome-cat-sparks { position: absolute; left: 50%; top: 90%; width: 0; height: 0; pointer-events: none; }
+.welcome-cat-sparks i { position: absolute; left: 0; top: 0; width: var(--s); height: var(--s); background: var(--c); opacity: 0;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--c) 60%, transparent);
+  animation: cat-spark .72s cubic-bezier(.16, 1, .3, 1) calc(var(--cat-land) + var(--k) * 12ms) forwards; }
+@keyframes cat-spark { 0% { opacity: 0; transform: translate3d(0, 0, 0) } 15% { opacity: 1 } 100% { opacity: 0; transform: translate3d(var(--dx), var(--dy), 0) } }
+/* 本次打开 App 已经播过（被自动锁定后回到解锁页、从引导页返回）：猫头和标语直接在位，整页只做一次轻淡入 */
+.welcome-stage.is-replay .welcome-brand { animation: ws-fade .28s ease both; }
+/* 标语占位：宽度撑满（桌面最多 440px），高度按点阵行列比例留好，画布再往四周铺出去给飞入留地方 */
+.welcome-title { position: relative; align-self: stretch; max-width: 440px; margin-top: 2.25rem; }
+.welcome-title canvas { position: absolute; pointer-events: none; image-rendering: pixelated; }
+@keyframes ws-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ws-rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+.welcome-actions { position: relative; display: grid; gap: .75rem; animation: ws-rise .8s cubic-bezier(.16, 1, .3, 1) var(--t-cta) both; }
+.welcome-cta { min-height: 3.375rem; width: 100%; gap: .5rem; padding: .75rem 1.25rem; font-size: 1rem; font-weight: 600;
+  transition: filter 160ms ease, transform 120ms ease; }
+.welcome-cta.pearl-button svg { transition: transform 200ms ease; }
+.welcome-cta.pearl-button:active svg { transform: translateX(2px); }
+.welcome-note { margin-top: 1.5rem; display: flex; align-items: center; justify-content: center; gap: .5rem; font-size: .75rem; color: var(--color-muted);
+  animation: ws-fade 1s ease var(--t-note) both; }
+@media (prefers-reduced-motion: reduce) {
+  /* 全局规则只把时长压到 0.01ms，延迟还在；这里把延迟也清掉，直接落在最终画面 */
+  .welcome-stage *, .welcome-stage *::before, .welcome-stage *::after { animation-delay: 0s !important; }
+  .welcome-cat-img { animation: none !important; }
+  .welcome-cat-shadow, .welcome-cat-halo, .welcome-cat-sparks { display: none; }
+}
+
+/* ---------- 工作人员头像发光边框（components/Avatar 的 StaffGlow，2026-09-25） ----------
+   客服 / 管理员头像外圈一道缓慢旋转的品牌渐变描边（蜜桃 → 淡紫 → 冰青 → 金）+ 一层静态柔光。
+   判定只来自服务端（lib/staffBadges），普通用户换同样的头像和昵称拿不到。
+   性能：环的形状是静态 clip-path（圆 / 六边形各一条 evenodd 路径），里面只有一个 conic-gradient 方块在转，
+   只动 transform，走合成层不重绘；柔光层是静态的，只画一次。列表里几十个一起转也不卡。 */
+:root {
+  --sg-1: #ffc9a8; --sg-2: #cdbdff; --sg-3: #8fe0ff; --sg-4: #f6d27a;
+  --sg-glow: .75;
+}
+/* 浅底上淡色会发白，换深一档、柔光再加一点 */
+:root[data-theme="light"] {
+  --sg-1: #ff9e6e; --sg-2: #9a7cff; --sg-3: #3fb8ec; --sg-4: #e0a92a;
+  --sg-glow: .9;
+}
+.staff-glow { position: relative; display: inline-block; flex-shrink: 0; vertical-align: middle; }
+.staff-glow > .sg-ring, .staff-glow > .sg-halo { position: absolute; pointer-events: none; }
+/* 头像本体：块级免得行内基线把它往下顶；定位让它盖在柔光层上面 */
+.staff-glow > :not(.sg-ring, .sg-halo) { display: block; position: relative; z-index: 2; }
+/* 发光环压在头像下面一层：环本身画在头像外圈，不会被头像挡住；头像上的链图标（NFT 所在链）要盖在环上面（2026-09-25 goat） */
+.staff-glow > .sg-ring { z-index: 1; }
+.staff-glow > .sg-ring { overflow: hidden; }
+.sg-halo { opacity: var(--sg-glow); animation: sg-breathe 2.4s ease-in-out infinite; }
+/* 呼吸：柔光一明一暗。和旋转叠在一起，静态图片（带边框的假头像）做不出来（2026-09-25 goat：边框必须是动的，防冒充） */
+@keyframes sg-breathe { 0%, 100% { opacity: calc(var(--sg-glow) * .45); } 50% { opacity: var(--sg-glow); } }
+.sg-halo > span { position: absolute; inset: 0; background: conic-gradient(from 200deg, var(--sg-1), var(--sg-2), var(--sg-3), var(--sg-4), var(--sg-1)); }
+.sg-spin { position: absolute; inset: -25%; background: conic-gradient(var(--sg-1), var(--sg-2), var(--sg-3), var(--sg-4), var(--sg-1));
+  animation: sg-spin 4s linear infinite; will-change: transform; }
+@keyframes sg-spin { to { transform: rotate(1turn); } }
+/* 个人主页名字旁的「官方」/「客服」小标签（components/StaffTag）：同一套渐变做描边 */
+.staff-tag { border: 1px solid transparent; color: var(--color-fg);
+  background: linear-gradient(var(--color-bg), var(--color-bg)) padding-box, linear-gradient(100deg, var(--sg-1), var(--sg-2), var(--sg-3), var(--sg-4)) border-box; }
+/* 工作人员的名字（components/UserName，2026-09-26 goat）：宜家配色，黄字 + 蓝描边。
+   小字（默认）：八向 text-shadow 描边，偏移用 em 跟字号走（12px ≈ 0.6px），细到不糊；不用 text-stroke，
+   它是往字形里外各画一半，小字会把黄色笔画吃掉。
+   大字（.staff-name-lg，18px 以上）：-webkit-text-stroke 配 paint-order: stroke fill，描边垫在黄字下面只露外半圈。
+   浅色外观：浅底上亮黄发虚，黄色压深一档（#ffcc00）靠蓝描边撑住轮廓；描边反而收细一点，浅底上中文笔画密的字（管、理）描边太粗会把字腔填满。
+   颜色写死不跟主题变量走：要的就是这两个宜家色。 */
+:root {
+  --sn-fill: #ffda1a; --sn-edge: #0051ba; --sn-w: .05em;
+}
+:root[data-theme="light"] {
+  --sn-fill: #ffcc00; --sn-w: .045em;
+}
+.staff-name {
+  color: var(--sn-fill) !important;
+  font-weight: 700;
+  text-shadow:
+    var(--sn-w) 0 0 var(--sn-edge), calc(-1 * var(--sn-w)) 0 0 var(--sn-edge),
+    0 var(--sn-w) 0 var(--sn-edge), 0 calc(-1 * var(--sn-w)) 0 var(--sn-edge),
+    calc(.7 * var(--sn-w)) calc(.7 * var(--sn-w)) 0 var(--sn-edge), calc(-.7 * var(--sn-w)) calc(.7 * var(--sn-w)) 0 var(--sn-edge),
+    calc(.7 * var(--sn-w)) calc(-.7 * var(--sn-w)) 0 var(--sn-edge), calc(-.7 * var(--sn-w)) calc(-.7 * var(--sn-w)) 0 var(--sn-edge);
+}
+.staff-name-lg {
+  text-shadow: none;
+  -webkit-text-stroke: .1em var(--sn-edge);
+  paint-order: stroke fill;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 系统开了「减少动态效果」：停掉旋转（位移类动画），但保留呼吸（只变亮度，不引起眩晕），让官方边框始终是动的、没法用静态图冒充。
+     全局规则把所有动画压成 0.01ms，这里用更具体的选择器把呼吸恢复回来 */
+  .sg-spin { animation: none !important; will-change: auto; }
+  .staff-glow > .sg-halo { animation-duration: 2.4s !important; animation-iteration-count: infinite !important; }
+}
+
+/* 买卖弹层的余额比例滑杆（2026-09-25 替换快捷数量按钮） */
+.pct-slider { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: var(--color-line); outline: none; }
+.pct-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 999px; background: var(--color-accent); border: 3px solid var(--color-bg); box-shadow: 0 2px 8px rgb(0 0 0 / .3); cursor: pointer; }
+.pct-slider::-moz-range-thumb { width: 22px; height: 22px; border-radius: 999px; background: var(--color-accent); border: 3px solid var(--color-bg); cursor: pointer; }
+.pct-slider:disabled { opacity: .4; }
+
+/* 群名片勋章：群主金色、MOD 蓝紫，亮暗主题都用实色底保证小字号清楚 */
+.group-badge-owner { color: #3b2a00; background: linear-gradient(135deg, #ffe08a, #f5b83d); box-shadow: 0 0 0 1px rgb(245 184 61 / .35); }
+.group-badge-mod { color: #fff; background: linear-gradient(135deg, #7c8cff, #a36bff); box-shadow: 0 0 0 1px rgb(124 140 255 / .35); }
+/* 消息页「发现社区」卡片：左上角一抹淡紫光，和资产卡同一套语言 */
+.discover-card { background: radial-gradient(120% 100% at 0% 0%, rgb(205 189 255 / .13), transparent 62%), var(--color-card); }
+:root[data-theme="light"] .discover-card { background: radial-gradient(120% 100% at 0% 0%, rgb(107 77 230 / .08), transparent 62%), var(--color-card); }
+/* Holder（持有 Zalien，2026-09-28）：外星绿，深色字；图标里的眼睛用浅绿挖空 */
+.holder-badge { --holder-eye: #c9ffe3; color: #04321f; background: linear-gradient(135deg, #b9ffd8, #34d399); box-shadow: 0 0 0 1px rgb(52 211 153 / .35); }
+
+/* 群主 / MOD 的每条消息气泡都带描边光（2026-09-26 goat：每条都要一眼看出是谁发的，比只在第一条挂勋章清楚）。
+   用 box-shadow 不占布局；图片 / 视频气泡同样生效 */
+.bubble-owner { box-shadow: 0 0 0 1.5px #f5b83d, 0 0 14px rgb(245 184 61 / .45); }
+.bubble-mod { box-shadow: 0 0 0 1.5px #8b7cff, 0 0 14px rgb(139 124 255 / .45); }
+:root[data-theme="light"] .bubble-owner { box-shadow: 0 0 0 1.5px #e0a21f, 0 0 12px rgb(224 162 31 / .35); }
+:root[data-theme="light"] .bubble-mod { box-shadow: 0 0 0 1.5px #6d5cff, 0 0 12px rgb(109 92 255 / .3); }
+
+/* 大号金额输入框：就是一行数字，不要输入框的底色、边框和聚焦光圈（2026-09-26 goat：买入框里那块白底很丑）。
+   浅色主题给 .ui-field 加了白色半透明底，这里要压过它 */
+.ui-field.ui-field-bare, :root[data-theme="light"] .ui-field.ui-field-bare { background: transparent; border-color: transparent; box-shadow: none; outline: none; }
+.ui-field.ui-field-bare:focus, .ui-field.ui-field-bare:focus-visible { border-color: transparent; box-shadow: none; outline: none; }
+
+/* ===== 按键光晕（lib/tapRipple.ts 按下加 .tap-halo，松手换 .tap-halo-out 淡出）=====
+   drop-shadow 画在按钮渲染结果外面：不占布局、不被 overflow 裁、不覆盖按钮自己的阴影 */
+:root { --tap-halo: rgb(184 166 255 / .55); }
+:root[data-theme="light"] { --tap-halo: rgb(124 96 230 / .45); }
+.tap-halo { filter: drop-shadow(0 0 2px var(--tap-halo)) drop-shadow(0 0 12px var(--tap-halo)) brightness(1.04); transition: filter .12s ease; }
+.tap-halo-out { filter: none; transition: filter .5s ease; }
+
+/* ---------- 首页顶栏官方滚动公告（components/HomeBrand，2026-09-29） ----------
+   logo 右边一条胶囊：左边珍珠色小喇叭，中间标题。多条轮流从下往上换入；标题放不下时先停一下再匀速滚到末尾，两端淡出。
+   宽度吃掉 logo 和右边四个图标按钮之间剩下的空间（flex-basis 0 + min-width 0），不会把按钮挤到下一行。 */
+.home-brand { display: flex; flex: 1 1 0%; min-width: 0; align-items: center; gap: 8px; }
+/* 首页顶栏像素字标「Øx4」：Pixelify Sans 600（main.tsx 引入），这款字自带的字宽已经比较松，字距再收一点更紧凑；
+   前景色过渡到品牌淡紫、冰青，和猫头 logo 的渐变同一组颜色；字形本身有下沉，往下挪 1px 和猫头视觉中线对齐 */
+.brand-wordmark { font-family: "Pixelify Sans", var(--font-sans); font-weight: 600; font-size: 1.375rem; line-height: 1; letter-spacing: -.01em;
+  font-synthesis: none; padding: 2px 0 0 2px; transform: translateY(1px);
+  background: linear-gradient(100deg, var(--color-fg) 0 36%, color-mix(in srgb, var(--sg-2) 75%, var(--color-fg)) 68%, color-mix(in srgb, var(--sg-3) 75%, var(--color-fg)));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.notice-ticker { position: relative; display: flex; flex: 1 1 auto; min-width: 0; max-width: 100%; height: 36px; align-items: center; gap: 7px;
+  padding: 0 11px 0 5px; border-radius: 999px; color: var(--color-fg); text-align: left;
+  background: linear-gradient(135deg, rgb(205 189 255 / .13), rgb(205 189 255 / .03) 62%), rgb(34 37 47 / .46);
+  border: 1px solid rgb(205 189 255 / .16); box-shadow: inset 0 1px 0 rgb(255 255 255 / .07);
+  transition: transform 120ms ease, border-color 160ms ease; }
+.notice-ticker:active { transform: scale(.985); }
+.notice-ticker:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.notice-ticker-icon { display: inline-flex; flex-shrink: 0; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 50%;
+  color: #15161a; background: var(--pearl); box-shadow: 0 2px 8px rgb(170 150 255 / .32), inset 0 1px 0 #fff; }
+.notice-ticker-view { position: relative; flex: 1 1 auto; min-width: 0; height: 20px; overflow: hidden; line-height: 20px; }
+.notice-ticker-view[data-overflow] { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 8px, #000 calc(100% - 14px), transparent 100%); }
+.notice-ticker-text { display: block; overflow: hidden; font-size: 14px; font-weight: 550; letter-spacing: .005em; white-space: nowrap; text-overflow: ellipsis;
+  animation: notice-in .42s cubic-bezier(.2, .8, .2, 1) both; }
+.notice-ticker-text.is-scrolling { width: max-content; overflow: visible; text-overflow: clip;
+  animation: notice-in .42s cubic-bezier(.2, .8, .2, 1) both, notice-scroll var(--notice-dur) linear var(--notice-lead) forwards; }
+@keyframes notice-in { from { opacity: 0; transform: translateY(70%); } to { opacity: 1; transform: translateY(0); } }
+@keyframes notice-scroll { from { transform: translateX(0); } to { transform: translateX(var(--notice-dist)); } }
+.notice-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  color: var(--color-accent); background: rgb(205 189 255 / .12); }
+.notice-chip-pin { color: var(--color-warning); background: rgb(233 186 114 / .12); }
+:root[data-theme="light"] .notice-ticker { background: linear-gradient(135deg, rgb(107 77 230 / .09), rgb(107 77 230 / .02) 62%), rgb(255 255 255 / .62);
+  border-color: rgb(107 77 230 / .16); box-shadow: inset 0 1px 0 rgb(255 255 255 / .85); }
+:root[data-theme="light"] .notice-chip { background: rgb(107 77 230 / .09); }
+:root[data-theme="light"] .notice-chip-pin { background: rgb(168 104 15 / .1); }
+
+/* 燃料费页：新加的链淡入展开、移除时淡出收起（2026-09-29）；减弱动态效果时不动 */
+@keyframes fuel-row-in { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
+@keyframes fuel-row-out { from { opacity: 1; transform: none } to { opacity: 0; transform: translateX(-12px) } }
+.fuel-row-in { animation: fuel-row-in 260ms cubic-bezier(.33, 1, .68, 1) both }
+.fuel-row-out { animation: fuel-row-out 180ms ease-in both }
+@media (prefers-reduced-motion: reduce) { .fuel-row-in, .fuel-row-out { animation: none } }
+
+/* 直播改造（2026-09-30）：点赞飘心、进场横幅、PK 结果弹出。只动 transform / opacity，不占显卡 */
+@keyframes like-float { 0% { transform: translate(-50%, 0) scale(.6); opacity: 0 } 15% { opacity: 1 } 100% { transform: translate(calc(-50% + var(--x, 0px)), -150px) scale(1.15); opacity: 0 } }
+.like-float { animation: like-float 1.35s ease-out forwards }
+@keyframes enter-slide { 0% { transform: translateX(-105%); opacity: 0 } 12% { transform: translateX(0); opacity: 1 } 85% { transform: translateX(0); opacity: 1 } 100% { transform: translateX(-20%); opacity: 0 } }
+.enter-banner { animation: enter-slide 3.2s ease-out forwards }
+@keyframes pk-pop { 0% { transform: scale(.4); opacity: 0 } 60% { transform: scale(1.12); opacity: 1 } 100% { transform: scale(1) } }
+.pk-pop { animation: pk-pop .5s cubic-bezier(.2,.9,.3,1.3) both }
+@media (prefers-reduced-motion: reduce) { .like-float, .enter-banner, .pk-pop { animation-duration: .01ms } }

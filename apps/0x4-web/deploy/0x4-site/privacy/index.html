@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en" data-title-en="Privacy Policy · 0x4" data-title-zh="隐私政策 · 0x4">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 0x4 隐私政策（2026-10-01）。★每一句都对过代码（2026-10-01 盘点：表结构、保留期、IP、第三方），改功能时同步改这里：
+     - 群聊明文存服务器（非端到端）；私信端到端加密，服务器只存密文，保留按用户选的模式（cloud 默认长期 / device 送达即删 / daily 每天删）
+     - 聊天媒体 30 天删；动态图片、头像、工单截图长期；和小精灵的对话长期（peer 闲聊 30 天，eden 7 天）
+     - IP：限流只在内存；服务器日志会记请求 IP；登录会话只存国家代码（Cloudflare 给的）和「浏览器 · 系统」；转发抽奖存 IP
+     - 不用 cookie、没有统计 / 广告 / 错误追踪；不卖数据；2026-10-02 起可以在 App / 网页版设置里自助注销（server/src/accountDelete.ts：删什么、留什么以那里的 PLAN 为准）；备份 14 天
+     - AI：发给模型的是小精灵状态 + 最近 12 句 + 主人这句，不带地址 / 昵称 / 金额
+     - 音视频服务商拿到钱包地址和昵称作为参会身份；不录制；直播间聊天不保存
+     第三方只写类别不写品牌（goat 产品原则）。适用法律泰国，按 PDPA 写权利（goat 10/1 定）。 -->
+<title>Privacy Policy · 0x4</title>
+<meta name="description" content="How 0x4 collects, uses and protects information across the app, the web app at 420.meme and the 0x4 Wallet extension.">
+<link rel="icon" href="/assets/cat.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Pixelify+Sans:wght@400..600&display=swap">
+<script src="/legal/theme.js"></script>
+<link rel="stylesheet" href="/legal/legal.css">
+<script src="/legal/legal.js" defer></script>
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<header class="bar">
+  <a class="brand" href="/" aria-label="0x4"><img src="/assets/cat-tight.svg" alt="" width="34" height="24"><span>0x4</span></a>
+  <div class="lang" role="group" aria-label="Language"><button type="button" data-lang="zh">CHN</button><span aria-hidden="true">/</span><button type="button" data-lang="en">ENG</button></div>
+</header>
+
+<main class="wrap">
+  <!-- ================= English ================= -->
+  <div data-lang-only="en">
+    <div class="head">
+      <p class="eyebrow">Legal</p>
+      <h1>Privacy <em>Policy</em></h1>
+      <p class="dated">Last updated October 2, 2026</p>
+      <ul class="docs"><li><a href="/terms/">Terms of Service</a></li><li><a href="/privacy/" aria-current="page">Privacy Policy</a></li><li><a href="/risk/">Risk Disclosure</a></li></ul>
+    </div>
+    <div class="layout">
+      <nav class="toc" aria-label="Contents"><details open><summary>Contents</summary><ol>
+        <li><a href="#en-1">Who we are</a></li>
+        <li><a href="#en-2">What we never collect</a></li>
+        <li><a href="#en-3">Information we process</a></li>
+        <li><a href="#en-4">Messages and conversations</a></li>
+        <li><a href="#en-5">How we use information</a></li>
+        <li><a href="#en-6">Legal bases</a></li>
+        <li><a href="#en-7">Who receives information</a></li>
+        <li><a href="#en-8">Public blockchains</a></li>
+        <li><a href="#en-9">Storage on your device</a></li>
+        <li><a href="#en-10">Retention</a></li>
+        <li><a href="#en-11">Security</a></li>
+        <li><a href="#en-12">International transfers</a></li>
+        <li><a href="#en-13">Your rights</a></li>
+        <li><a href="#en-14">Children</a></li>
+        <li><a href="#en-15">Changes</a></li>
+        <li><a href="#en-16">Contact</a></li>
+      </ol></details></nav>
+
+      <article class="doc">
+        <div class="keys">
+          <p class="eyebrow">Key points</p>
+          <ul>
+            <li><strong>Your recovery phrase, private keys and password never reach us.</strong></li>
+            <li><strong>Your wallet address is your identity.</strong> We do not ask for your name, email or phone number to use 0x4.</li>
+            <li><strong>Direct messages are end-to-end encrypted.</strong> Group chats and public posts are not.</li>
+            <li><strong>No advertising, no tracking cookies, no third-party analytics.</strong> We do not sell your information.</li>
+            <li><strong>What happens on a blockchain stays on the blockchain.</strong> Neither we nor anyone else can erase it.</li>
+          </ul>
+        </div>
+
+        <section id="en-1">
+          <h2><span class="n">01</span>Who we are</h2>
+          <p>This Privacy Policy explains how 0x4 (“0x4”, “we”, “us” or “our”) handles information when you use the 0x4 mobile application, the web application at 420.meme and its subdomains, the 0x4 Wallet browser extension and related services (the “Services”). For the purposes of applicable data-protection law, including Thailand’s Personal Data Protection Act B.E. 2562 (2019) (“PDPA”), 0x4 is the data controller for the personal data described here.</p>
+          <p>This policy does not cover public blockchains, Third-Party Protocols or other services that you reach through 0x4. Their own privacy practices apply.</p>
+        </section>
+
+        <section id="en-2">
+          <h2><span class="n">02</span>What we never collect</h2>
+          <p>Your recovery phrase, private keys and wallet password are created and kept on your device and are never transmitted to us. We do not collect your name, email address, phone number or government identification in order for you to use the Services. You may choose to share such details with us, for example when you write to support.</p>
+        </section>
+
+        <section id="en-3">
+          <h2><span class="n">03</span>Information we process</h2>
+          <div class="table"><table>
+            <thead><tr><th>Category</th><th>What it includes</th></tr></thead>
+            <tbody>
+              <tr><td>Account and profile</td><td>Your public wallet addresses; the display name, handle, bio and language you choose; the NFT you verify as your avatar; other wallets you link by signature; when your account was created and last active.</td></tr>
+              <tr><td>Linked X account</td><td>If you connect X, your public profile details such as handle, display name, avatar and follower counts. We use the authorization once and do not keep your X access token. You can disconnect at any time.</td></tr>
+              <tr><td>Social activity</td><td>Posts, comments, likes, follows, polls, group memberships, reports and blocks; images and files you upload.</td></tr>
+              <tr><td>Live streams and meetings</td><td>Rooms you create or join, room settings, likes, moderation actions, PK results and experience points. Audio and video are relayed in real time and are not recorded. Live-room chat is not saved.</td></tr>
+              <tr><td>Trading and wallet activity</td><td>Swaps and trades you make through the Services (side, token, amount, price and transaction hash), positions, snapshots of token balances, trading volume and fee tier. If you grant a read-only perpetuals key, the trades it can see.</td></tr>
+              <tr><td>Energy and gifts</td><td>Your energy balance, the signed gift receipts you send, gifts sent and received, and on-chain settlement records.</td></tr>
+              <tr><td>Sprites</td><td>Sprite settings, eligibility, proposals, decisions and results, and your conversations with your sprite.</td></tr>
+              <tr><td>Sessions and devices</td><td>Sign-in sessions with a short browser and operating-system label and a country code derived from your network connection; push-notification tokens and preferences; your time zone, used to schedule message deletion if you choose daily deletion.</td></tr>
+              <tr><td>Technical data</td><td>IP address and request details, processed to deliver the Services, prevent abuse and keep them secure.</td></tr>
+              <tr><td>Support</td><td>Tickets, messages and screenshots you send us.</td></tr>
+            </tbody>
+          </table></div>
+          <p>Most of this information is linked to your wallet address. Much of it, including your trades, holdings and gifts, is also visible on public blockchains whether or not you use 0x4.</p>
+        </section>
+
+        <section id="en-4">
+          <h2><span class="n">04</span>Messages and conversations</h2>
+          <p><strong>Direct messages</strong> are end-to-end encrypted on your device before they are sent. Our servers store and relay only encrypted copies and never hold the keys to read them. You choose how long those encrypted copies remain on our servers: until you delete them, until your device has received them, or until the end of each day. Push notifications for direct messages contain the sender’s name, never the content.</p>
+          <p><strong>Group chats, posts and comments</strong> are stored on our servers so that members can read them, and they are protected in transit but not end-to-end encrypted. Media shared in chats is deleted from our servers after 30 days.</p>
+          <p><strong>Conversations with your sprite</strong> are stored so that it can remember context. To generate a reply, we send your message, the recent conversation and the sprite’s current state to an AI model provider. We do not include your wallet address, display name or account balances, and we filter out anything that resembles a recovery phrase or key. Please do not share sensitive personal information with your sprite.</p>
+        </section>
+
+        <section id="en-5">
+          <h2><span class="n">05</span>How we use information</h2>
+          <ul>
+            <li>to provide the Services, including showing balances, routing trades, delivering messages, running streams and meetings, settling gifts and operating sprites;</li>
+            <li>to sign you in and keep your sessions secure, including notifying you of new sign-ins;</li>
+            <li>to calculate trading volume, fee tiers and rankings;</li>
+            <li>to send notifications you have enabled;</li>
+            <li>to prevent fraud, spam and abuse, enforce our <a href="/terms/">Terms</a>, and comply with sanctions and other legal obligations;</li>
+            <li>to respond to support requests; and</li>
+            <li>to maintain, debug and improve the Services.</li>
+          </ul>
+          <p>We do not use your information for advertising, we do not build advertising profiles, and we do not sell or rent personal data.</p>
+        </section>
+
+        <section id="en-6">
+          <h2><span class="n">06</span>Legal bases</h2>
+          <p>We process personal data on the following bases under the PDPA and, where applicable, the EU and UK General Data Protection Regulation:</p>
+          <ul>
+            <li><strong>Contract.</strong> We need the data to provide the Services you request.</li>
+            <li><strong>Legitimate interests.</strong> We rely on these to secure the Services, prevent abuse and improve features, where those interests are not overridden by your rights.</li>
+            <li><strong>Legal obligation.</strong> Some processing is required for sanctions screening, record keeping and responding to lawful requests.</li>
+            <li><strong>Consent.</strong> Optional features, such as linking an X account or receiving push notifications, rely on your consent, which you may withdraw at any time.</li>
+          </ul>
+        </section>
+
+        <section id="en-7">
+          <h2><span class="n">07</span>Who receives information</h2>
+          <p>We share information only as needed to run the Services, with providers who act on our instructions or whose services you choose to use:</p>
+          <ul>
+            <li><strong>Hosting, network and content delivery providers</strong>, which serve our websites, protect our servers and store files.</li>
+            <li><strong>Audio and video infrastructure</strong>, which relays streams and meetings. It receives your wallet address and display name as your participant identity.</li>
+            <li><strong>AI model providers</strong>, which generate sprite replies from the limited context described in section 4.</li>
+            <li><strong>Blockchain node and data providers</strong>, which read balances, activity and NFTs for your public addresses and broadcast transactions you sign.</li>
+            <li><strong>Swap, bridge and perpetuals protocols</strong>, which receive your address and order details when you trade.</li>
+            <li><strong>Market data providers</strong>, which receive only the token or pair being looked up.</li>
+            <li><strong>Mobile platform push services</strong>, which receive your device token and the notification text.</li>
+            <li><strong>X</strong>, if you choose to connect your X account.</li>
+          </ul>
+          <p>We may also disclose information when required by law or legal process, to protect the rights, safety and property of our users or of 0x4, or as part of a merger, acquisition or transfer of the Services, in which case this policy continues to apply. A list of our principal service providers is available on request.</p>
+        </section>
+
+        <section id="en-8">
+          <h2><span class="n">08</span>Public blockchains</h2>
+          <p>Transactions you make are recorded on public blockchains, which are designed to be permanent and openly readable. Anyone can see the addresses, amounts and timing of those transactions. We do not control blockchains and cannot modify or delete information recorded on them, including in response to a deletion request.</p>
+        </section>
+
+        <section id="en-9">
+          <h2><span class="n">09</span>Storage on your device</h2>
+          <p>We do not use cookies or tracking pixels, and we do not run third-party analytics or advertising tools. The Services store some information in your browser or app storage so that they work: your encrypted wallet, sign-in sessions, settings, language, favorites and a local cache of your chats. Clearing this storage or removing the app or extension deletes it from that device. Make sure your recovery phrase is backed up before you do.</p>
+          <p>Our websites load typefaces from a font service, which may receive your IP address as part of the request.</p>
+        </section>
+
+        <section id="en-10">
+          <h2><span class="n">10</span>Retention</h2>
+          <ul>
+            <li>Account, profile and activity data are kept while your account is active and for as long as needed for the purposes above.</li>
+            <li>Encrypted direct messages are kept according to the setting you choose. Chat media is deleted after 30 days. Posts, comments and group messages are kept until they are deleted.</li>
+            <li>Conversations between sprites are kept for up to 30 days. Your own conversations with your sprite are kept until you ask us to delete them.</li>
+            <li>IP addresses used for rate limiting are held in memory only. Server logs, which include IP addresses, are kept for a short period for security and troubleshooting.</li>
+            <li>Server backups are kept for 14 days, so deleted information may remain in a backup for up to that period.</li>
+            <li>We keep records longer where the law requires it or where they are needed to resolve disputes or enforce our Terms.</li>
+          </ul>
+        </section>
+
+        <section id="en-11">
+          <h2><span class="n">11</span>Security</h2>
+          <p>We protect information with encryption in transit, encryption of sensitive credentials at rest, access controls and limits on what our staff can see. Keys that let a feature act for you, such as perpetuals keys, are stored encrypted and limited to the permissions you grant. No system is completely secure. The safety of your wallet ultimately depends on how well you protect your device and recovery phrase.</p>
+        </section>
+
+        <section id="en-12">
+          <h2><span class="n">12</span>International transfers</h2>
+          <p>Our servers and service providers may be located outside the country where you live, and information may be processed in those locations. Where the PDPA or other applicable law restricts such transfers, we rely on the safeguards it permits, such as contractual protections or your consent.</p>
+        </section>
+
+        <section id="en-13">
+          <h2><span class="n">13</span>Your rights</h2>
+          <p>Subject to applicable law, you may ask us to give you access to your personal data or a copy of it, correct it, delete it, restrict or object to its processing, transfer it to another service, or withdraw consent you have given. You can do much of this directly in the Services: edit your profile, disconnect X, remove linked wallets, delete posts and messages, change how long direct messages are kept, sign out other devices, and delete your account (Settings, Delete account).</p>
+          <p>When you delete your account we remove your profile, posts, comments, follows, messages and sprites. We keep records of top-ups, withdrawals and gift settlements, ban records, and reports made against the account, to the extent we need them for accounting, security or legal reasons. For anything else, write to <a href="mailto:support@420.meme">support@420.meme</a> from a channel we can verify, or sign a message with your wallet when we ask. We respond within 30 days. Information recorded on a blockchain cannot be deleted. If you believe your rights have not been respected, you may complain to Thailand’s Personal Data Protection Committee or to the authority where you live.</p>
+        </section>
+
+        <section id="en-14">
+          <h2><span class="n">14</span>Children</h2>
+          <p>The Services are not intended for anyone under 18. We do not knowingly collect personal data from minors. If you believe a minor is using the Services, contact us and we will take appropriate action.</p>
+        </section>
+
+        <section id="en-15">
+          <h2><span class="n">15</span>Changes to this policy</h2>
+          <p>We may update this policy as the Services evolve. The date at the top shows when it last changed. If a change is material, we will give notice in the Services before it takes effect.</p>
+        </section>
+
+        <section id="en-16">
+          <h2><span class="n">16</span>Contact</h2>
+          <p>For privacy questions or requests, write to <a href="mailto:support@420.meme">support@420.meme</a>. This policy is written in English and Chinese. If the two versions differ, the English version prevails.</p>
+        </section>
+      </article>
+    </div>
+  </div>
+
+  <!-- ================= 中文 ================= -->
+  <div data-lang-only="zh">
+    <div class="head">
+      <p class="eyebrow">Legal</p>
+      <h1>隐私<em>政策</em></h1>
+      <p class="dated">最后更新：2026 年 10 月 2 日</p>
+      <ul class="docs"><li><a href="/terms/">服务条款</a></li><li><a href="/privacy/" aria-current="page">隐私政策</a></li><li><a href="/risk/">风险披露</a></li></ul>
+    </div>
+    <div class="layout">
+      <nav class="toc" aria-label="目录"><details open><summary>目录</summary><ol>
+        <li><a href="#zh-1">我们是谁</a></li>
+        <li><a href="#zh-2">我们从不收集的信息</a></li>
+        <li><a href="#zh-3">我们处理的信息</a></li>
+        <li><a href="#zh-4">消息与对话</a></li>
+        <li><a href="#zh-5">信息的用途</a></li>
+        <li><a href="#zh-6">处理依据</a></li>
+        <li><a href="#zh-7">信息的接收方</a></li>
+        <li><a href="#zh-8">公开区块链</a></li>
+        <li><a href="#zh-9">设备上的存储</a></li>
+        <li><a href="#zh-10">保存期限</a></li>
+        <li><a href="#zh-11">安全</a></li>
+        <li><a href="#zh-12">跨境传输</a></li>
+        <li><a href="#zh-13">您的权利</a></li>
+        <li><a href="#zh-14">未成年人</a></li>
+        <li><a href="#zh-15">政策变更</a></li>
+        <li><a href="#zh-16">联系我们</a></li>
+      </ol></details></nav>
+
+      <article class="doc">
+        <div class="keys">
+          <p class="eyebrow">要点</p>
+          <ul>
+            <li><strong>您的助记词、私钥和密码永远不会到达我们这里。</strong></li>
+            <li><strong>钱包地址就是您的身份。</strong>使用 0x4 无需提供姓名、邮箱或手机号。</li>
+            <li><strong>私信采用端到端加密。</strong>群聊与公开动态不采用端到端加密。</li>
+            <li><strong>没有广告，没有追踪 Cookie，没有第三方统计。</strong>我们不出售您的信息。</li>
+            <li><strong>写入区块链的内容永久留在链上。</strong>我们和任何人都无法删除。</li>
+          </ul>
+        </div>
+
+        <section id="zh-1">
+          <h2><span class="n">01</span>我们是谁</h2>
+          <p>本隐私政策说明 0x4（下称「0x4」或「我们」）在您使用 0x4 手机应用、420.meme 及其子域名上的网页版、0x4 Wallet 浏览器插件及相关服务（下称「本服务」）时如何处理信息。依照适用的数据保护法律，包括泰国《个人数据保护法》（B.E. 2562，2019 年，下称「PDPA」），0x4 是本政策所述个人数据的数据控制者。</p>
+          <p>您经由 0x4 访问的公开区块链、第三方协议及其他服务，不适用本政策，而适用其各自的隐私规则。</p>
+        </section>
+
+        <section id="zh-2">
+          <h2><span class="n">02</span>我们从不收集的信息</h2>
+          <p>您的助记词、私钥和钱包密码在您的设备上生成和保存，从不传输给我们。使用本服务时，我们不收集您的姓名、邮箱、手机号或身份证件。您可以主动向我们提供这些信息，例如联系客服时。</p>
+        </section>
+
+        <section id="zh-3">
+          <h2><span class="n">03</span>我们处理的信息</h2>
+          <div class="table"><table>
+            <thead><tr><th>类别</th><th>具体内容</th></tr></thead>
+            <tbody>
+              <tr><td>账户与资料</td><td>您的公开钱包地址；您设置的昵称、用户名、简介与语言；您验证为头像的 NFT；您通过签名关联的其他钱包；账户的创建时间与最近活跃时间。</td></tr>
+              <tr><td>关联的 X 账号</td><td>如您绑定 X，我们会获取您的公开资料，例如用户名、显示名、头像与关注人数。授权只使用一次，我们不保存您的 X 访问令牌。您可以随时解除绑定。</td></tr>
+              <tr><td>社交动态</td><td>动态、评论、点赞、关注、投票、群组成员关系、举报与拉黑记录；您上传的图片与文件。</td></tr>
+              <tr><td>直播与会议</td><td>您创建或加入的房间、房间设置、点赞、管理操作、PK 结果与经验值。音视频只做实时中转，不录制；直播间聊天不保存。</td></tr>
+              <tr><td>交易与钱包</td><td>您经由本服务完成的兑换与交易（方向、代币、数量、价格与交易哈希）、持仓、代币余额快照、交易量与手续费等级。如您授予永续合约只读密钥，还包括该密钥可以查看的成交记录。</td></tr>
+              <tr><td>能量与礼物</td><td>您的能量余额、您签署的送礼小票、收发礼物记录，以及链上结算记录。</td></tr>
+              <tr><td>小精灵</td><td>小精灵的设置、领养资格、交易建议、决策与结果，以及您与小精灵的对话。</td></tr>
+              <tr><td>登录与设备</td><td>登录会话，附带简短的「浏览器 · 系统」说明，以及根据网络连接得出的国家代码；推送令牌与通知偏好；您的时区，在您选择每日删除私信时用于安排删除时间。</td></tr>
+              <tr><td>技术数据</td><td>IP 地址与请求信息，用于提供本服务、防止滥用并保障安全。</td></tr>
+              <tr><td>客服</td><td>您提交的工单、留言与截图。</td></tr>
+            </tbody>
+          </table></div>
+          <p>上述信息大多与您的钱包地址关联，其中许多内容（包括交易、持仓与礼物）无论您是否使用 0x4，本来就能在公开区块链上查到。</p>
+        </section>
+
+        <section id="zh-4">
+          <h2><span class="n">04</span>消息与对话</h2>
+          <p><strong>私信</strong>在发送前即在您的设备上完成端到端加密。我们的服务器只存储和转发加密副本，从不持有解密密钥。加密副本在服务器上保留多久由您选择：直到您删除、直到您的设备收到，或每天结束时删除。私信的推送通知只显示发送者名字，不含消息内容。</p>
+          <p><strong>群聊、动态与评论</strong>保存在我们的服务器上，以便成员阅读。它们在传输过程中受到加密保护，但不是端到端加密。聊天中分享的媒体文件会在 30 天后从服务器删除。</p>
+          <p><strong>您与小精灵的对话</strong>会被保存，以便它记住上下文。生成回复时，我们会把您的这句话、最近的对话以及小精灵当前的状态发送给 AI 模型服务商。我们不发送您的钱包地址、昵称或账户金额，并会过滤任何疑似助记词或密钥的内容。请不要在与小精灵的对话中透露敏感个人信息。</p>
+        </section>
+
+        <section id="zh-5">
+          <h2><span class="n">05</span>信息的用途</h2>
+          <ul>
+            <li>提供本服务，包括显示余额、选择交易路径、投递消息、运行直播与会议、结算礼物、运行小精灵；</li>
+            <li>为您登录并保障会话安全，包括在有新设备登录时通知您；</li>
+            <li>计算交易量、手续费等级与排名；</li>
+            <li>发送您已开启的通知；</li>
+            <li>防范欺诈、垃圾信息与滥用，执行我们的<a href="/terms/">服务条款</a>，履行制裁合规及其他法律义务；</li>
+            <li>处理客服请求；</li>
+            <li>维护、排查和改进本服务。</li>
+          </ul>
+          <p>我们不将您的信息用于广告，不建立广告画像，也不出售或出租个人数据。</p>
+        </section>
+
+        <section id="zh-6">
+          <h2><span class="n">06</span>处理依据</h2>
+          <p>依照 PDPA，以及在适用时依照欧盟和英国《通用数据保护条例》，我们基于以下依据处理个人数据：</p>
+          <ul>
+            <li><strong>履行合同</strong>：提供您所请求的服务需要这些数据。</li>
+            <li><strong>正当利益</strong>：保障本服务安全、防止滥用、改进功能，且该利益不凌驾于您的权利之上。</li>
+            <li><strong>法定义务</strong>：制裁筛查、记录留存及回应合法要求所必需的处理。</li>
+            <li><strong>您的同意</strong>：绑定 X 账号、接收推送通知等可选功能，以您的同意为依据，您可随时撤回。</li>
+          </ul>
+        </section>
+
+        <section id="zh-7">
+          <h2><span class="n">07</span>信息的接收方</h2>
+          <p>我们只在运营本服务所必需的范围内共享信息，接收方是按我们指示处理数据的服务商，或您自己选择使用的服务：</p>
+          <ul>
+            <li><strong>托管、网络与内容分发服务商</strong>：提供网站服务、保护服务器、存储文件。</li>
+            <li><strong>音视频基础设施</strong>：中转直播与会议，并以您的钱包地址和昵称作为参会身份。</li>
+            <li><strong>AI 模型服务商</strong>：依据第 4 节所述的有限上下文生成小精灵的回复。</li>
+            <li><strong>区块链节点与数据服务商</strong>：读取您公开地址的余额、记录与 NFT，并广播您签署的交易。</li>
+            <li><strong>兑换、跨链与永续合约协议</strong>：在您交易时接收您的地址与订单信息。</li>
+            <li><strong>行情数据服务商</strong>：只接收所查询的代币或交易对。</li>
+            <li><strong>手机系统推送服务</strong>：接收您的设备令牌与通知文字。</li>
+            <li><strong>X</strong>：仅在您选择绑定 X 账号时。</li>
+          </ul>
+          <p>此外，在法律或法律程序要求时、为保护用户或 0x4 的权利、安全与财产时，或在本服务发生合并、收购或转让时，我们也可能披露信息；发生转让的，本政策继续适用。我们的主要服务商名单可应要求提供。</p>
+        </section>
+
+        <section id="zh-8">
+          <h2><span class="n">08</span>公开区块链</h2>
+          <p>您的交易记录在公开区块链上。区块链的设计是永久保存、公开可读，任何人都能看到这些交易的地址、金额与时间。我们不控制区块链，无法修改或删除链上记录，包括在收到删除请求时。</p>
+        </section>
+
+        <section id="zh-9">
+          <h2><span class="n">09</span>设备上的存储</h2>
+          <p>我们不使用 Cookie 或追踪像素，不运行第三方统计或广告工具。为了正常运行，本服务会在您的浏览器或应用存储中保存部分信息：加密后的钱包、登录会话、设置、语言、收藏以及聊天记录的本地缓存。清除这些存储或删除应用、插件，即会从该设备上删除这些信息。操作前请确认已备份助记词。</p>
+          <p>我们的网站从字体服务加载字体，该服务可能在请求中获得您的 IP 地址。</p>
+        </section>
+
+        <section id="zh-10">
+          <h2><span class="n">10</span>保存期限</h2>
+          <ul>
+            <li>账户、资料与活动数据在您的账户存续期间保存，并在实现上述用途所需的期限内保存。</li>
+            <li>加密私信按您选择的设置保存；聊天媒体在 30 天后删除；动态、评论与群聊消息保存至被删除为止。</li>
+            <li>小精灵之间的对话最多保存 30 天；您与自己小精灵的对话保存至您要求删除为止。</li>
+            <li>用于限流的 IP 地址只保存在内存中；含有 IP 地址的服务器日志为安全与排查短期保存。</li>
+            <li>服务器备份保存 14 天，因此已删除的信息可能在该期限内仍存在于备份中。</li>
+            <li>法律要求保留，或为解决争议、执行服务条款所需时，我们会保存更长时间。</li>
+          </ul>
+        </section>
+
+        <section id="zh-11">
+          <h2><span class="n">11</span>安全</h2>
+          <p>我们以传输加密、敏感凭证的存储加密、访问控制以及对工作人员可见范围的限制来保护信息。代您执行某项功能的密钥，例如永续合约密钥，均加密保存，并且只具有您所授予的权限。任何系统都无法做到绝对安全，钱包的安全最终取决于您对设备与助记词的保护。</p>
+        </section>
+
+        <section id="zh-12">
+          <h2><span class="n">12</span>跨境传输</h2>
+          <p>我们的服务器与服务商可能位于您居住国家或地区以外，信息可能在这些地方处理。PDPA 或其他适用法律对此类传输有限制的，我们依照法律允许的保障措施进行，例如合同保护或您的同意。</p>
+        </section>
+
+        <section id="zh-13">
+          <h2><span class="n">13</span>您的权利</h2>
+          <p>在适用法律范围内，您可以要求查阅或获取您的个人数据副本，要求更正、删除、限制处理或反对处理，要求将数据转移至其他服务，或撤回已作出的同意。其中许多操作您可以在本服务内直接完成：编辑资料、解除 X 绑定、移除关联钱包、删除动态与消息、调整私信保留方式、让其他设备下线、注销账户（设置 → 注销账号）。</p>
+          <p>注销账户后，我们会删除您的资料、动态、评论、关注关系、消息与小精灵；充值、提现、打赏结算等资金记录，封禁记录，以及他人对该账户的举报记录，会在记账、安全或法律需要的范围内保留。其他请求，请从可供我们核实的渠道写信至 <a href="mailto:support@420.meme">support@420.meme</a>，或在我们要求时用您的钱包签名确认。我们会在 30 日内答复。写入区块链的信息无法删除。如您认为自己的权利未获尊重，可以向泰国个人数据保护委员会或您所在地的主管机构投诉。</p>
+        </section>
+
+        <section id="zh-14">
+          <h2><span class="n">14</span>未成年人</h2>
+          <p>本服务不面向未满 18 周岁的人士，我们不会在知情的情况下收集未成年人的个人数据。如您认为有未成年人在使用本服务，请联系我们，我们会采取相应措施。</p>
+        </section>
+
+        <section id="zh-15">
+          <h2><span class="n">15</span>政策变更</h2>
+          <p>我们可能随本服务的发展更新本政策，页首日期显示最近一次更新的时间。如属重大变更，我们会在生效前于本服务内通知您。</p>
+        </section>
+
+        <section id="zh-16">
+          <h2><span class="n">16</span>联系我们</h2>
+          <p>隐私相关的问题与请求，请写信至 <a href="mailto:support@420.meme">support@420.meme</a>。本政策以英文和中文书就，两种文本如有不一致，以英文文本为准。</p>
+        </section>
+      </article>
+    </div>
+  </div>
+</main>
+
+<footer class="foot"><nav aria-label="Legal">
+  <span data-lang-only="en"><a href="/terms/">Terms of Service</a><a href="/privacy/">Privacy Policy</a><a href="/risk/">Risk Disclosure</a><a href="/download/">Download center</a></span>
+  <span data-lang-only="zh"><a href="/terms/">服务条款</a><a href="/privacy/">隐私政策</a><a href="/risk/">风险披露</a><a href="/download/">下载中心</a></span>
+</nav></footer>
+</body>
+</html>
