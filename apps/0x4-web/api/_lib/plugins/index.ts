@@ -11,6 +11,10 @@ import { voicePlugin } from './voice.js';
 import { webPlugin } from './web.js';
 import { filesPlugin } from './files.js';
 import { memoryPlugin } from './memory.js';
+import { researchPlugin } from './research.js';
+import { chartsPlugin } from './charts.js';
+import { tasksPlugin } from './tasks.js';
+import { skillsPlugin } from './skills.js';
 
 registry.register(monadTradingPlugin);
 registry.register(mediaPlugin);
@@ -20,5 +24,9 @@ registry.register(voicePlugin);
 registry.register(webPlugin);
 registry.register(filesPlugin);
 registry.register(memoryPlugin);
+registry.register(researchPlugin);
+registry.register(chartsPlugin);
+registry.register(tasksPlugin);
+registry.register(skillsPlugin);
 
 export { registry };

@@ -16,6 +16,10 @@ Capabilities (use tools when the user asks):
 - generate_video: short AI videos from a text prompt (async, 1-3 min). Tell the user it's generating.
 - text_to_speech: convert text to voice audio when the user wants to hear it
 - web_search / web_fetch: look up current information, news, docs, prices — use this when you don't know something or it might be outdated
+- deep_research: thorough multi-source research with cited report — use for "research X", comparisons, "what's the latest on Y"
+- create_chart: bar/line/pie charts from data — use when the user wants a visualization
+- add_task / list_tasks / complete_task: todo list — "remind me to X", "what's on my list"
+- list_skills / run_skill: reusable workflows (token-analysis, meme-creator, portfolio-report)
 - create_file: generate downloadable files (markdown docs, code, CSV, JSON) when the user asks for a document or export
 - save_memory / recall_memory: remember the user across sessions — save their name, preferences, goals when they share them; recall when relevant
 - run_code: run JavaScript for calculations, analysis, quick scripts
@@ -40,6 +44,7 @@ export interface AgentResult {
   audio_base64?: string | null;
   file_url?: string | null;
   file_name?: string | null;
+  chart_svg?: string | null;
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
@@ -85,6 +90,7 @@ export async function runAgent(opts: {
   let audioBase64: string | null = null;
   let fileUrl: string | null = null;
   let fileName: string | null = null;
+  let chartSvg: string | null = null;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const out = await chatCompletions({
@@ -95,7 +101,7 @@ export async function runAgent(opts: {
     usage = out.usage;
 
     if (!out.tool_calls || out.tool_calls.length === 0) {
-      return { reply: out.content ?? '', tx: pendingTx, image_url: imageUrl, video_id: videoId, audio_base64: audioBase64, file_url: fileUrl, file_name: fileName, usage };
+      return { reply: out.content ?? '', tx: pendingTx, image_url: imageUrl, video_id: videoId, audio_base64: audioBase64, file_url: fileUrl, file_name: fileName, chart_svg: chartSvg, usage };
     }
 
     convo.push({ role: 'assistant', content: out.content, tool_calls: out.tool_calls });
@@ -112,7 +118,7 @@ export async function runAgent(opts: {
       }
       const result = await registry.execute(tc.function.name, args, { wallet: opts.wallet });
       if (result.tx) pendingTx = result.tx;
-      const data = result as unknown as { image_url?: string; video_id?: string; audio_base64?: string; file_url?: string; filename?: string };
+      const data = result as unknown as { image_url?: string; video_id?: string; audio_base64?: string; file_url?: string; filename?: string; chart_svg?: string };
       if (result.ok && data.data && typeof data.data === 'object') {
         if ('image_url' in data.data) imageUrl = (data.data as { image_url: string }).image_url;
         if ('video_id' in data.data) videoId = (data.data as { video_id: string }).video_id;
@@ -121,6 +127,7 @@ export async function runAgent(opts: {
           fileUrl = (data.data as { file_url: string }).file_url;
           fileName = (data.data as { filename: string }).filename || 'file';
         }
+        if ('chart_svg' in data.data) chartSvg = (data.data as { chart_svg: string }).chart_svg;
       }
       convo.push({
         role: 'tool',
@@ -138,6 +145,7 @@ export async function runAgent(opts: {
     audio_base64: audioBase64,
     file_url: fileUrl,
     file_name: fileName,
+    chart_svg: chartSvg,
     usage,
   };
 }

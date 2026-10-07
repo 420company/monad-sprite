@@ -48,6 +48,7 @@ export interface ChatMsg {
   audioBase64?: string
   fileUrl?: string
   fileName?: string
+  chartSvg?: string
 }
 
 interface Conversation {
@@ -66,6 +67,7 @@ interface ApiReply {
   audio_base64?: string | null
   file_url?: string | null
   file_name?: string | null
+  chart_svg?: string | null
   error?: string
 }
 
@@ -367,6 +369,12 @@ function MessageBubble({ msg, isLast, thinking, explorer, onConfirmTx, onCancelT
               </a>
             </div>
           )}
+          {msg.chartSvg && (
+            <div
+              className="overflow-hidden rounded-2xl"
+              dangerouslySetInnerHTML={{ __html: msg.chartSvg }}
+            />
+          )}
           {msg.tx && (
             <TxCard tx={msg.tx} explorer={explorer} onConfirm={() => onConfirmTx(msg.id, msg.tx!)} onCancel={() => onCancelTx(msg.id)} />
           )}
@@ -568,6 +576,7 @@ export default function AgentWorkspace({ zalienCount, onExit }: { zalienCount: n
       else if (data.video_id) push({ from: 'agent', text: data.reply, videoId: data.video_id })
       else if (data.audio_base64) push({ from: 'agent', text: data.reply, audioBase64: data.audio_base64 })
       else if (data.file_url) push({ from: 'agent', text: data.reply, fileUrl: data.file_url, fileName: data.file_name || undefined })
+      else if (data.chart_svg) push({ from: 'agent', text: data.reply, chartSvg: data.chart_svg })
       else reply(data.reply)
     } catch (e) {
       historyRef.current.pop()
