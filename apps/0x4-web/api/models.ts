@@ -3,6 +3,7 @@
  * Returns a curated list grouped by capability. No auth needed (no key exposed).
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getConfig } from './_lib/config.js';
 
 const BASE = (process.env.ROUTER_AI_BASE_URL || 'https://api.router.ai').replace(/\/$/, '');
 
@@ -53,7 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     models.sort((a, b) => order[a.group] - order[b.group] || a.id.localeCompare(b.id));
 
     return res.status(200).json({
-      default: 'claude-sonnet-4-5-20250929',
+      default: getConfig().defaultChatModel,
       models,
     });
   } catch (e) {

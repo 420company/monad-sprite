@@ -74,14 +74,15 @@ export async function chatCompletions(opts: {
   };
 }
 
-export async function generateImage(prompt: string, model = 'dola-seedream-5-0-pro-260628'): Promise<string> {
+export async function generateImage(prompt: string, model?: string): Promise<string> {
+  const m = model || process.env.DEFAULT_IMAGE_MODEL || 'dola-seedream-5-0-pro-260628';
   const res = await fetch(`${BASE}/v1/images/generations`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${key()}`,
     },
-    body: JSON.stringify({ model, prompt }),
+    body: JSON.stringify({ model: m, prompt }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');

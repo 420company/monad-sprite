@@ -4,6 +4,7 @@
 import type { AgentPlugin, ToolResult } from '../plugin.js';
 import type { ToolDef } from '../router.js';
 import { generateImage } from '../router.js';
+import { getConfig } from '../config.js';
 
 const tools: ToolDef[] = [
   {
@@ -31,7 +32,8 @@ export const mediaPlugin: AgentPlugin = {
 
   async execute(toolName: string, args: Record<string, unknown>): Promise<ToolResult> {
     if (toolName !== 'generate_image') return { ok: false, error: `Unknown tool: ${toolName}` };
-    const url = await generateImage(String(args.prompt));
-    return { ok: true, data: { image_url: url, prompt: args.prompt } };
+    const model = (args.model as string) || getConfig().defaultImageModel;
+    const url = await generateImage(String(args.prompt), model);
+    return { ok: true, data: { image_url: url, prompt: args.prompt, model } };
   },
 };

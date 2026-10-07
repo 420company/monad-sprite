@@ -4,6 +4,7 @@
  */
 import { chatCompletions, DEFAULT_MODEL, type ChatMessage } from './router.js';
 import { registry } from './plugins/index.js';
+import { getConfig } from './config.js';
 
 export const SYSTEM_PROMPT = `You are Sprite, the AI agent of monad-sprite — a Monad-native memecoin terminal. You are a sharp, capable, slightly playful assistant, like a crypto-native friend who actually gets things done.
 
@@ -56,7 +57,7 @@ export async function runAgent(opts: {
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const out = await chatCompletions({
-      model: opts.model || DEFAULT_MODEL,
+      model: opts.model || getConfig().defaultChatModel || DEFAULT_MODEL,
       messages: convo,
       tools: registry.allTools(),
     });
