@@ -27,8 +27,10 @@ export async function isLauncherToken(token: string): Promise<boolean> {
       abi: MemeLauncherAbi,
       functionName: 'tokens',
       args: [token as Hex],
-    })) as unknown as { exists: boolean }
-    return !!r?.exists
+    })) as unknown as readonly [boolean, bigint, bigint, string, string]
+    // NOTE (2026-10-07): this viem version returns structs as positional arrays
+    // only (no named props), so read exists/supply/etc. by index, not by name.
+    return !!r?.[0]
   } catch {
     return false
   }
@@ -42,9 +44,10 @@ export async function getLauncherToken(token: string): Promise<LauncherToken | n
       abi: MemeLauncherAbi,
       functionName: 'tokens',
       args: [token as Hex],
-    })) as unknown as { exists: boolean; supply: bigint; reserve: bigint; name: string; symbol: string }
-    if (!r?.exists) return null
-    return { address: token as Hex, exists: true, supply: r.supply, reserve: r.reserve, name: r.name, symbol: r.symbol }
+    })) as unknown as readonly [boolean, bigint, bigint, string, string]
+    // NOTE (2026-10-07): positional array, see isLauncherToken.
+    if (!r?.[0]) return null
+    return { address: token as Hex, exists: true, supply: r[1], reserve: r[2], name: r[3], symbol: r[4] }
   } catch {
     return null
   }
