@@ -31,13 +31,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (req.method === 'POST') {
-      const { prompt, model, seconds } = req.body ?? {};
+      const { prompt, model, seconds, image, images, first_frame, last_frame, aspect_ratio, resolution, audio, duration } = req.body ?? {};
       if (!prompt) return res.status(400).json({ error: 'prompt required' });
       const payload: Record<string, unknown> = {
         model: model || DEFAULT_VIDEO_MODEL,
         prompt: String(prompt).slice(0, 2000),
       };
       if (seconds) payload.seconds = Math.min(Number(seconds), 30);
+      // TEMP TEST: capability probing - REVERT AFTER
+      if (image) payload.image = image;
+      if (images) payload.images = images;
+      if (first_frame) payload.first_frame = first_frame;
+      if (last_frame) payload.last_frame = last_frame;
+      if (aspect_ratio) payload.aspect_ratio = aspect_ratio;
+      if (resolution) payload.resolution = resolution;
+      if (audio !== undefined) payload.audio = audio;
+      if (duration) payload.duration = duration;
 
       const r = await fetch(`${BASE}/v1/videos/generations`, {
         method: 'POST',
