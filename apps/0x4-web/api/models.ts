@@ -29,8 +29,14 @@ interface ModelInfo {
 function classify(id: string): ModelInfo['group'] {
   const l = id.toLowerCase();
   if (l.includes('image') || l.includes('seedream') || l.includes('dola-seed')) return 'image';
-  if (l.includes('video') || l.includes('seedance') || l.includes('dreamina') || l.includes('sora') || l.includes('veo')) return 'video';
-  if (l.includes('embed')) return 'other';
+  if (
+    l.includes('video') || l.includes('seedance') || l.includes('dreamina') ||
+    l.includes('sora') || l.includes('veo') || l.includes('wan') ||
+    l.includes('happyhorse') || l.includes('kling') || l.includes('runway') ||
+    l.includes('pika') || l.includes('luma') ||
+    /[-_](t2v|i2v|r2v)([-_]|$)/.test(l)
+  ) return 'video';
+  if (l.includes('embed') || l.includes('tts') || l.includes('whisper')) return 'other';
   return 'chat';
 }
 
