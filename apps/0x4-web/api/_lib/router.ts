@@ -100,4 +100,5 @@ export async function generateImage(prompt: string, model?: string): Promise<str
   return url;
 }
 
-export const DEFAULT_MODEL = 'claude-sonnet-4-5-20250929';
+export const DEFAULT_MODEL = 'claude-sonnet-5-5';
+
